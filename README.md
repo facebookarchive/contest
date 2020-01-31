@@ -32,15 +32,19 @@ moment).
 
 ## Quick Start
 
-We offer a few Docker files to get started quickly:
-* [docker/mysql](docker/mysql): this will configure and bring up a MySQL
+We offer a few Docker files to help setup ConTest. The fastest way to 
+have a ConTest instance up and running is to bring up the server and MySQL
+containers via the docker-compose configuration: just run
+`docker-compose up --build` from the root of the source tree.
+
+ConTest and MySQL containers can be also orchestrated separately:
+
+* [docker/mysql](docker/mysql) will configure and bring up a MySQL
   instance with a pre-populated ConTest database that you can use with a local
   instance. Just run `docker-compose mysql up` from the root of the source tree.
-* [docker/contest](docker/contest): this lets you run integration tests. See
-  `run_tests.sh`
-* we will shortly provide a Dockerfile to run the ConTest server as well. In the
-  meantime you can look at the section [Running the sample
-  server](#running-the-sample-server) below.
+* [docker/contest](docker/contest) supports running ConTest as standalone instance
+as explained at the beginning of this section and also supports integration tests.
+For a full test run please see `run_tests.sh`.
 
 
 ## Building ConTest
