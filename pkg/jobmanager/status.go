@@ -75,11 +75,13 @@ func (jm *JobManager) buildTargetStatus(jobID types.JobID, currentTestStepStatus
 			lastTargetStatus := len(currentTestStepStatus.TargetStatus) - 1
 			currentTargetStatus = &currentTestStepStatus.TargetStatus[lastTargetStatus]
 		}
-		if testEvent.Data.EventName == target.EventTargetIn {
+
+		switch eventName := testEvent.Data.EventName; eventName {
+		case target.EventTargetIn:
 			currentTargetStatus.InTime = testEvent.EmitTime
-		} else if testEvent.Data.EventName == target.EventTargetOut {
+		case target.EventTargetOut:
 			currentTargetStatus.OutTime = testEvent.EmitTime
-		} else if testEvent.Data.EventName == target.EventTargetErr {
+		case target.EventTargetErr:
 			currentTargetStatus.OutTime = testEvent.EmitTime
 			currentTargetStatus.Error = testEvent.Data.Payload
 		}
@@ -90,6 +92,12 @@ func (jm *JobManager) buildTargetStatus(jobID types.JobID, currentTestStepStatus
 
 // buildTestStepStatus populates a TestStatus object with TestStep status information
 func (jm *JobManager) buildTestStepStatus(jobID types.JobID, currentTest *test.Test, currentTestStatus *job.TestStatus) error {
+
+	// Build a map of events that should not be rendered as part of the status
+	skipEvents := make(map[event.Name]bool)
+	for _, eventName := range TargetRoutingEvents {
+		skipEvents[eventName] = true
+	}
 
 	// Go through every bundle describing a TestStep and rebuild the status of that TestStep
 	for _, testStepBundle := range currentTest.TestStepsBundles {
@@ -108,17 +116,7 @@ func (jm *JobManager) buildTestStepStatus(jobID types.JobID, currentTest *test.T
 		// (e.g. routing events)
 		filteredTestEvent := []testevent.Event{}
 		for _, event := range testEvents {
-			skip := false
-			for _, routingEvent := range TargetRoutingEvents {
-				if routingEvent == event.Data.EventName {
-					// This is a routing event and should not be rendered as part
-					// of the status of the object
-					skip = true
-					break
-				}
-			}
-
-			if !skip {
+			if _, skip := skipEvents[event.Data.EventName]; !skip {
 				filteredTestEvent = append(filteredTestEvent, event)
 			}
 		}
