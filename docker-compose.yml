@@ -1,0 +1,18 @@
+version: "3.2"
+services:
+        contest:
+                build:
+                    context: .
+                    dockerfile: docker/contest/Dockerfile
+                command: bash -c "cd /go/src/github.com/facebookincubator/contest/cmds/contest/ && go run . -dbURI 'contest:contest@tcp(mysql:3306)/contest_integ?parseTime=true'"
+                ports:
+                    - 8080:8080
+
+        mysql:
+                environment:
+                    - MYSQL_RANDOM_ROOT_PASSWORD=true
+                build:
+                    context: .
+                    dockerfile: docker/mysql/Dockerfile
+                ports:
+                    - 3306:3306

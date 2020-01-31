@@ -1,0 +1,11 @@
+{
+    "steps": [
+        {
+            "name": "randecho",
+            "parameters": {
+                "text": ["some very random text"]
+            }
+        }
+    ]
+}
+

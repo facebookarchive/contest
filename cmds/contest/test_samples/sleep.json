@@ -1,0 +1,13 @@
+{
+    "steps": [
+        {
+            "name": "cmd",
+            "label": "sleeping...",
+            "parameters": {
+                "executable": ["/bin/sleep"],
+                "args": ["60"]
+            }
+        }
+    ]
+}
+

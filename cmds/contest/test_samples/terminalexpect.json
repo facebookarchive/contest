@@ -1,0 +1,31 @@
+{
+    "steps": [
+        {
+            "name": "terminalexpect",
+            "parameters": {
+                "port": ["/dev/ttyUSB0"],
+                "speed": ["115200"],
+                "match": ["ramstage starting"],
+                "timeout": ["30s"]
+            }
+        },
+        {
+            "name": "terminalexpect",
+            "parameters": {
+                "port": ["/dev/ttyUSB0"],
+                "speed": ["115200"],
+                "match": ["Trying boot configuration"],
+                "timeout": ["1m"]
+            }
+        },
+        {
+            "name": "terminalexpect",
+            "parameters": {
+                "port": ["/dev/ttyUSB0"],
+                "speed": ["115200"],
+                "match": ["up-UP-APL01 login:"],
+                "timeout": ["1m"]
+            }
+        }
+    ]
+}

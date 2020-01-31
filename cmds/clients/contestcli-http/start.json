@@ -1,0 +1,29 @@
+{
+    "JobName": "test job",
+    "Runs": 1,
+    "RunInterval": "5s",
+    "Tags": ["test", "csv"],
+    "TestDescriptors": [
+        {
+            "TargetManagerName": "CSVFileTargetManager",
+            "TargetManagerAcquireParameters": {
+                "FileURI": "hosts02.csv",
+                "MinNumberDevices": 2,
+                "MaxNumberDevices": 4,
+                "HostPrefixes": [
+                ]
+            },
+            "TargetManagerReleaseParameters": {
+            },
+            "TestFetcherName": "URI",
+            "TestFetcherFetchParameters": {
+                "TestName": "MyTestName",
+                "URI": "test_samples/randecho.json"
+            }
+        }
+    ],
+    "ReporterName": "TargetSuccess",
+    "ReporterParameters": {
+	"SuccessExpression": ">10%"
+   }
+}

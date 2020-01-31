@@ -1,0 +1,38 @@
+{
+    "JobName": "test job",
+    "Runs": 1,
+    "RunInterval": "5s",
+    "Tags": ["test", "csv"],
+    "TestDescriptors": [
+        {
+            "TargetManagerName": "TargetList",
+            "TargetManagerAcquireParameters": {
+                "Targets": [
+                    {
+                        "Name": "example.org",
+                        "ID": "1234"
+                    }
+                ]
+            },
+            "TargetManagerReleaseParameters": {
+            },
+            "TestFetcherName": "literal",
+            "TestFetcherFetchParameters": {
+                "TestName": "Literal test",
+                "Steps": [
+                    {
+                        "name": "cmd",
+                        "parameters": {
+                            "executable": ["echo"],
+                            "args": ["Title={{ Title .Name }}, ToUpper={{ ToUpper .Name }}"]
+                        }
+                    }
+                ]
+            }
+        }
+    ],
+    "ReporterName": "TargetSuccess",
+    "ReporterParameters": {
+        "SuccessExpression": ">50%"
+   }
+}

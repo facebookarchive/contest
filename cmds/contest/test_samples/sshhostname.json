@@ -1,0 +1,15 @@
+{
+    "steps": [
+        {
+            "name": "sshcmd",
+            "parameters": {
+                "user": ["your_username"],
+                "host": ["{{ .Name }}"],
+                "private_key_file": ["/home/user/.ssh/id_rsa"],
+                "executable": ["ping"],
+                "args": ["-c1", "-W2", "www.{{ ToLower .Name }}"]
+            }
+        }
+    ]
+}
+
