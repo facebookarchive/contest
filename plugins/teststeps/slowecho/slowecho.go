@@ -39,6 +39,11 @@ func New() test.TestStep {
 	return &Step{}
 }
 
+// Load returns the name, factory and events which are needed to register the step.
+func Load() (string, test.TestStepFactory, []event.Name) {
+	return Name, New, Events
+}
+
 // Name returns the name of the Step
 func (e *Step) Name() string {
 	return Name

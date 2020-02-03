@@ -63,6 +63,10 @@ type TestStepStatus string
 // TestStep factories are registered in the plugin registry.
 type TestStepFactory func() TestStep
 
+// TestStepLoader is a type representing a function which returns all the
+// needed things to be able to load a TestStep.
+type TestStepLoader func() (string, TestStepFactory, []event.Name)
+
 // TestStepDescriptor is the definition of a test step matching a test step
 // configuration.
 type TestStepDescriptor struct {

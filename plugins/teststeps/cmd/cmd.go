@@ -121,3 +121,8 @@ func (ts *Cmd) CanResume() bool {
 func New() test.TestStep {
 	return &Cmd{}
 }
+
+// Load returns the name, factory and events which are needed to register the step.
+func Load() (string, test.TestStepFactory, []event.Name) {
+	return Name, New, Events
+}
