@@ -15,8 +15,6 @@ import (
 	"github.com/insomniacslk/xjson"
 )
 
-var targetManagerTimeout = 5 * time.Minute
-
 // JobDescriptor models the JSON encoded blob which is given as input to the
 // job creation request. A JobDescriptor embeds a list of TestDescriptor.
 type JobDescriptor struct {

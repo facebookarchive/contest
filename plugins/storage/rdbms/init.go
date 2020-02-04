@@ -98,14 +98,18 @@ func (r *RDBMS) init() error {
 		go func() {
 			for {
 				time.Sleep(r.testEventsFlushInterval)
-				r.FlushTestEvents()
+				if err := r.FlushTestEvents(); err != nil {
+					log.Warningf("Failed to flush test events: %v", err)
+				}
 			}
 		}()
 
 		go func() {
 			for {
 				time.Sleep(r.frameworkEventsFlushInterval)
-				r.FlushFrameworkEvents()
+				if err := r.FlushFrameworkEvents(); err != nil {
+					log.Warningf("Failed to flush test events: %v", err)
+				}
 			}
 		}()
 		return err

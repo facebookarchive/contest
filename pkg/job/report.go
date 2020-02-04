@@ -2,6 +2,7 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
+
 package job
 
 import (
@@ -21,8 +22,8 @@ type Report struct {
 	JobReport interface{}
 }
 
-// JobReportJson marshals the report into JSON, disabling HTML escaping
-func (r *Report) JobReportJson() ([]byte, error) {
+// JobReportJSON marshals the report into JSON, disabling HTML escaping
+func (r *Report) JobReportJSON() ([]byte, error) {
 	buffer := &bytes.Buffer{}
 	encoder := json.NewEncoder(buffer)
 	encoder.SetEscapeHTML(false)

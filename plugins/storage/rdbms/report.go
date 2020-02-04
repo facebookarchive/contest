@@ -20,11 +20,11 @@ func (r *RDBMS) StoreJobReport(report *job.Report) error {
 	}
 
 	insertStatement := "insert into reports (job_id, success, report_time, job_report) values (?, ?, ?, ?)"
-	jobReportJson, err := report.JobReportJson()
+	jobReportJSON, err := report.JobReportJSON()
 	if err != nil {
 		return fmt.Errorf("could not serialize job report for job %v: %v", report.JobID, err)
 	}
-	if _, err := r.db.Exec(insertStatement, report.JobID, report.Success, report.ReportTime, jobReportJson); err != nil {
+	if _, err := r.db.Exec(insertStatement, report.JobID, report.Success, report.ReportTime, jobReportJSON); err != nil {
 		return fmt.Errorf("could not store job report for job %v: %v", report.JobID, err)
 	}
 	return nil
@@ -48,28 +48,25 @@ func (r *RDBMS) GetJobReport(jobID types.JobID) (*job.Report, error) {
 		}
 	}()
 
-	var jobReportJson json.RawMessage
+	var jobReportJSON json.RawMessage
 
 	report := job.Report{}
-	report.JobReport = jobReportJson
+	report.JobReport = jobReportJSON
 
-	for rows.Next() {
-		r := ""
-		err := rows.Scan(
-			&report.JobID,
-			&report.Success,
-			&report.ReportTime,
-			&r,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("could not get job report for job %v: %v", jobID, err)
-		}
-		err = json.Unmarshal([]byte(r), &report.JobReport)
-		if err != nil {
-			return nil, fmt.Errorf("could not get job report for job %v: %v", jobID, err)
-		}
-		return &report, nil
+	rows.Next()
+	rr := ""
+	err = rows.Scan(
+		&report.JobID,
+		&report.Success,
+		&report.ReportTime,
+		&rr,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not get job report for job %v: %v", jobID, err)
 	}
-	// No report was found, nil *job.Report is valid for GetJobReport contract
-	return nil, nil
+	err = json.Unmarshal([]byte(rr), &report.JobReport)
+	if err != nil {
+		return nil, fmt.Errorf("could not get job report for job %v: %v", jobID, err)
+	}
+	return &report, nil
 }
