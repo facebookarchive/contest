@@ -41,7 +41,6 @@ func (ts *noop) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, par
 			return nil
 		}
 	}
-	return nil
 }
 
 // ValidateParameters validates the parameters associated to the TestStep

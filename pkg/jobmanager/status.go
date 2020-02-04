@@ -49,7 +49,7 @@ func (jm *JobManager) buildTargetStatus(jobID types.JobID, currentTestStepStatus
 		},
 	)
 	if err != nil {
-		fmt.Errorf("could not fetch events associated to target routing: %v", err)
+		return fmt.Errorf("could not fetch events associated to target routing: %v", err)
 	}
 
 	// Filter only the events emitted by this TestStep, group events by Target

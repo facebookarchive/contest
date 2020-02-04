@@ -138,7 +138,9 @@ func (jr *JobRunner) Run(j *job.Job) (bool, interface{}, error) {
 						return
 					case <-time.After(lockTimeout):
 						// refresh the locks before the timeout expires
-						tl.RefreshLocks(j.ID, targets)
+						if err := tl.RefreshLocks(j.ID, targets); err != nil {
+							log.Warningf("Failed to refresh %d locks for job ID %d: %v", len(targets), j.ID, err)
+						}
 					}
 				}
 			}(j, tl, targets, lockTimeout)

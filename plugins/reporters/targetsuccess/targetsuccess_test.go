@@ -18,6 +18,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
+// nolint:unused
 type TargetSuccessSuite struct {
 	suite.Suite
 	sampleTestResult test.TestResult

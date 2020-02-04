@@ -77,5 +77,5 @@ func (p *Param) Expand(target *target.Target) (string, error) {
 	if err := tmpl.Execute(&buf, target); err != nil {
 		return "", err
 	}
-	return string(buf.Bytes()), nil
+	return buf.String(), nil
 }

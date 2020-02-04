@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+set -exu
 
 go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
 go install github.com/golangci/golangci-lint/cmd/golangci-lint

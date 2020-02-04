@@ -69,7 +69,7 @@ func (e *Step) ValidateParameters(params test.TestStepParameters) error {
 
 	// no expression expansion here
 	if len(secStr.Raw()) != 1 {
-		return errors.New(fmt.Sprintf("invalid empty 'sleep' parameter: %v", secStr))
+		return fmt.Errorf("invalid empty 'sleep' parameter: %v", secStr)
 	}
 	_, err := sleepTime(secStr.Raw())
 	if err != nil {

@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
+set -exu
 
 # because things are never simple.
 # See https://github.com/codecov/example-go#caveat-multiple-files
 # and https://github.com/insomniacslk/dhcp/tree/master/.travis/tests.sh
 
 set -e
+
+# enable Go modules for older versions of Go
+export GO111MODULE=on
 
 # disable CGO for the build
 export CGO_ENABLED=0
