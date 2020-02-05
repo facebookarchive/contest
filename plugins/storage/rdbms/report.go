@@ -53,7 +53,13 @@ func (r *RDBMS) GetJobReport(jobID types.JobID) (*job.Report, error) {
 	report := job.Report{}
 	report.JobReport = jobReportJSON
 
-	rows.Next()
+	if next := rows.Next(); !next {
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("could not fetch job report: %v", err)
+		}
+		// No job report was found
+		return nil, nil
+	}
 	rr := ""
 	err = rows.Scan(
 		&report.JobID,
