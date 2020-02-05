@@ -8,14 +8,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 
 	"github.com/facebookincubator/contest/plugins/listeners/httplistener"
 )
@@ -35,16 +34,9 @@ const (
 )
 
 var (
-	flagHost      = flag.String("s", "localhost", "ConTest server host to connect to")
-	flagPort      = flag.Int("p", 8080, "ConTest server port to connect to")
+	flagAddr      = flag.String("addr", "http://localhost:8080", "ConTest server [scheme://]host:port[/basepath] to connect to")
 	flagRequestor = flag.String("r", defaultRequestor, "Identifier of the requestor of the API call")
 )
-
-func usageErr(msg string) {
-	flag.Usage()
-	fmt.Fprintf(os.Stderr, "\nError: %s.\n", msg)
-	os.Exit(1)
-}
 
 func main() {
 	flag.Usage = func() {
@@ -66,6 +58,13 @@ func main() {
 	}
 	flag.Parse()
 	verb := flag.Arg(0)
+	if err := run(verb); err != nil {
+		fmt.Fprintf(os.Stderr, "%s", err)
+		os.Exit(1)
+	}
+}
+
+func run(verb string) error {
 	var (
 		params = url.Values{}
 	)
@@ -75,25 +74,31 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Reading from stdin...\n")
 		jobDesc, err := ioutil.ReadAll(os.Stdin)
 		if err != nil {
-			panic(err)
+			return fmt.Errorf("failed to parse job descriptor: %v", err)
 		}
 		params.Add("jobDesc", string(jobDesc))
 	case "stop", "status", "retry":
 		jobID := flag.Arg(1)
 		if jobID == "" {
-			usageErr("missing job ID")
+			return errors.New("missing job ID")
 		}
 		params.Set("jobID", jobID)
 	case "version":
 		// no params for protocol version
 	default:
-		usageErr("invalid verb")
+		return fmt.Errorf("invalid verb: '%s'", verb)
 	}
-	u := url.URL{
-		Scheme: "http",
-		Host:   net.JoinHostPort(*flagHost, strconv.Itoa(*flagPort)),
-		Path:   "/" + verb,
+	u, err := url.Parse(*flagAddr)
+	if err != nil {
+		return fmt.Errorf("failed to parse server address '%s': %v", *flagAddr, err)
 	}
+	if u.Scheme == "" {
+		return errors.New("server URL scheme not specified")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("unsupported URL scheme '%s', please specify either http or https", u.Scheme)
+	}
+	u.Path += "/" + verb
 	fmt.Fprintf(os.Stderr, "Requesting URL %s with requestor ID '%s'\n", u.String(), *flagRequestor)
 	fmt.Fprintf(os.Stderr, "  with params:\n")
 	for k, v := range params {
@@ -102,26 +107,25 @@ func main() {
 	fmt.Fprintf(os.Stderr, "\n")
 	resp, err := http.PostForm(u.String(), params)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("HTTP POST failed: %v", err)
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Cannot read HTTP response: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Cannot read HTTP response: %v", err)
 	}
-	fmt.Fprintf(os.Stderr, "The server responded with status %s\n", resp.Status)
+	fmt.Fprintf(os.Stderr, "The server responded with status %s", resp.Status)
 	var indentedJSON []byte
 	if resp.StatusCode == http.StatusOK {
 		// the Data field of apiResp will result in a map[string]interface{}
 		var apiResp httplistener.HTTPAPIResponse
 		if err := json.Unmarshal(body, &apiResp); err != nil {
-			fmt.Fprintf(os.Stderr, "Response is not a valid HTTP API response object: '%s': %v\n", body, err)
+			return fmt.Errorf("response is not a valid HTTP API response object: '%s': %v", body, err)
 		}
 		// re-encode and indent, for pretty-printing
 
 		if err != nil {
-			panic(fmt.Sprintf("cannot marshal HTTPAPIResponse: %v", err))
+			return fmt.Errorf("cannot marshal HTTPAPIResponse: %v", err)
 		}
 
 		buffer := &bytes.Buffer{}
@@ -130,13 +134,13 @@ func main() {
 		encoder.SetIndent("", " ")
 		err := encoder.Encode(apiResp)
 		if err != nil {
-			panic(fmt.Sprintf("cannot re-encode httplistener.HTTPAPIResponse object: %v", err))
+			return fmt.Errorf("cannot re-encode httplistener.HTTPAPIResponse object: %v", err)
 		}
 		indentedJSON = buffer.Bytes()
 	} else {
 		var apiErr httplistener.HTTPAPIError
 		if err := json.Unmarshal(body, &apiErr); err != nil {
-			fmt.Fprintf(os.Stderr, "Response is not a valid HTTP API Error object: '%s': %v\n", body, err)
+			return fmt.Errorf("response is not a valid HTTP API Error object: '%s': %v", body, err)
 		}
 		// re-encode and indent, for pretty-printing
 		buffer := &bytes.Buffer{}
@@ -145,9 +149,12 @@ func main() {
 		encoder.SetIndent("", " ")
 		err := encoder.Encode(apiErr)
 		if err != nil {
-			panic(fmt.Sprintf("cannot re-encode httplistener.HTTPAPIResponse object: %v", err))
+			return fmt.Errorf("cannot re-encode httplistener.HTTPAPIResponse object: %v", err)
 		}
 		indentedJSON = buffer.Bytes()
 	}
+	// this is the only thing we want on stdout - the JSON-formatted response,
+	// so it can be piped to other tools if desired.
 	fmt.Println(string(indentedJSON))
+	return nil
 }
