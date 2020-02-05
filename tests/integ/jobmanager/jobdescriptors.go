@@ -7,7 +7,12 @@
 
 package test
 
-var jobDescriptorPre = `
+import (
+	"bytes"
+	"text/template"
+)
+
+var jobDescriptorTemplate = template.Must(template.New("jobDescriptor").Parse(`
 {
     "JobName": "test job",
     "ReporterName": "TargetSuccess",
@@ -37,71 +42,84 @@ var jobDescriptorPre = `
             },
             "TargetManagerReleaseParameters": {},
             "TestFetcherName": "literal",
-`
-
-var jobDescriptorPost = `
-      "ReporterParameters": {
-        "SuccessExpression": ">0%"
-      }
+            {{ . }}
+        }
+    ],
+    "Reporting": {
+        "RunReporters": [
+            {
+                "Name": "TargetSuccess",
+                "Parameters": {
+                    "SuccessExpression": ">0%"
+                }
+            }
+        ]
     }
-  ]
 }
-`
+`))
 
-var jobDescriptorNoop = jobDescriptorPre + `
-            "TestFetcherFetchParameters": {
-                "Steps": [
-                    {
-                        "name": "noop",
-                        "parameters": {}
-                    }
-                ],
-                "TestName": "IntegrationTest"
-            },` + jobDescriptorPost
+func descriptorMust(data string) string {
+	var buf bytes.Buffer
+	if err := jobDescriptorTemplate.Execute(&buf, data); err != nil {
+		panic(err)
+	}
+	return buf.String()
+}
 
-var jobDescriptorSlowecho = jobDescriptorPre + `
-          "TestFetcherFetchParameters": {
-              "Steps": [
-                  {
-                      "name": "slowecho",
-                      "parameters": {
-                        "sleep": ["5"],
-                        "text": ["Hello world"]
-                      }
-                  }
-              ],
-              "TestName": "IntegrationTest"
-          },` + jobDescriptorPost
+var jobDescriptorNoop = descriptorMust(`
+    "TestFetcherFetchParameters": {
+        "Steps": [
+            {
+                "name": "noop",
+                "parameters": {}
+            }
+        ],
+        "TestName": "IntegrationTest: noop"
+    }`)
 
-var jobDescriptorFailure = jobDescriptorPre + `
-          "TestFetcherFetchParameters": {
-              "Steps": [
-                  {
-                      "name": "fail",
-                      "parameters": {}
-                  }
-              ],
-              "TestName": "IntegrationTest"
-          },` + jobDescriptorPost
+var jobDescriptorSlowecho = descriptorMust(`
+   "TestFetcherFetchParameters": {
+       "Steps": [
+           {
+               "name": "slowecho",
+               "parameters": {
+                 "sleep": ["5"],
+                 "text": ["Hello world"]
+               }
+           }
+       ],
+       "TestName": "IntegrationTest: slow echo"
+   }`)
 
-var jobDescriptorCrash = jobDescriptorPre + `
-          "TestFetcherFetchParameters": {
-              "Steps": [
-                  {
-                      "name": "crash",
-                      "parameters": {}
-                  }
-              ],
-              "TestName": "IntegrationTest"
-          },` + jobDescriptorPost
+var jobDescriptorFailure = descriptorMust(`
+   "TestFetcherFetchParameters": {
+       "Steps": [
+           {
+               "name": "fail",
+               "parameters": {}
+           }
+       ],
+       "TestName": "IntegrationTest: fail"
+   }`)
 
-var jobDescriptorHang = jobDescriptorPre + `
-          "TestFetcherFetchParameters": {
-              "Steps": [
-                  {
-                      "name": "noreturn",
-                      "parameters": {}
-                  }
-              ],
-              "TestName": "IntegrationTest"
-          },` + jobDescriptorPost
+var jobDescriptorCrash = descriptorMust(`
+   "TestFetcherFetchParameters": {
+       "Steps": [
+           {
+               "name": "crash",
+               "parameters": {}
+           }
+       ],
+       "TestName": "IntegrationTest: crash"
+   }`)
+
+var jobDescriptorHang = descriptorMust(`
+   "TestFetcherFetchParameters": {
+       "Steps": [
+           {
+               "name": "noreturn",
+               "parameters": {}
+           }
+       ],
+       "TestName": "IntegrationTest: noreturn"
+   }`)
