@@ -8,12 +8,10 @@ package main
 import (
 	"errors"
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/jobmanager"
 	"github.com/facebookincubator/contest/pkg/logging"
@@ -54,24 +52,14 @@ var testFetchers = map[string]test.TestFetcherFactory{
 	literal.Name: literal.New,
 }
 
-var testSteps = map[string]test.TestStepFactory{
-	echo.Name:           echo.New,
-	slowecho.Name:       slowecho.New,
-	example.Name:        example.New,
-	cmd.Name:            cmd.New,
-	sshcmd.Name:         sshcmd.New,
-	randecho.Name:       randecho.New,
-	terminalexpect.Name: terminalexpect.New,
-}
-
-var testStepsEvents = map[string][]event.Name{
-	echo.Name:           echo.Events,
-	slowecho.Name:       slowecho.Events,
-	example.Name:        example.Events,
-	cmd.Name:            cmd.Events,
-	sshcmd.Name:         sshcmd.Events,
-	randecho.Name:       randecho.Events,
-	terminalexpect.Name: terminalexpect.Events,
+var testSteps = []test.TestStepLoader{
+	echo.Load,
+	slowecho.Load,
+	example.Load,
+	cmd.Load,
+	sshcmd.Load,
+	randecho.Load,
+	terminalexpect.Load,
 }
 
 var reporters = map[string]job.ReporterFactory{
@@ -112,12 +100,8 @@ func main() {
 	}
 
 	// Register TestStep plugins
-	for name, tsfactory := range testSteps {
-		if _, ok := testStepsEvents[name]; !ok {
-			err := fmt.Errorf("TestStep %s not associated to any list of events", name)
-			log.Fatal(err)
-		}
-		if err := pluginRegistry.RegisterTestStep(name, tsfactory, testStepsEvents[name]); err != nil {
+	for _, tsloader := range testSteps {
+		if err := pluginRegistry.RegisterTestStep(tsloader()); err != nil {
 			log.Fatal(err)
 
 		}

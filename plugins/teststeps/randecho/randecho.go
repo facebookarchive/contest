@@ -35,6 +35,11 @@ func New() test.TestStep {
 	return &Step{}
 }
 
+// Load returns the name, factory and events which are needed to register the step.
+func Load() (string, test.TestStepFactory, []event.Name) {
+	return Name, New, Events
+}
+
 // ValidateParameters validates the parameters that will be passed to the Run
 // and Resume methods of the test step.
 func (e Step) ValidateParameters(params test.TestStepParameters) error {
