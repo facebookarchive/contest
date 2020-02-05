@@ -1,4 +1,0 @@
-version: "3.2"
-services:
-        contest:
-                command: /go/src/github.com/facebookincubator/contest/docker/contest/tests.sh
