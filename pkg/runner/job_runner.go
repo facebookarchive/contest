@@ -43,13 +43,19 @@ func (jr *JobRunner) GetTargets(jobID types.JobID) []*target.Target {
 
 // Run implements the main job running logic. It holds a registry of all running
 // jobs that can be referenced when when cancellation/pause/stop requests come in
-func (jr *JobRunner) Run(j *job.Job) (bool, interface{}, error) {
+//
+// It returns:
+//
+// * [][]job.Report: all the run reports, grouped by run, sorted from first to
+//                   last
+// * []job.Report:   all the final reports
+// * error:          an error, if any
+func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 	var (
-		err         error
-		success     bool
-		runReport   interface{}
-		run         uint
-		testResults []*test.TestResult
+		err                    error
+		runReport, finalReport *job.Report
+		run                    uint
+		testResults            []*test.TestResult
 	)
 
 	if j.Runs == 0 {
@@ -61,6 +67,10 @@ func (jr *JobRunner) Run(j *job.Job) (bool, interface{}, error) {
 	lockTimeout := 10 * time.Second
 	tl := inmemory.New(lockTimeout)
 	ev := storage.NewTestEventFetcher()
+	var (
+		allRunsReports [][]*job.Report
+		thisRunReports []*job.Report
+	)
 	for {
 		if j.Runs != 0 && run == j.Runs {
 			break
@@ -100,7 +110,7 @@ func (jr *JobRunner) Run(j *job.Job) (bool, interface{}, error) {
 				targets = <-targetsCh
 				if err != nil {
 					jobLog.Warningf("Run #%d: cannot fetch targets for test '%s': %v", run+1, t.Name, err)
-					return false, nil, err
+					return nil, nil, err
 				}
 				// Associate the targets with the job for later retrievel
 				jr.targetLock.Lock()
@@ -108,10 +118,10 @@ func (jr *JobRunner) Run(j *job.Job) (bool, interface{}, error) {
 				jr.targetLock.Unlock()
 
 			case <-time.After(config.TargetManagerTimeout):
-				return false, nil, fmt.Errorf("target manager acquire timed out after %s", config.TargetManagerTimeout)
+				return nil, nil, fmt.Errorf("target manager acquire timed out after %s", config.TargetManagerTimeout)
 			case <-j.CancelCh:
 				jobLog.Infof("cancellation requested for job ID %v", j.ID)
-				return false, nil, nil
+				return nil, nil, nil
 			}
 
 			// refresh the target locks periodically, by extending their
@@ -172,36 +182,45 @@ func (jr *JobRunner) Run(j *job.Job) (bool, interface{}, error) {
 				if err != nil {
 					errRelease := fmt.Sprintf("Failed to release targets: %v", err)
 					jobLog.Errorf(errRelease)
-					return false, nil, fmt.Errorf(errRelease)
+					return nil, nil, fmt.Errorf(errRelease)
 				}
 			case <-time.After(config.TargetManagerTimeout):
-				return false, nil, fmt.Errorf("target manager release timed out after %s", config.TargetManagerTimeout)
+				return nil, nil, fmt.Errorf("target manager release timed out after %s", config.TargetManagerTimeout)
 			case <-j.CancelCh:
 				jobLog.Infof("cancellation requested for job ID %v", j.ID)
-				return false, nil, nil
+				return nil, nil, nil
 			}
 			// return the Run error only after releasing the targets, and only
 			// if we are not running indefinitely.
 			// TODO do the next runs even if one fails. We are interested in the
 			// signal from all of them. Or not? Should this go behind a flag?
 			if runErr != nil {
-				return false, nil, runErr
+				return nil, nil, runErr
 			}
 			if len(testResults) == 0 {
 				jobLog.Warningf("Skipping reporting phase because test did not produce any result")
-				return false, nil, fmt.Errorf("Report skipped because test did not produce any result")
+				return nil, nil, fmt.Errorf("Report skipped because test did not produce any result")
 			}
-			success, runReport, err = j.ReporterBundle.Reporter.Report(j.CancelCh, j.ReporterBundle.Parameters, testResult, ev)
-			if err != nil {
-				jobLog.Warningf("Reporter failed while calculating test results: %v", err)
-			} else {
-				if success {
-					jobLog.Printf("Job considered successful")
+			thisRunReports = make([]*job.Report, 0)
+			for _, bundle := range j.RunReporterBundles {
+				runReport, err = bundle.Reporter.RunReport(j.CancelCh, bundle.Parameters, run+1, testResult, ev)
+				if err != nil {
+					jobLog.Warningf("Run reporter failed while calculating test results, proceeding anyway: %v", err)
 				} else {
-					jobLog.Errorf("Job considered failed")
+					if runReport.Success {
+						jobLog.Printf("Run #%d of job %d considered successful", run+1, j.ID)
+					} else {
+						jobLog.Errorf("Run #%d of job %d considered failed", run+1, j.ID)
+					}
 				}
+				// TODO run report must be sent to the storage layer as soon as it's
+				//      ready, not at the end of the runs. This requires a change in
+				//      how we store and expose reports, because this will require
+				//      one DB entry per run report rather than one for all of them.
+				thisRunReports = append(thisRunReports, runReport)
 			}
 		}
+		allRunsReports = append(allRunsReports, thisRunReports)
 		if j.IsCancelled() {
 			jobLog.Debugf("Cancellation requested, skipping run #%d", run+1)
 			break
@@ -213,15 +232,28 @@ func (jr *JobRunner) Run(j *job.Job) (bool, interface{}, error) {
 		}
 		run++
 	}
-	// We completed the test runs, we can now calculate the result of the job, unless
-	// the job has been cancelled, in which case we just return. JobManager will check
-	// if the cancellation signal has been asserted and will interpret the return values
-	// accordingly
+	// We completed the test runs, we can now calculate the final results of the
+	// job, if any. The final reporters are always called, even if the job is
+	// cancelled, so we can report with whatever we have collected so far.
 	if j.IsCancelled() {
-		return false, nil, nil
+		return nil, nil, nil
+	}
+	var finalReports []*job.Report
+	for _, bundle := range j.FinalReporterBundles {
+		finalReport, err = bundle.Reporter.FinalReport(j.CancelCh, bundle.Parameters, testResults, ev)
+		if err != nil {
+			jobLog.Warningf("Final reporter failed while calculating test results, proceeding anyway: %v", err)
+		} else {
+			if finalReport.Success {
+				jobLog.Printf("Job %d (%d runs out of %d desired) considered successful", j.ID, run, j.Runs)
+			} else {
+				jobLog.Errorf("Job %d (%d runs out of %d desired) considered failed", j.ID, run, j.Runs)
+			}
+		}
+		finalReports = append(finalReports, finalReport)
 	}
 
-	return success, runReport, nil
+	return allRunsReports, finalReports, nil
 }
 
 // NewJobRunner returns a new JobRunner, which holds an empty registry of jobs

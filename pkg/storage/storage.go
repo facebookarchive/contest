@@ -32,8 +32,8 @@ type Storage interface {
 	GetJobRequest(jobID types.JobID) (*job.Request, error)
 
 	// Job report interface
-	StoreJobReport(report *job.Report) error
-	GetJobReport(jobID types.JobID) (*job.Report, error)
+	StoreJobReport(report *job.JobReport) error
+	GetJobReport(jobID types.JobID) (*job.JobReport, error)
 
 	// Reset clears the state of the storage layer
 	Reset() error

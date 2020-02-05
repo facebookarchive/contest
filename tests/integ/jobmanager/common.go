@@ -268,13 +268,14 @@ func (suite *TestJobManagerSuite) TestJobManagerJobStartSingle() {
 	// A Report must be persisted for the Job
 	jobReport, err := suite.jobReportManager.Fetch(types.JobID(1))
 	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), true, jobReport.Success)
+	require.Equal(suite.T(), 1, len(jobReport.RunReports))
+	require.Equal(suite.T(), 0, len(jobReport.FinalReports))
 
 	// Any other Job should not have a Job report, but fetching the
 	// report should not error out
 	jobReport, err = suite.jobReportManager.Fetch(types.JobID(2))
 	require.NoError(suite.T(), err)
-	require.Nil(suite.T(), jobReport)
+	require.Equal(suite.T(), &job.JobReport{JobID: 2}, jobReport)
 
 }
 
@@ -333,7 +334,8 @@ func (suite *TestJobManagerSuite) TestJobManagerJobNotSuccessful() {
 
 	jobReport, err := suite.jobReportManager.Fetch(types.JobID(1))
 	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), false, jobReport.Success)
+	require.Equal(suite.T(), 1, len(jobReport.RunReports))
+	require.Equal(suite.T(), 0, len(jobReport.FinalReports))
 }
 
 func (suite *TestJobManagerSuite) TestJobManagerJobFailure() {
@@ -355,7 +357,8 @@ func (suite *TestJobManagerSuite) TestJobManagerJobFailure() {
 
 	jobReport, err := suite.jobReportManager.Fetch(types.JobID(1))
 	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), false, jobReport.Success)
+	require.Equal(suite.T(), 1, len(jobReport.RunReports))
+	require.Equal(suite.T(), 0, len(jobReport.FinalReports))
 }
 
 func (suite *TestJobManagerSuite) TestJobManagerJobCrash() {
@@ -379,8 +382,8 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCrash() {
 
 	jobReport, err := suite.jobReportManager.Fetch(types.JobID(1))
 	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), false, jobReport.Success)
-	require.Equal(suite.T(), nil, jobReport.JobReport)
+	// no reports are expected if the job crashes
+	require.Equal(suite.T(), &job.JobReport{JobID: jobID}, jobReport)
 }
 
 func (suite *TestJobManagerSuite) TestJobManagerJobCancellationFailure() {

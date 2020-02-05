@@ -162,7 +162,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 	msg := ev.Msg.(api.EventStatusMsg)
 	jobID := msg.JobID
 
-	report, err := jm.jobReportManager.Fetch(jobID)
+	jobReport, err := jm.jobReportManager.Fetch(jobID)
 	if err != nil {
 		return &api.EventResponse{
 			JobID:     jobID,
@@ -204,9 +204,6 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 		startTime  time.Time
 		reportTime time.Time
 	)
-	if report != nil {
-		reportTime = report.ReportTime
-	}
 	for _, ev := range jobEvents {
 		if ev.EventName == EventJobStarted {
 			startTime = ev.EmitTime
@@ -216,7 +213,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 		Name:       currentJob.Name,
 		StartTime:  startTime,
 		EndTime:    reportTime,
-		Report:     report,
+		JobReport:  jobReport,
 		TestStatus: make([]job.TestStatus, 0, len(currentJob.Tests)),
 	}
 

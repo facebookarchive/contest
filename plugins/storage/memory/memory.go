@@ -27,7 +27,7 @@ type Memory struct {
 	frameworkEvents []frameworkevent.Event
 	jobIDCounter    types.JobID
 	jobRequests     map[types.JobID]*job.Request
-	jobReports      map[types.JobID]*job.Report
+	jobReports      map[types.JobID]*job.JobReport
 }
 
 func emptyEventQuery(eventQuery *event.Query) bool {
@@ -56,7 +56,7 @@ func (m *Memory) Reset() error {
 	m.testEvents = []testevent.Event{}
 	m.frameworkEvents = []frameworkevent.Event{}
 	m.jobRequests = make(map[types.JobID]*job.Request)
-	m.jobReports = make(map[types.JobID]*job.Report)
+	m.jobReports = make(map[types.JobID]*job.JobReport)
 	m.jobIDCounter = 1
 	return nil
 }
@@ -161,7 +161,7 @@ func (m *Memory) GetJobRequest(jobID types.JobID) (*job.Request, error) {
 
 // StoreJobReport stores a report associated to a job. Returns an error if there is
 // already a report associated to the job
-func (m *Memory) StoreJobReport(report *job.Report) error {
+func (m *Memory) StoreJobReport(report *job.JobReport) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	_, ok := m.jobReports[report.JobID]
@@ -173,12 +173,12 @@ func (m *Memory) StoreJobReport(report *job.Report) error {
 }
 
 // GetJobReport returns the report associated to a given job
-func (m *Memory) GetJobReport(jobID types.JobID) (*job.Report, error) {
+func (m *Memory) GetJobReport(jobID types.JobID) (*job.JobReport, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	if _, ok := m.jobReports[jobID]; !ok {
-		// nil Report is a valid return value
-		return nil, nil
+		// return a job report with no results
+		return &job.JobReport{JobID: jobID}, nil
 	}
 	return m.jobReports[jobID], nil
 }
@@ -215,7 +215,7 @@ func (m *Memory) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]framewor
 func New() storage.Storage {
 	m := Memory{lock: &sync.Mutex{}}
 	m.jobRequests = make(map[types.JobID]*job.Request)
-	m.jobReports = make(map[types.JobID]*job.Report)
+	m.jobReports = make(map[types.JobID]*job.JobReport)
 	m.jobIDCounter = 1
 	return &m
 }

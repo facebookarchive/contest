@@ -25,20 +25,30 @@ CREATE TABLE framework_events (
 	PRIMARY KEY (event_id)
 );
 
-CREATE TABLE reports (
-        report_id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        job_id BIGINT(20) NOT NULL,
-        success TINYINT(1) NULL,
-        report_time TIMESTAMP NOT NULL,
-        job_report TEXT NOT NULL,
-        PRIMARY KEY (report_id)
+CREATE TABLE run_reports (
+	report_id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+	job_id BIGINT(20) NOT NULL,
+	run_number BIGINT(20) NOT NULL,
+	success TINYINT(1) NULL,
+	report_time TIMESTAMP NOT NULL,
+	data TEXT NOT NULL,
+	PRIMARY KEY (report_id)
+);
+
+CREATE TABLE final_reports (
+	report_id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+	job_id BIGINT(20) NOT NULL,
+	success TINYINT(1) NULL,
+	report_time TIMESTAMP NOT NULL,
+	data TEXT NOT NULL,
+	PRIMARY KEY (report_id)
 );
 
 CREATE TABLE jobs (
-        job_id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        name VARCHAR(32) NOT NULL,
-        requestor VARCHAR(32) NOT NULL,
-        request_time TIMESTAMP NOT NULL,
-        descriptor TEXT NOT NULL,
-        PRIMARY KEY (job_id)
+	job_id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+	name VARCHAR(32) NOT NULL,
+	requestor VARCHAR(32) NOT NULL,
+	request_time TIMESTAMP NOT NULL,
+	descriptor TEXT NOT NULL,
+	PRIMARY KEY (job_id)
 );

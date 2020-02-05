@@ -54,9 +54,11 @@ type Job struct {
 	// unlimited, are specified.
 	RunInterval time.Duration
 	Tests       []*test.Test
-	// ReporterBundle wraps the reporter instance chosen for the Job and its associated
-	// parameters, which have already gone through validation
-	ReporterBundle *ReporterBundle
+	// RunReporterBundles and FinalReporterBundles wrap the reporter instances
+	// chosen for the Job and its associated parameters, which have already
+	// gone through validation
+	RunReporterBundles   []*ReporterBundle
+	FinalReporterBundles []*ReporterBundle
 }
 
 // Cancel closes the cancel channel to signal cancellation

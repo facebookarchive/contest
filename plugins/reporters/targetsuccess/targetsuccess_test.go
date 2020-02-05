@@ -38,29 +38,29 @@ func (suite *TargetSuccessSuite) SetupTest() {
 	suite.sampleTestResult.SetTarget(&target.Target{Name: "Target010", ID: "0001", FQDN: "Target010.facebook.com"}, nil)
 }
 
-func (suite *TargetSuccessSuite) TestTargetSuccessValidatesParametersInvalidExpression() {
+func (suite *TargetSuccessSuite) TestTargetSuccessValidateRunParametersInvalidExpression() {
 	expr := "#$1"
-	tsp := TargetSuccessParameters{SuccessExpression: expr}
+	tsp := RunParameters{SuccessExpression: expr}
 	b, err := json.Marshal(tsp)
 	if err != nil {
 		suite.T().Errorf("could not marshal TargetSuccessParameters: %v", err)
 	}
 	tsr := TargetSuccessReporter{}
-	_, err = tsr.ValidateParameters(b)
+	_, err = tsr.ValidateRunParameters(b)
 	if err == nil {
 		suite.T().Errorf("expression %s should be rejected as invalid, but it wasn't", expr)
 	}
 }
 
-func (suite *TargetSuccessSuite) TestTargetSuccessValidatesParametersValidExpression() {
+func (suite *TargetSuccessSuite) TestTargetSuccessValidateRunParametersValidExpression() {
 	expr := ">1"
-	tsp := TargetSuccessParameters{SuccessExpression: expr}
+	tsp := RunParameters{SuccessExpression: expr}
 	b, err := json.Marshal(tsp)
 	if err != nil {
 		suite.T().Errorf("could not marshal TargetSuccessParameters: %v", err)
 	}
 	tsr := TargetSuccessReporter{}
-	_, err = tsr.ValidateParameters(b)
+	_, err = tsr.ValidateRunParameters(b)
 	if err != nil {
 		suite.T().Errorf("expression %s should not be rejected: %v", expr, err)
 	}
@@ -69,15 +69,16 @@ func (suite *TargetSuccessSuite) TestTargetSuccessValidatesParametersValidExpres
 func (suite *TargetSuccessSuite) TestTargetSuccessSuccessfulJob() {
 	cancel := make(chan struct{})
 	expr := ">40%"
-	tsp := TargetSuccessParameters{SuccessExpression: expr}
+	tsp := RunParameters{SuccessExpression: expr}
 	tsr := TargetSuccessReporter{}
 
 	ev := storage.NewTestEventFetcher()
-	success, _, err := tsr.Report(cancel, tsp, &suite.sampleTestResult, ev)
+	runNum := uint(1)
+	report, err := tsr.RunReport(cancel, tsp, runNum, &suite.sampleTestResult, ev)
 	if err != nil {
 		suite.T().Errorf("reporting should not fail: %v", err)
 	}
-	if success != true {
+	if report.Success != true {
 		suite.T().Errorf("report should say that the job is successful")
 	}
 }
@@ -85,15 +86,16 @@ func (suite *TargetSuccessSuite) TestTargetSuccessSuccessfulJob() {
 func (suite *TargetSuccessSuite) TestTargetSuccessFailedJob(t *testing.T) {
 	cancel := make(chan struct{})
 	expr := ">80%"
-	tsp := TargetSuccessParameters{SuccessExpression: expr}
+	tsp := RunParameters{SuccessExpression: expr}
 	tsr := TargetSuccessReporter{}
 
 	ev := storage.NewTestEventFetcher()
-	success, _, err := tsr.Report(cancel, tsp, &suite.sampleTestResult, ev)
+	runNum := uint(1)
+	report, err := tsr.RunReport(cancel, tsp, runNum, &suite.sampleTestResult, ev)
 	if err != nil {
 		suite.T().Errorf("reporting should not fail: %v", err)
 	}
-	if success != false {
+	if report.Success != false {
 		suite.T().Errorf("report should say that the job is failed")
 	}
 }
