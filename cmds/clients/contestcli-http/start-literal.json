@@ -31,8 +31,14 @@
             }
         }
     ],
-    "ReporterName": "TargetSuccess",
-    "ReporterParameters": {
-        "SuccessExpression": ">50%"
-   }
+    "Reporting": {
+        "RunReporters": [
+            {
+                "Name": "TargetSuccess",
+                "Parameters": {
+                    "SuccessExpression": ">80%"
+                }
+            }
+        ]
+    }
 }

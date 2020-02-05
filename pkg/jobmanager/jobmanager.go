@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -76,13 +77,25 @@ func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, 
 	if jd.RunInterval < 0 {
 		return nil, errors.New("run interval must be non-negative")
 	}
-	if jd.ReporterName == "" {
-		return nil, errors.New("one reporter must be specified per job")
+	// TODO(insomniacslk) enable multiple reporters after the reporter
+	// refactoring
+	if len(jd.Reporting.RunReporters) != 1 {
+		return nil, errors.New("exactly one reporter must be specified in a job")
+	}
+	for _, reporter := range jd.Reporting.RunReporters {
+		if strings.TrimSpace(reporter.Name) == "" {
+			return nil, errors.New("reporters cannot have empty or all-whitespace names")
+		}
 	}
 
-	reporterBundle, err := pr.NewReporterBundle(jd.ReporterName, jd.ReporterParameters)
+	reporterBundle, err := pr.NewReporterBundle(jd.Reporting.RunReporters[0].Name, jd.Reporting.RunReporters[0].Parameters)
 	if err != nil {
 		return nil, err
+	}
+	// TODO(insomniacslk) parse jd.Reporting.FinalReporters and add to the
+	// bundle
+	if len(jd.Reporting.FinalReporters) > 0 {
+		return nil, errors.New("final reporters not supported yet")
 	}
 
 	tests := make([]*test.Test, 0, len(jd.TestDescriptors))

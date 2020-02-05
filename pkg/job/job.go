@@ -6,7 +6,6 @@
 package job
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/test"
@@ -23,11 +22,7 @@ type JobDescriptor struct {
 	Runs            uint
 	RunInterval     xjson.Duration
 	TestDescriptors []*test.TestDescriptor
-
-	// Reporter-related parameters. There is one single Reporter per Job which
-	// elaborates the results of all Tests within the Job
-	ReporterName       string
-	ReporterParameters json.RawMessage
+	Reporting       Reporting
 }
 
 // Job is used to run a type of test job on a given set of targets.
