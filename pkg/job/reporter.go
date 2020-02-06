@@ -17,7 +17,7 @@ type ReporterFactory func() Reporter
 // of a Job. The result is conveyed via a JobReport object.
 type Reporter interface {
 	ValidateParameters([]byte) (interface{}, error)
-	Report(cancel <-chan struct{}, parameters interface{}, results []*test.TestResult, ev testevent.Fetcher) (bool, interface{}, error)
+	Report(cancel <-chan struct{}, parameters interface{}, result *test.TestResult, ev testevent.Fetcher) (bool, interface{}, error)
 }
 
 // ReporterBundle bundles the selected Reporter together with its parameters

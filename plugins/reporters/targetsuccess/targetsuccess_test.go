@@ -73,7 +73,7 @@ func (suite *TargetSuccessSuite) TestTargetSuccessSuccessfulJob() {
 	tsr := TargetSuccessReporter{}
 
 	ev := storage.NewTestEventFetcher()
-	success, _, err := tsr.Report(cancel, tsp, []*test.TestResult{&suite.sampleTestResult}, ev)
+	success, _, err := tsr.Report(cancel, tsp, &suite.sampleTestResult, ev)
 	if err != nil {
 		suite.T().Errorf("reporting should not fail: %v", err)
 	}
@@ -89,7 +89,7 @@ func (suite *TargetSuccessSuite) TestTargetSuccessFailedJob(t *testing.T) {
 	tsr := TargetSuccessReporter{}
 
 	ev := storage.NewTestEventFetcher()
-	success, _, err := tsr.Report(cancel, tsp, []*test.TestResult{&suite.sampleTestResult}, ev)
+	success, _, err := tsr.Report(cancel, tsp, &suite.sampleTestResult, ev)
 	if err != nil {
 		suite.T().Errorf("reporting should not fail: %v", err)
 	}
