@@ -50,24 +50,20 @@ func (ts *TargetSuccessReporter) ValidateParameters(params []byte) (interface{},
 }
 
 // Report calculates the Report object to be associated with the job
-func (ts *TargetSuccessReporter) Report(cancel <-chan struct{}, parameters interface{}, results []*test.TestResult, ev testevent.Fetcher) (bool, interface{}, error) {
+func (ts *TargetSuccessReporter) Report(cancel <-chan struct{}, parameters interface{}, result *test.TestResult, ev testevent.Fetcher) (bool, interface{}, error) {
 	reportParameters, ok := parameters.(TargetSuccessParameters)
 	if !ok {
 		return false, nil, fmt.Errorf("report parameteres should be of type TargetSuccessParameters")
 	}
 
-	if results == nil {
-		return false, nil, fmt.Errorf("test results is empty, cannot calculate results")
-	}
-
-	if len(results) > 1 {
-		return false, nil, fmt.Errorf("TargetSuccess reporter supports only one TestResult")
+	if result == nil {
+		return false, nil, fmt.Errorf("test result is empty, cannot calculate success metrics")
 	}
 
 	var ignoreList []*target.Target
 
 	// Evaluate the success threshold for every test for which we got a TestResult
-	res, err := results[0].GetResult(reportParameters.SuccessExpression, ignoreList)
+	res, err := result.GetResult(reportParameters.SuccessExpression, ignoreList)
 	if err != nil {
 		return false, nil, fmt.Errorf("could not evaluate the success on at least one test: %v", err)
 	}

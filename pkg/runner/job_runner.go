@@ -45,6 +45,9 @@ func (jr *JobRunner) GetTargets(jobID types.JobID) []*target.Target {
 // jobs that can be referenced when when cancellation/pause/stop requests come in
 func (jr *JobRunner) Run(j *job.Job) (bool, interface{}, error) {
 	var (
+		err         error
+		success     bool
+		runReport   interface{}
 		run         uint
 		testResults []*test.TestResult
 	)
@@ -57,6 +60,7 @@ func (jr *JobRunner) Run(j *job.Job) (bool, interface{}, error) {
 	// TODO make this configurable
 	lockTimeout := 10 * time.Second
 	tl := inmemory.New(lockTimeout)
+	ev := storage.NewTestEventFetcher()
 	for {
 		if j.Runs != 0 && run == j.Runs {
 			break
@@ -183,6 +187,20 @@ func (jr *JobRunner) Run(j *job.Job) (bool, interface{}, error) {
 			if runErr != nil {
 				return false, nil, runErr
 			}
+			if len(testResults) == 0 {
+				jobLog.Warningf("Skipping reporting phase because test did not produce any result")
+				return false, nil, fmt.Errorf("Report skipped because test did not produce any result")
+			}
+			success, runReport, err = j.ReporterBundle.Reporter.Report(j.CancelCh, j.ReporterBundle.Parameters, testResult, ev)
+			if err != nil {
+				jobLog.Warningf("Reporter failed while calculating test results: %v", err)
+			} else {
+				if success {
+					jobLog.Printf("Job considered successful")
+				} else {
+					jobLog.Errorf("Job considered failed")
+				}
+			}
 		}
 		if j.IsCancelled() {
 			jobLog.Debugf("Cancellation requested, skipping run #%d", run+1)
@@ -203,22 +221,7 @@ func (jr *JobRunner) Run(j *job.Job) (bool, interface{}, error) {
 		return false, nil, nil
 	}
 
-	if len(testResults) == 0 {
-		jobLog.Warningf("Skipping reporting phase because test did not produce any result")
-		return false, nil, fmt.Errorf("Report skipped because test did not produce any result")
-	}
-	ev := storage.NewTestEventFetcher()
-	success, report, err := j.ReporterBundle.Reporter.Report(j.CancelCh, j.ReporterBundle.Parameters, testResults, ev)
-	if err != nil {
-		jobLog.Warningf("Reporter failed while calculating test results: %v", err)
-	} else {
-		if success {
-			jobLog.Printf("Job considered successful")
-		} else {
-			jobLog.Errorf("Job considered failed")
-		}
-	}
-	return success, report, nil
+	return success, runReport, nil
 }
 
 // NewJobRunner returns a new JobRunner, which holds an empty registry of jobs

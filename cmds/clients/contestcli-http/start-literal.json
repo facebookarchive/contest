@@ -1,6 +1,6 @@
 {
     "JobName": "test job",
-    "Runs": 1,
+    "Runs": 3,
     "RunInterval": "5s",
     "Tags": ["test", "csv"],
     "TestDescriptors": [
