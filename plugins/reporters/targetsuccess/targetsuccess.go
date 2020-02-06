@@ -87,3 +87,8 @@ func (ts *TargetSuccessReporter) Report(cancel <-chan struct{}, parameters inter
 func New() job.Reporter {
 	return &TargetSuccessReporter{}
 }
+
+// Load returns the name and factory which are needed to register the Reporter
+func Load() (string, job.ReporterFactory) {
+	return Name, New
+}
