@@ -247,7 +247,7 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 	select {
 	case err = <-errCh:
 		// The TestRunner should never return and should instead time out
-		assert.FailNow(t, "TestRunner should not return")
+		assert.FailNow(t, "TestRunner should not return, received an error instead: %v", err)
 	case <-time.After(testTimeout):
 		// Assert cancellation signal and expect the TestRunner to return within
 		// testShutdownTimeout

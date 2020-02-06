@@ -26,7 +26,7 @@ type JobRequestEmitterFetcher struct {
 	JobRequestFetcher
 }
 
-// Create persists a new job request into storage
+// Emit persists a new job request into storage
 func (rc JobRequestEmitter) Emit(request *job.Request) (types.JobID, error) {
 	var jobID types.JobID
 	jobID, err := storage.StoreJobRequest(request)

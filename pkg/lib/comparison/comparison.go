@@ -5,7 +5,7 @@
 
 package comparison
 
-// Package comparison implements support for parsing comparision expressions of the following type:
+// Package comparison implements support for parsing comparison expressions of the following type:
 // * Greater than, ">"
 // * Greater or equal, ">="
 // * Less than, "<"
@@ -134,15 +134,15 @@ func (c Eq) Operator() Operator {
 type Result struct {
 	Pass bool
 	Expr string
-	Lhs  string
-	Rhs  string
+	LHS  string
+	RHS  string
 	Type Type
 	Op   Operator
 }
 
 // Expression is a struct that represents the deserialization of a string expression.
 // The deserialization includes the following:
-// * The comparision type (absolute, relative)
+// * The comparison type (absolute, relative)
 // * The comparison function and operator
 // * The right hand side operator
 type Expression struct {
@@ -152,7 +152,7 @@ type Expression struct {
 	RHS  float64
 }
 
-// Compare invokes the Compare function of the internal Comparator object
+// EvaluateSuccess invokes the Compare function of the internal Comparator object
 func (e Expression) EvaluateSuccess(success, total uint64) (*Result, error) {
 	var lhs float64
 	if e.Type == TypePercentage {
@@ -168,11 +168,11 @@ func (e Expression) EvaluateSuccess(success, total uint64) (*Result, error) {
 	pass := e.Cmp.Compare(lhs, e.RHS)
 	cmpRes := &Result{Type: e.Type, Op: e.Cmp.Operator()}
 	if e.Type == TypePercentage {
-		cmpRes.Lhs = fmt.Sprintf("%.2f%%", lhs)
-		cmpRes.Rhs = fmt.Sprintf("%.2f%%", e.RHS)
+		cmpRes.LHS = fmt.Sprintf("%.2f%%", lhs)
+		cmpRes.RHS = fmt.Sprintf("%.2f%%", e.RHS)
 	} else {
-		cmpRes.Lhs = fmt.Sprintf("%.2f", lhs)
-		cmpRes.Rhs = fmt.Sprintf("%.2f", e.RHS)
+		cmpRes.LHS = fmt.Sprintf("%.2f", lhs)
+		cmpRes.RHS = fmt.Sprintf("%.2f", e.RHS)
 	}
 	var expr string
 	if pass {

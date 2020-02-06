@@ -93,7 +93,7 @@ func (suite *TestEventsSuite) TestRetrieveSingleTestEvent() {
 
 	testEventQuery := &testevent.Query{}
 	testevent.QueryTestName("ATestName")(testEventQuery)
-	results, err := suite.storage.GetTestEvent(testEventQuery)
+	results, err := suite.storage.GetTestEvents(testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 1, len(results))
@@ -109,7 +109,7 @@ func (suite *TestEventsSuite) TestRetrieveMultipleTestEvents() {
 
 	testEventQuery := &testevent.Query{}
 	testevent.QueryTestStepLabel("TestStepLabel")(testEventQuery)
-	results, err := suite.storage.GetTestEvent(testEventQuery)
+	results, err := suite.storage.GetTestEvents(testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 2, len(results))
@@ -129,7 +129,7 @@ func (suite *TestEventsSuite) TestRetrievesSingleTestEventByEmitTime() {
 
 	testEventQuery := &testevent.Query{}
 	testevent.QueryEmittedStartTime(emitTime)(testEventQuery)
-	results, err := suite.storage.GetTestEvent(testEventQuery)
+	results, err := suite.storage.GetTestEvents(testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 2, len(results))
@@ -137,7 +137,7 @@ func (suite *TestEventsSuite) TestRetrievesSingleTestEventByEmitTime() {
 
 	testEventQuery = &testevent.Query{}
 	testevent.QueryEmittedStartTime(emitTime.Add(-delta))(testEventQuery)
-	results, err = suite.storage.GetTestEvent(testEventQuery)
+	results, err = suite.storage.GetTestEvents(testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 4, len(results))
@@ -155,7 +155,7 @@ func (suite *TestEventsSuite) TestRetrievesMultipleTestEventsByName() {
 	testEventQuery := &testevent.Query{}
 	eventNames := []event.Name{event.Name("AEventName"), event.Name("BEventName")}
 	testevent.QueryEventNames(eventNames)(testEventQuery)
-	results, err := suite.storage.GetTestEvent(testEventQuery)
+	results, err := suite.storage.GetTestEvents(testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 2, len(results))
@@ -170,7 +170,7 @@ func (suite *TestEventsSuite) TestRetrieveSingleTestEventsByName() {
 
 	testEventQuery := &testevent.Query{}
 	testevent.QueryEventName(event.Name("AEventName"))(testEventQuery)
-	results, err := suite.storage.GetTestEvent(testEventQuery)
+	results, err := suite.storage.GetTestEvents(testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 1, len(results))
@@ -186,7 +186,7 @@ func (suite *TestEventsSuite) TestRetrieveSingleTestEventsByNameAndJobID() {
 	testEventQuery := &testevent.Query{}
 	testevent.QueryEventName(event.Name("AEventName"))(testEventQuery)
 	testevent.QueryJobID(1)(testEventQuery)
-	results, err := suite.storage.GetTestEvent(testEventQuery)
+	results, err := suite.storage.GetTestEvents(testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 1, len(results))

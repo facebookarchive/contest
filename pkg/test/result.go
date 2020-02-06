@@ -2,6 +2,7 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
+
 package test
 
 import (
@@ -16,8 +17,8 @@ import (
 type Result struct {
 	Pass bool
 	Expr string
-	Lhs  string
-	Rhs  string
+	LHS  string
+	RHS  string
 	Type comparison.Type
 	Op   comparison.Operator
 }
@@ -39,7 +40,7 @@ func (r *TestResult) Targets() map[*target.Target]error {
 	return r.results
 }
 
-// EvaluateSuccessRate evaluates the success of a TestResult object based on a string
+// GetResult evaluates the success of a TestResult object based on a string
 // comparison expression
 func (r TestResult) GetResult(expression string, ignore []*target.Target) (*comparison.Result, error) {
 

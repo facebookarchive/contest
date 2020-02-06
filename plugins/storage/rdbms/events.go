@@ -219,8 +219,8 @@ func (r *RDBMS) FlushTestEvents() error {
 	return nil
 }
 
-// GetTestEvent retrieves test events matching the query fields provided
-func (r *RDBMS) GetTestEvent(eventQuery *testevent.Query) ([]testevent.Event, error) {
+// GetTestEvents retrieves test events matching the query fields provided
+func (r *RDBMS) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, error) {
 
 	if err := r.init(); err != nil {
 		return nil, fmt.Errorf("could not initialize database: %v", err)
@@ -301,7 +301,7 @@ func (r *RDBMS) GetTestEvent(eventQuery *testevent.Query) ([]testevent.Event, er
 // FrameworkEventField is a function type which retrieves information from a FrameworkEvent object
 type FrameworkEventField func(ev frameworkevent.Event) interface{}
 
-// TestEventJobID returns the JobID from a events.TestEvent object
+// FrameworkEventJobID returns the JobID from a events.TestEvent object
 func FrameworkEventJobID(ev frameworkevent.Event) interface{} {
 	return ev.JobID
 }

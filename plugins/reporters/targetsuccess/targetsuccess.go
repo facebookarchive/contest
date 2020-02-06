@@ -31,6 +31,7 @@ type TargetSuccessParameters struct {
 type TargetSuccessReporter struct {
 }
 
+// TargetSuccessReport wraps a report with target success information.
 type TargetSuccessReport struct {
 	Message         string
 	AchievedSuccess string
@@ -53,7 +54,7 @@ func (ts *TargetSuccessReporter) ValidateParameters(params []byte) (interface{},
 func (ts *TargetSuccessReporter) Report(cancel <-chan struct{}, parameters interface{}, result *test.TestResult, ev testevent.Fetcher) (bool, interface{}, error) {
 	reportParameters, ok := parameters.(TargetSuccessParameters)
 	if !ok {
-		return false, nil, fmt.Errorf("report parameteres should be of type TargetSuccessParameters")
+		return false, nil, fmt.Errorf("report parameters should be of type TargetSuccessParameters")
 	}
 
 	if result == nil {
@@ -68,14 +69,14 @@ func (ts *TargetSuccessReporter) Report(cancel <-chan struct{}, parameters inter
 		return false, nil, fmt.Errorf("could not evaluate the success on at least one test: %v", err)
 	}
 	report := TargetSuccessReport{}
-	report.DesiredSuccess = fmt.Sprintf("%s%s", res.Op, res.Rhs)
+	report.DesiredSuccess = fmt.Sprintf("%s%s", res.Op, res.RHS)
 	if !res.Pass {
 		report.Message = fmt.Sprintf("Test does not pass success criteria: %s", res.Expr)
-		report.AchievedSuccess = res.Lhs
+		report.AchievedSuccess = res.LHS
 		return false, report, nil
 	}
 	report.Message = fmt.Sprintf("All tests pass success criteria: %s", res.Expr)
-	report.AchievedSuccess = res.Lhs
+	report.AchievedSuccess = res.LHS
 	return true, report, nil
 }
 

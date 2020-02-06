@@ -24,10 +24,10 @@ var TestRunnerMsgTimeout = 5 * time.Second
 // wait for all the TestStep to complete after a cancellation signal has been
 // delivered
 
-// TODO This timeout controls a block of the TestRunner which works as a watchdog,
-// i.e. if there are multiple steps that need to return, the timeout is reset
-// every time a step returns. The timeout should be handled so that it doesn't
-// reset when a TestStep returns.
+// TestRunnerShutdownTimeout controls a block of the TestRunner which works as a
+// watchdog, i.e. if there are multiple steps that need to return, the timeout is
+// reset every time a step returns. The timeout should be handled so that it
+// doesn't reset when a TestStep returns.
 var TestRunnerShutdownTimeout = 30 * time.Second
 
 // TestRunnerStepShutdownTimeout represents the maximum time that the TestRunner
@@ -35,8 +35,8 @@ var TestRunnerShutdownTimeout = 30 * time.Second
 // of the pipeline. This timeout is only relevant if a cancellation signal is *not*
 // delivered.
 
-// TODO This timeout controls a block of the TestRunner which worksas a watchdog,
-// i.e. if there are multiple steps that need to return, the timeout is reset
-// every time a step returns. The timeout should be handled so that it doesn't
-// reset when a TestStep returns.
+// TestRunnerStepShutdownTimeout controls a block of the TestRunner which worksas
+// a watchdog, i.e. if there are multiple steps that need to return, the timeout
+// is reset every time a step returns. The timeout should be handled so that it
+// doesn't reset when a TestStep returns.
 var TestRunnerStepShutdownTimeout = 5 * time.Second

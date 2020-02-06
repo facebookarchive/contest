@@ -49,6 +49,7 @@ func emptyTestEventQuery(eventQuery *testevent.Query) bool {
 	return emptyEventQuery(&eventQuery.Query) && eventQuery.TestName == "" && eventQuery.TestStepLabel == ""
 }
 
+// Reset resets the content of the in-memory storage.
 func (m *Memory) Reset() error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
@@ -113,7 +114,8 @@ func eventTestStepMatch(queryTestStepLabel, testStepLabel string) bool {
 	return true
 }
 
-func (m *Memory) GetTestEvent(eventQuery *testevent.Query) ([]testevent.Event, error) {
+// GetTestEvents returns all test events that match the given query.
+func (m *Memory) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 

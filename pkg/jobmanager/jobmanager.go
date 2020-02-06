@@ -298,7 +298,7 @@ func (jm *JobManager) CancelJob(jobID types.JobID) error {
 	return nil
 }
 
-// Cancel sends a cancellation request to the API listener and to every running
+// CancelAll sends a cancellation request to the API listener and to every running
 // job.
 func (jm *JobManager) CancelAll() {
 	// TODO This doesn't see the right thing to do, if the listener fails we should

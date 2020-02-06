@@ -347,7 +347,7 @@ func (tr *TestRunner) RunTestStep(cancel, pause <-chan struct{}, bundle test.Tes
 	}()
 
 	// Run the TestStep and defer to the return path the handling of panic
-	// conditions. If multiple error conditions occurr, send downstream only
+	// conditions. If multiple error conditions occur, send downstream only
 	// the first error encountered.
 	channels := test.TestStepChannels{
 		In:  stepCh.stepIn,
@@ -494,7 +494,7 @@ wait_test_step:
 }
 
 // WaitPipelineTermination reads results coming from result channels waiting
-// for the pipeline to completely shutdown before `ShutdownTimeout` occurrs. A
+// for the pipeline to completely shutdown before `ShutdownTimeout` occurs. A
 // "complete shutdown" means that all TestSteps and routing blocks have sent
 // downstream their results.
 func (tr *TestRunner) WaitPipelineTermination(ch completionCh, bundles []test.TestStepBundle) error {

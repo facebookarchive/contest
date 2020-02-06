@@ -30,6 +30,7 @@ require (
 	github.com/stretchr/testify v1.4.0
 	github.com/tommy-muehle/go-mnd v1.2.0 // indirect
 	github.com/u-root/u-root v6.0.0+incompatible // indirect
+	github.com/x-cray/logrus-prefixed-formatter v0.5.2 // indirect
 	golang.org/x/crypto v0.0.0-20200128174031-69ecbb4d6d5d
 	golang.org/x/sys v0.0.0-20200202164722-d101bd2416d5 // indirect
 	golang.org/x/tools v0.0.0-20200204074204-1cc6d1ef6c74 // indirect

@@ -13,7 +13,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
-// FrameworkEvent represents an event emitted by the framework
+// Event represents an event emitted by the framework
 type Event struct {
 	JobID     types.JobID
 	EventName event.Name

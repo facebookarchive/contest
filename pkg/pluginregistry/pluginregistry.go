@@ -169,7 +169,7 @@ func (r *PluginRegistry) NewTestStep(pluginName string) (test.TestStep, error) {
 	return testStep, nil
 }
 
-// NewTestStepsEvents returns a map of events.EventName which can be emitted by the TestStep
+// NewTestStepEvents returns a map of events.EventName which can be emitted by the TestStep
 func (r *PluginRegistry) NewTestStepEvents(pluginName string) (map[event.Name]bool, error) {
 	pluginName = strings.ToLower(pluginName)
 	var (
