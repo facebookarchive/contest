@@ -6,9 +6,10 @@
 package logging
 
 import (
+	"io/ioutil"
+
 	log_prefixed "github.com/chappjc/logrus-prefix"
 	"github.com/sirupsen/logrus"
-	"io/ioutil"
 )
 
 var (
@@ -20,6 +21,7 @@ func GetLogger(prefix string) *logrus.Entry {
 	return log.WithField("prefix", prefix)
 }
 
+// Disable sends all logging output to the bit bucket.
 func Disable() {
 	log.SetOutput(ioutil.Discard)
 }

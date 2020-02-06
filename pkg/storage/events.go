@@ -43,7 +43,7 @@ func (ev TestEventFetcher) Fetch(fields []testevent.QueryField) ([]testevent.Eve
 	for _, field := range fields {
 		field(&eventQuery)
 	}
-	return storage.GetTestEvent(&eventQuery)
+	return storage.GetTestEvents(&eventQuery)
 }
 
 // NewTestEventEmitter creates a new Emitter object associated with a Header
@@ -68,7 +68,7 @@ func NewTestEventEmitterFetcher(header testevent.Header) testevent.EmitterFetche
 type FrameworkEventEmitter struct {
 }
 
-// FrameworkEventsFetcher implements the Fetcher interface from the frameworkevent package
+// FrameworkEventFetcher implements the Fetcher interface from the frameworkevent package
 type FrameworkEventFetcher struct {
 }
 

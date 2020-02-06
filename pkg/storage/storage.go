@@ -21,7 +21,7 @@ var storage Storage
 type Storage interface {
 	// Test events storage interface
 	StoreTestEvent(event testevent.Event) error
-	GetTestEvent(eventQuery *testevent.Query) ([]testevent.Event, error)
+	GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, error)
 
 	// Framework events storage interface
 	StoreFrameworkEvent(event frameworkevent.Event) error

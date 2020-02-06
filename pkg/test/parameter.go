@@ -33,7 +33,7 @@ func (p *Param) UnmarshalJSON(b []byte) error {
 	// the string should be passed with the enclosing double-quotes, so strip
 	// them first
 	if len(b) < 2 {
-		return fmt.Errorf("expected quoted string of lenght >=2, got %d", len(b))
+		return fmt.Errorf("expected quoted string of length >=2, got %d", len(b))
 	}
 	if b[0] != '"' || b[len(b)-1] != '"' {
 		return fmt.Errorf("expected quoted string, surrounding characters are not double-quotes")

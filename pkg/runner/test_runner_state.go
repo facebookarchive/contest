@@ -17,6 +17,7 @@ type RunnerState struct {
 	completedTargets map[*target.Target]error
 }
 
+// NewRunnerState initializes a RunnerState object.
 func NewRunnerState() *RunnerState {
 	r := RunnerState{}
 	r.completedSteps = make(map[string]error)

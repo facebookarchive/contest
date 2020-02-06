@@ -6,8 +6,9 @@
 package job
 
 import (
-	"github.com/facebookincubator/contest/pkg/types"
 	"time"
+
+	"github.com/facebookincubator/contest/pkg/types"
 )
 
 // Request represents an incoming Job request which should be persisted in storage
@@ -31,7 +32,7 @@ type RequestFetcher interface {
 	Fetch(id types.JobID) (*Request, error)
 }
 
-// RequestFetcher is an interface implemented by objects that implement both
+// RequestEmitterFetcher is an interface implemented by objects that implement both
 // request creator and request fetcher interface
 type RequestEmitterFetcher interface {
 	RequestEmitter
