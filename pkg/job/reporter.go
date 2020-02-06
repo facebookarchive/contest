@@ -13,6 +13,10 @@ import (
 // ReporterFactory is a type representing a function which builds a Reporter object
 type ReporterFactory func() Reporter
 
+// ReporterLoader is a type representing a function which returns all the
+// needed things to be able to load a Reporter object
+type ReporterLoader func() (string, ReporterFactory)
+
 // Reporter is an interface used to implement logic which calculates the result
 // of a Job. The result is conveyed via a JobReport object.
 type Reporter interface {

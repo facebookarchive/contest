@@ -129,3 +129,9 @@ func (tf *URI) Fetch(params interface{}) (string, []*test.TestStepDescriptor, er
 func New() test.TestFetcher {
 	return &URI{}
 }
+
+// Load returns the name and factory which are needed to register the
+// TestFetcher.
+func Load() (string, test.TestFetcherFactory) {
+	return Name, New
+}

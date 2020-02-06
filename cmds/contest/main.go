@@ -42,14 +42,14 @@ var (
 	flagDBURI = flag.String("dbURI", defaultDBURI, "Database URI")
 )
 
-var targetManagers = map[string]target.TargetManagerFactory{
-	csvtargetmanager.Name: csvtargetmanager.New,
-	targetlist.Name:       targetlist.New,
+var targetManagers = []target.TargetManagerLoader{
+	csvtargetmanager.Load,
+	targetlist.Load,
 }
 
-var testFetchers = map[string]test.TestFetcherFactory{
-	uri.Name:     uri.New,
-	literal.Name: literal.New,
+var testFetchers = []test.TestFetcherLoader{
+	uri.Load,
+	literal.Load,
 }
 
 var testSteps = []test.TestStepLoader{
@@ -62,8 +62,8 @@ var testSteps = []test.TestStepLoader{
 	terminalexpect.Load,
 }
 
-var reporters = map[string]job.ReporterFactory{
-	targetsuccess.Name: targetsuccess.New,
+var reporters = []job.ReporterLoader{
+	targetsuccess.Load,
 }
 
 // user-defined functions that will be made available to plugins for advanced
@@ -86,15 +86,15 @@ func main() {
 	pluginRegistry := pluginregistry.NewPluginRegistry()
 
 	// Register TargetManager plugins
-	for name, tmfactory := range targetManagers {
-		if err := pluginRegistry.RegisterTargetManager(name, tmfactory); err != nil {
+	for _, tmloader := range targetManagers {
+		if err := pluginRegistry.RegisterTargetManager(tmloader()); err != nil {
 			log.Fatal(err)
 		}
 	}
 
 	// Register TestFetcher plugins
-	for name, tffactory := range testFetchers {
-		if err := pluginRegistry.RegisterTestFetcher(name, tffactory); err != nil {
+	for _, tfloader := range testFetchers {
+		if err := pluginRegistry.RegisterTestFetcher(tfloader()); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -108,8 +108,8 @@ func main() {
 	}
 
 	// Register Reporter plugins
-	for name, rfactory := range reporters {
-		if err := pluginRegistry.RegisterReporter(name, rfactory); err != nil {
+	for _, rfloader := range reporters {
+		if err := pluginRegistry.RegisterReporter(rfloader()); err != nil {
 			log.Fatal(err)
 		}
 	}

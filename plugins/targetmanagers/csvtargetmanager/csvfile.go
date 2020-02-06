@@ -163,3 +163,9 @@ func (tf *CSVFileTargetManager) Release(jobID types.JobID, cancel <-chan struct{
 func New() target.TargetManager {
 	return &CSVFileTargetManager{}
 }
+
+// Load returns the name and factory which are needed to register the
+// TargetManager.
+func Load() (string, target.TargetManagerFactory) {
+	return Name, New
+}

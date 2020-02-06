@@ -9,6 +9,10 @@ package test
 // a TestFetcher
 type TestFetcherFactory func() TestFetcher
 
+// TestFetcherLoader is a type representing a function which returns all the
+// needed things to be able to load a TestFetcher
+type TestFetcherLoader func() (string, TestFetcherFactory)
+
 // TestFetcher is an interface used to get the test to run on the selected
 // hosts.
 type TestFetcher interface {

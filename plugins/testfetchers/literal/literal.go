@@ -64,3 +64,9 @@ func (tf *Literal) Fetch(params interface{}) (string, []*test.TestStepDescriptor
 func New() test.TestFetcher {
 	return &Literal{}
 }
+
+// Load returns the name and factory which are needed to register the
+// TestFetcher.
+func Load() (string, test.TestFetcherFactory) {
+	return Name, New
+}
