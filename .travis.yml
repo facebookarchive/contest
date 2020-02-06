@@ -1,30 +1,28 @@
 language: go
 
-sudo: required
+services:
+  - docker
 
-go:
-  - "1.12.x"
-  - "1.13.x"
-  - tip
+global:
+  - COMPOSE_VERSION=1.25.4
 
 env:
-  - TEST_SUITE=unit
-  - TEST_SUITE=linters
+  global:
+    - COMPOSE_VERSION=1.25.4
+  jobs:
+    - TEST_SUITE=tests
+    - TEST_SUITE=linters
 
 before_install:
-  - go get -t -v ./...
-  - go get -t -v github.com/stretchr/testify/...
-
-before_script:
-  - if [ "${TRAVIS_OS_NAME}" == "linux" ]; then
-      sudo sh -c 'echo 0 > /proc/sys/net/ipv6/conf/all/disable_ipv6';
-    fi
+ - curl -L https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-`uname -s`-`uname -m` > docker-compose
+ - chmod +x docker-compose
+ - sudo mv docker-compose /usr/local/bin
 
 script: |
   set -x
   case $TEST_SUITE in
-  unit)
-      ./.travis/tests.sh
+  tests)
+      ./run_tests.sh
       ;;
   linters)
       ./.travis/linters.sh
@@ -33,7 +31,3 @@ script: |
       echo "[!] Unknown test suite: ${TEST_SUITE}. Exiting."
       exit 1
   esac
-
-after_success:
-  - bash <(curl -s https://codecov.io/bash)
-

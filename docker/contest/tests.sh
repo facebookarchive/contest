@@ -46,32 +46,33 @@ for d in $(go list ./... | grep -v vendor); do
     fi
 done
 
-echo "Running integration tests"
-for d in $(go list -tags="integration integration_storage" ./... | grep integ | grep -Ev "integ$|common$|vendor"); do
-    # integration tests
-    echo "Running integration tests for ${d}"
-    go test -c -tags="integration" -race -coverprofile=profile.out -covermode=atomic "${d}"
-    testbin="./$(basename "${d}").test"
-    test -x "${testbin}" && ./"${testbin}" -test.v
-    if [ -f profile.out ]; then
-      cat profile.out >> coverage.txt
-      rm profile.out
-    fi
-    rm $testbin
+# Distinguish between coverage for unit tests and integration tests
+# Report coverage for unit tests and clear workspace afterwards (-c)
+[[ ! -z ${TRAVIS} ]] && bash <(curl -s https://codecov.io/bash) -c -F unittests
 
-    # Storage tests are split across TestSuites in multiple packages. Within a TestSuite,
-    # tests do not run in parallel, but tests in different packages might run in parallel
-    # according to GOMAXPROCS. Storage tests are not safe to run in parallel as they 
-    # make assertions on the data that is persisted in the database. Therefore, use "-p1"
-    # to have tests run serially.
-    echo "Running integration tests with storage layer for ${d}"
-    go test -c -tags="integration_storage" -p 1 -race -coverprofile=profile.out -covermode=atomic "${d}"
-    testbin="./$(basename "${d}").test"
-    # only run it if it was built - i.e. if there are integ tests
-    test -x "${testbin}" && ./"${testbin}" -test.v
-    if [ -f profile.out ]; then
-      cat profile.out >> coverage.txt
-      rm profile.out
-    fi
-    rm $testbin
+# Run integration tests collecting coverage only for the business logic (pkg directory)
+for tag in integration integration_storage; do
+    echo "Running integration tests with tag \"${tag}\""
+    for d in $(go list -tags=${tag} ./... | grep integ | grep -Ev "integ$|common$|vendor"); do
+	pflag=""
+        if test ${tag} = "integration_storage"; then
+	  # Storage tests are split across TestSuites in multiple packages. Within a TestSuite,
+	  # tests do not run in parallel, but tests in different packages might run in parallel
+	  # according to GOMAXPROCS. Storage tests are not safe to run in parallel as they
+	  # make assertions on the data that is persisted in the database. Therefore, use "-p1"
+	  # to have tests run serially.
+	  pflag="-p 1"
+	fi
+        go test -tags=${tag} -race \
+          -coverprofile=profile.out ${pflag} \
+          -covermode=atomic \
+          -coverpkg=github.com/facebookincubator/contest/pkg/...,github.com/facebookincubator/contest/plugins/...,github.com/facebookincubator/contest/cmds/... \
+          "${d}"
+        if [ -f profile.out ]; then
+          cat profile.out >> coverage.txt
+          rm profile.out
+        fi
+    done
 done
+
+[[ ! -z ${TRAVIS} ]] && bash <(curl -s https://codecov.io/bash) -c -F integration

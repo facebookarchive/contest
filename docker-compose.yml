@@ -7,6 +7,8 @@ services:
                 command: bash -c "cd /go/src/github.com/facebookincubator/contest/cmds/contest/ && go run . -dbURI 'contest:contest@tcp(mysql:3306)/contest_integ?parseTime=true'"
                 ports:
                     - 8080:8080
+                depends_on:
+                    - mysql
 
         mysql:
                 environment:
