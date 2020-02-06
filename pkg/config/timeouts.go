@@ -40,3 +40,6 @@ var TestRunnerShutdownTimeout = 30 * time.Second
 // is reset every time a step returns. The timeout should be handled so that it
 // doesn't reset when a TestStep returns.
 var TestRunnerStepShutdownTimeout = 5 * time.Second
+
+// LockTimeout represent the amount of time that a lock is held for a target
+var LockTimeout = 10 * time.Second
