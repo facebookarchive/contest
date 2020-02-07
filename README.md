@@ -570,7 +570,7 @@ Limitations:
 
 * Website: https://github.com/facebookincubator/contest . Please use issues and
   pull requests!
-* IM: we are on the #ConTest channel on the Gophers Slack team. Get your invite on https://invite.slack.golangbridge.org/ if you're not there already!
+* IM: we are on the #ConTest channel on the OSF (Open Source Firmware) Slack team. Get your invite on http://u-root.tk if you're not there already!
 * See the CONTRIBUTING file for how to help out.
 
 ## License
