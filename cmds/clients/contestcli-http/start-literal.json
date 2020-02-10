@@ -1,7 +1,7 @@
 {
     "JobName": "test job",
     "Runs": 3,
-    "RunInterval": "5s",
+    "RunInterval": "3s",
     "Tags": ["test", "csv"],
     "TestDescriptors": [
         {
@@ -38,6 +38,14 @@
                 "Parameters": {
                     "SuccessExpression": ">80%"
                 }
+            },
+            {
+                "Name": "Noop"
+            }
+        ],
+        "FinalReporters": [
+            {
+                "Name": "noop"
             }
         ]
     }

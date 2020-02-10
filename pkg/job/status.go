@@ -57,5 +57,5 @@ type Status struct {
 	TestStatus []TestStatus
 
 	// Job report information
-	Report *Report
+	JobReport *JobReport
 }

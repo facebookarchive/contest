@@ -8,6 +8,7 @@ package targetsuccess
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/job"
@@ -19,10 +20,16 @@ import (
 // Name defines the name of the reporter used within the plugin registry
 var Name = "TargetSuccess"
 
-// TargetSuccessParameters contains the parameters necessary for the reporter to
+// RunParameters contains the parameters necessary for the run reporter to
 // elaborate the results of the Job
-type TargetSuccessParameters struct {
+type RunParameters struct {
 	SuccessExpression string
+}
+
+// FinalParameters contains the parameters necessary for the final reporter to
+// elaborate the results of the Job
+type FinalParameters struct {
+	AverageSuccessExpression string
 }
 
 // TargetSuccessReporter implements a reporter which determines whether the Job has been
@@ -38,27 +45,39 @@ type TargetSuccessReport struct {
 	DesiredSuccess  string
 }
 
-// ValidateParameters validates the parameters for the reporter
-func (ts *TargetSuccessReporter) ValidateParameters(params []byte) (interface{}, error) {
-	var tsp TargetSuccessParameters
-	if err := json.Unmarshal(params, &tsp); err != nil {
+// ValidateRunParameters validates the parameters for the run reporter
+func (ts *TargetSuccessReporter) ValidateRunParameters(params []byte) (interface{}, error) {
+	var rp RunParameters
+	if err := json.Unmarshal(params, &rp); err != nil {
 		return nil, err
 	}
-	if _, err := comparison.ParseExpression(tsp.SuccessExpression); err != nil {
+	if _, err := comparison.ParseExpression(rp.SuccessExpression); err != nil {
 		return nil, fmt.Errorf("could not parse success expression")
 	}
-	return tsp, nil
+	return rp, nil
 }
 
-// Report calculates the Report object to be associated with the job
-func (ts *TargetSuccessReporter) Report(cancel <-chan struct{}, parameters interface{}, result *test.TestResult, ev testevent.Fetcher) (bool, interface{}, error) {
-	reportParameters, ok := parameters.(TargetSuccessParameters)
+// ValidateFinalParameters validates the parameters for the final reporter
+func (ts *TargetSuccessReporter) ValidateFinalParameters(params []byte) (interface{}, error) {
+	var fp FinalParameters
+	if err := json.Unmarshal(params, &fp); err != nil {
+		return nil, err
+	}
+	if _, err := comparison.ParseExpression(fp.AverageSuccessExpression); err != nil {
+		return nil, fmt.Errorf("could not parse average success expression")
+	}
+	return fp, nil
+}
+
+// RunReport calculates the report to be associated with a job run.
+func (ts *TargetSuccessReporter) RunReport(cancel <-chan struct{}, parameters interface{}, runNumber uint, result *test.TestResult, ev testevent.Fetcher) (*job.Report, error) {
+	reportParameters, ok := parameters.(RunParameters)
 	if !ok {
-		return false, nil, fmt.Errorf("report parameters should be of type TargetSuccessParameters")
+		return nil, fmt.Errorf("report parameters should be of type TargetSuccessParameters")
 	}
 
 	if result == nil {
-		return false, nil, fmt.Errorf("test result is empty, cannot calculate success metrics")
+		return nil, fmt.Errorf("test result is empty, cannot calculate success metrics")
 	}
 
 	var ignoreList []*target.Target
@@ -66,18 +85,24 @@ func (ts *TargetSuccessReporter) Report(cancel <-chan struct{}, parameters inter
 	// Evaluate the success threshold for every test for which we got a TestResult
 	res, err := result.GetResult(reportParameters.SuccessExpression, ignoreList)
 	if err != nil {
-		return false, nil, fmt.Errorf("could not evaluate the success on at least one test: %v", err)
+		return nil, fmt.Errorf("could not evaluate the success on at least one test: %v", err)
 	}
-	report := TargetSuccessReport{}
-	report.DesiredSuccess = fmt.Sprintf("%s%s", res.Op, res.RHS)
+	reportData := TargetSuccessReport{
+		DesiredSuccess: fmt.Sprintf("%s%s", res.Op, res.RHS),
+	}
 	if !res.Pass {
-		report.Message = fmt.Sprintf("Test does not pass success criteria: %s", res.Expr)
-		report.AchievedSuccess = res.LHS
-		return false, report, nil
+		reportData.Message = fmt.Sprintf("Test does not pass success criteria: %s", res.Expr)
+		reportData.AchievedSuccess = res.LHS
+		return &job.Report{Success: false, ReportTime: time.Now(), Data: reportData}, nil
 	}
-	report.Message = fmt.Sprintf("All tests pass success criteria: %s", res.Expr)
-	report.AchievedSuccess = res.LHS
-	return true, report, nil
+	reportData.Message = fmt.Sprintf("All tests pass success criteria: %s", res.Expr)
+	reportData.AchievedSuccess = res.LHS
+	return &job.Report{Success: true, ReportTime: time.Now(), Data: reportData}, nil
+}
+
+// FinalReport calculates the final report to be associated to a job.
+func (ts *TargetSuccessReporter) FinalReport(cancel <-chan struct{}, parameters interface{}, results []*test.TestResult, ev testevent.Fetcher) (*job.Report, error) {
+	return nil, fmt.Errorf("final reporting not implemented yet in %s", Name)
 }
 
 // New builds a new TargetSuccessReporter

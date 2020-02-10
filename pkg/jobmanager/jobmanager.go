@@ -77,25 +77,37 @@ func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, 
 	if jd.RunInterval < 0 {
 		return nil, errors.New("run interval must be non-negative")
 	}
-	// TODO(insomniacslk) enable multiple reporters after the reporter
-	// refactoring
-	if len(jd.Reporting.RunReporters) != 1 {
-		return nil, errors.New("exactly one reporter must be specified in a job")
+
+	if len(jd.Reporting.RunReporters) == 0 && len(jd.Reporting.FinalReporters) == 0 {
+		return nil, errors.New("at least one run reporter or one final reporter must be specified in a job")
 	}
 	for _, reporter := range jd.Reporting.RunReporters {
 		if strings.TrimSpace(reporter.Name) == "" {
-			return nil, errors.New("reporters cannot have empty or all-whitespace names")
+			return nil, errors.New("run reporters cannot have empty or all-whitespace names")
 		}
 	}
 
-	reporterBundle, err := pr.NewReporterBundle(jd.Reporting.RunReporters[0].Name, jd.Reporting.RunReporters[0].Parameters)
-	if err != nil {
-		return nil, err
+	var runReporterBundles []*job.ReporterBundle
+	for _, reporter := range jd.Reporting.RunReporters {
+		if strings.TrimSpace(reporter.Name) == "" {
+			return nil, errors.New("invalid empty or all-whitespace run reporter name")
+		}
+		bundle, err := pr.NewRunReporterBundle(reporter.Name, reporter.Parameters)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create bundle for run reporter '%s': %v", reporter.Name, err)
+		}
+		runReporterBundles = append(runReporterBundles, bundle)
 	}
-	// TODO(insomniacslk) parse jd.Reporting.FinalReporters and add to the
-	// bundle
-	if len(jd.Reporting.FinalReporters) > 0 {
-		return nil, errors.New("final reporters not supported yet")
+	var finalReporterBundles []*job.ReporterBundle
+	for _, reporter := range jd.Reporting.FinalReporters {
+		if strings.TrimSpace(reporter.Name) == "" {
+			return nil, errors.New("invalid empty or all-whitespace final reporter name")
+		}
+		bundle, err := pr.NewFinalReporterBundle(reporter.Name, reporter.Parameters)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create bundle for final reporter '%s': %v", reporter.Name, err)
+		}
+		finalReporterBundles = append(finalReporterBundles, bundle)
 	}
 
 	tests := make([]*test.Test, 0, len(jd.TestDescriptors))
@@ -156,13 +168,14 @@ func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, 
 	// Create a Job object from the above managers and parameters. The Job ID assigned
 	// is 0, and gets actually set by the JobManager after calling the persistence layer
 	job := job.Job{
-		ID:             types.JobID(0),
-		Name:           jd.JobName,
-		Tags:           jd.Tags,
-		Runs:           jd.Runs,
-		RunInterval:    time.Duration(jd.RunInterval),
-		Tests:          tests,
-		ReporterBundle: reporterBundle,
+		ID:                   types.JobID(0),
+		Name:                 jd.JobName,
+		Tags:                 jd.Tags,
+		Runs:                 jd.Runs,
+		RunInterval:          time.Duration(jd.RunInterval),
+		Tests:                tests,
+		RunReporterBundles:   runReporterBundles,
+		FinalReporterBundles: finalReporterBundles,
 	}
 
 	job.Done = make(chan struct{})

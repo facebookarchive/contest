@@ -51,7 +51,7 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 		jm.jobsMu.Unlock()
 
 		start := time.Now()
-		success, report, err := jm.jobRunner.Run(j)
+		runReports, finalReports, err := jm.jobRunner.Run(j)
 		duration := time.Since(start)
 		// If the Job was cancelled, the error returned by JobRunner indicates whether
 		// the cancellatioon has been successful or failed
@@ -85,15 +85,16 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 			}
 			_ = jm.emitEvent(jobID, eventToEmit)
 		}
-		jobReport := job.Report{
-			JobID:      j.ID,
-			Success:    success,
-			JobReport:  report,
-			ReportTime: time.Now(),
-		}
-		err = jm.jobReportManager.Emit(&jobReport)
-		if err != nil {
-			log.Warningf("Could not emit job report: %v", err)
+		if err == nil {
+			jobReport := job.JobReport{
+				JobID:        j.ID,
+				RunReports:   runReports,
+				FinalReports: finalReports,
+			}
+			err := jm.jobReportManager.Emit(&jobReport)
+			if err != nil {
+				log.Warningf("Could not emit job report: %v", err)
+			}
 		}
 	}()
 

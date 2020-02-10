@@ -83,17 +83,37 @@ func (r *PluginRegistry) NewTargetManagerBundle(testDescriptor *test.TestDescrip
 	return &targetManagerBundle, nil
 }
 
-// NewReporterBundle creates a Reporter and associated parameters based on the
+// NewRunReporterBundle creates a Reporter and associated run reporting parameters based on the
 // content of the job descriptor
-func (r *PluginRegistry) NewReporterBundle(reporterName string, reporterParameters []byte) (*job.ReporterBundle, error) {
+func (r *PluginRegistry) NewRunReporterBundle(reporterName string, reporterParameters []byte) (*job.ReporterBundle, error) {
 	reporter, err := r.NewReporter(reporterName)
 	if err != nil {
-		return nil, fmt.Errorf("could not get reporter %s: %v", reporterName, err)
+		return nil, fmt.Errorf("could not get reporter '%s': %v", reporterName, err)
 	}
 
-	rp, err := reporter.ValidateParameters(reporterParameters)
+	rp, err := reporter.ValidateRunParameters(reporterParameters)
 	if err != nil {
-		return nil, fmt.Errorf("could not validate Reporter parameters: %v", err)
+		return nil, fmt.Errorf("could not validate run reporter parameters: %v", err)
+	}
+
+	reporterBundle := job.ReporterBundle{
+		Reporter:   reporter,
+		Parameters: rp,
+	}
+	return &reporterBundle, nil
+}
+
+// NewFinalReporterBundle creates a Reporter and associated final reporting parameters based on the
+// content of the job descriptor
+func (r *PluginRegistry) NewFinalReporterBundle(reporterName string, reporterParameters []byte) (*job.ReporterBundle, error) {
+	reporter, err := r.NewReporter(reporterName)
+	if err != nil {
+		return nil, fmt.Errorf("could not get reporter '%s': %v", reporterName, err)
+	}
+
+	rp, err := reporter.ValidateFinalParameters(reporterParameters)
+	if err != nil {
+		return nil, fmt.Errorf("could not validate run reporter parameters: %v", err)
 	}
 
 	reporterBundle := job.ReporterBundle{

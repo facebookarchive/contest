@@ -20,8 +20,10 @@ type ReporterLoader func() (string, ReporterFactory)
 // Reporter is an interface used to implement logic which calculates the result
 // of a Job. The result is conveyed via a JobReport object.
 type Reporter interface {
-	ValidateParameters([]byte) (interface{}, error)
-	Report(cancel <-chan struct{}, parameters interface{}, result *test.TestResult, ev testevent.Fetcher) (bool, interface{}, error)
+	ValidateRunParameters([]byte) (interface{}, error)
+	ValidateFinalParameters([]byte) (interface{}, error)
+	RunReport(cancel <-chan struct{}, parameters interface{}, runNumber uint, results *test.TestResult, ev testevent.Fetcher) (*Report, error)
+	FinalReport(cancel <-chan struct{}, parameters interface{}, results []*test.TestResult, ev testevent.Fetcher) (*Report, error)
 }
 
 // ReporterBundle bundles the selected Reporter together with its parameters

@@ -75,9 +75,13 @@ func (r *RDBMS) Reset() error {
 	if err != nil {
 		return fmt.Errorf("could not truncate table jobs: %v", err)
 	}
-	_, err = r.db.Exec("truncate reports")
+	_, err = r.db.Exec("truncate run_reports")
 	if err != nil {
-		return fmt.Errorf("could not truncate table reports: %v", err)
+		return fmt.Errorf("could not truncate table run_reports: %v", err)
+	}
+	_, err = r.db.Exec("truncate final_reports")
+	if err != nil {
+		return fmt.Errorf("could not truncate table final_reports: %v", err)
 	}
 	return nil
 }

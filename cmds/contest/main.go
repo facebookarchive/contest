@@ -20,6 +20,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/plugins/listeners/httplistener"
+	"github.com/facebookincubator/contest/plugins/reporters/noop"
 	"github.com/facebookincubator/contest/plugins/reporters/targetsuccess"
 	"github.com/facebookincubator/contest/plugins/storage/rdbms"
 	"github.com/facebookincubator/contest/plugins/targetmanagers/csvtargetmanager"
@@ -64,6 +65,7 @@ var testSteps = []test.TestStepLoader{
 
 var reporters = []job.ReporterLoader{
 	targetsuccess.Load,
+	noop.Load,
 }
 
 // user-defined functions that will be made available to plugins for advanced
