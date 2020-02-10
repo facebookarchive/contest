@@ -77,20 +77,22 @@ After building the sample server as explained in the [Building
 ConTest](#building-contest) section, run it with no arguments:
 ```
 $ contest
-[2020-01-11T13:57:30Z]  INFO pkg/pluginregistry: Registering target manager targetlist
-[2020-01-11T13:57:30Z]  INFO pkg/pluginregistry: Registering target manager csvfiletargetmanager
-[2020-01-11T13:57:30Z]  INFO pkg/pluginregistry: Registering test fetcher uri
-[2020-01-11T13:57:30Z]  INFO pkg/pluginregistry: Registering test fetcher literal
-[2020-01-11T13:57:30Z]  INFO pkg/pluginregistry: Registering test step example
-[2020-01-11T13:57:30Z]  INFO pkg/pluginregistry: Registering test step cmd
-[2020-01-11T13:57:30Z]  INFO pkg/pluginregistry: Registering test step sshcmd
-[2020-01-11T13:57:30Z]  INFO pkg/pluginregistry: Registering test step randecho
-[2020-01-11T13:57:30Z]  INFO pkg/pluginregistry: Registering test step terminalexpect
-[2020-01-11T13:57:30Z]  INFO pkg/pluginregistry: Registering test step echo
-[2020-01-11T13:57:30Z]  INFO pkg/pluginregistry: Registering test step slowecho
-[2020-01-11T13:57:30Z]  INFO pkg/pluginregistry: Registering reporter targetsuccess
-[2020-01-11T13:57:30Z]  INFO main: JobManager &{jobs:map[] jobsMu:{state:0 sema:0} jobsWg:{noCopy:{} state1:[0 0 0]} jobRunner:{} jobRequestManager:{JobRequestEmitter:{} JobRequestFetcher:{}} jobReportManager:{JobReportEmitter:{} JobReportFetcher:{}} eventManager:{FrameworkEventEmitter:{} FrameworkEventFetcher:{}} apiListener:0xced130 apiCancel:0xc000030660 pluginRegistry:0xc0000704c0}
-[2020-01-11T13:57:30Z]  INFO listeners/httplistener: Started HTTP API listener on :8080
+[2020-02-10T20:37:10Z]  INFO pkg/pluginregistry: Registering target manager csvfiletargetmanager
+[2020-02-10T20:37:10Z]  INFO pkg/pluginregistry: Registering target manager targetlist
+[2020-02-10T20:37:10Z]  INFO pkg/pluginregistry: Registering test fetcher uri
+[2020-02-10T20:37:10Z]  INFO pkg/pluginregistry: Registering test fetcher literal
+[2020-02-10T20:37:10Z]  INFO pkg/pluginregistry: Registering test step echo
+[2020-02-10T20:37:10Z]  INFO pkg/pluginregistry: Registering test step slowecho
+[2020-02-10T20:37:10Z]  INFO pkg/pluginregistry: Registering test step example
+[2020-02-10T20:37:10Z]  INFO pkg/pluginregistry: Registering test step cmd
+[2020-02-10T20:37:10Z]  INFO pkg/pluginregistry: Registering test step sshcmd
+[2020-02-10T20:37:10Z]  INFO pkg/pluginregistry: Registering test step randecho
+[2020-02-10T20:37:10Z]  INFO pkg/pluginregistry: Registering test step terminalexpect
+[2020-02-10T20:37:10Z]  INFO pkg/pluginregistry: Registering reporter targetsuccess
+[2020-02-10T20:37:10Z]  INFO pkg/pluginregistry: Registering reporter noop
+[2020-02-10T20:37:10Z]  INFO contest: Using database URI: contest:contest@tcp(localhost:3306)/contest?parseTime=true
+[2020-02-10T20:37:10Z]  INFO contest: JobManager &{jobs:map[] jobRunner:0xc000021b10 jobsMu:{state:0 sema:0} jobsWg:{noCopy:{} state1:[0 0 0]} jobRequestManager:{JobRequestEmitter:{} JobRequestFetcher:{}} jobReportManager:{JobReportEmitter:{} JobReportFetcher:{}} frameworkEvManager:{FrameworkEventEmitter:{} FrameworkEventFetcher:{}} testEvManager:{} apiListener:0xd0dbc0 apiCancel:0xc000030660 pluginRegistry:0xc000072480}
+[2020-02-10T20:37:10Z]  INFO listeners/httplistener: Started HTTP API listener on :8080
 ```
 
 The server is informing us that it started the HTTP API listener on port 8080, after registering various types of plugins: target managers, test fetchers, test steps, and reporters.
@@ -134,12 +136,10 @@ command: start, stop, status, retry, version
         request the API version to the server
 
 args:
-  -p int
-    	ConTest server port to connect to (default 8080)
+  -addr string
+    	ConTest server [scheme://]host:port[/basepath] to connect to (default "http://localhost:8080")
   -r string
     	Identifier of the requestor of the API call (default "contestcli-http")
-  -s string
-    	ConTest server host to connect to (default "localhost")
 exit status 2
 ```
 
@@ -167,40 +167,89 @@ Then we can get the status of the job using the `status` command and the job ID 
 $ go run . status 12 | jq
 Requesting URL http://localhost:8080/status with requestor ID 'contestcli-http'
   with params:
+    jobID: [32]
     requestor: [contestcli-http]
-    jobID: [12]
 
-The server responded with status 200 OK
-{
+The server responded with status 200 OK{
   "ServerID": "barberio-ubuntu-9QCS5S2",
   "Type": "ResponseTypeStatus",
   "Data": {
     "Status": {
-      "EndTime": "2020-01-27T16:20:16Z",
-      "Name": "test job",
-      "Report": {
-        "JobID": 12,
-        "JobReport": {
-          "AchievedSuccess": "100.00%",
-          "DesiredSuccess": ">50.00%",
-          "Message": "All tests pass success criteria: 100.00% > 50.00%"
-        },
-        "ReportTime": "2020-01-27T16:20:16Z",
-        "Success": true
+      "EndTime": "0001-01-01T00:00:00Z",
+      "JobReport": {
+        "FinalReports": [
+          {
+            "Data": "I did nothing at the end, all good",
+            "ReportTime": "2020-02-10T20:39:54Z",
+            "Success": true
+          }
+        ],
+        "JobID": 32,
+        "RunReports": [
+          [
+            {
+              "Data": {
+                "AchievedSuccess": "100.00%",
+                "DesiredSuccess": ">80.00%",
+                "Message": "All tests pass success criteria: 100.00% > 80.00%"
+              },
+              "ReportTime": "2020-02-10T20:39:48Z",
+              "Success": true
+            },
+            {
+              "Data": "I did nothing on run #1, all good",
+              "ReportTime": "2020-02-10T20:39:48Z",
+              "Success": true
+            }
+          ],
+          [
+            {
+              "Data": {
+                "AchievedSuccess": "100.00%",
+                "DesiredSuccess": ">80.00%",
+                "Message": "All tests pass success criteria: 100.00% > 80.00%"
+              },
+              "ReportTime": "2020-02-10T20:39:51Z",
+              "Success": true
+            },
+            {
+              "Data": "I did nothing on run #2, all good",
+              "ReportTime": "2020-02-10T20:39:51Z",
+              "Success": true
+            }
+          ],
+          [
+            {
+              "Data": {
+                "AchievedSuccess": "100.00%",
+                "DesiredSuccess": ">80.00%",
+                "Message": "All tests pass success criteria: 100.00% > 80.00%"
+              },
+              "ReportTime": "2020-02-10T20:39:54Z",
+              "Success": true
+            },
+            {
+              "Data": "I did nothing on run #3, all good",
+              "ReportTime": "2020-02-10T20:39:54Z",
+              "Success": true
+            }
+          ]
+        ]
       },
-      "StartTime": "2020-01-27T16:20:16Z",
-      "State": "JobStateCompleted",
+      "Name": "test job",
+      "StartTime": "2020-02-10T20:39:48Z",
+      "State": "",
       "TestStatus": [
         {
           "TestName": "Literal test",
           "TestStepStatus": [
             {
-              "State": null,
+              "Events": [],
               "TargetStatus": [
                 {
                   "Error": null,
-                  "InTime": "2020-01-27T16:20:16Z",
-                  "OutTime": "2020-01-27T16:20:16Z",
+                  "InTime": "2020-02-10T20:39:54Z",
+                  "OutTime": "2020-02-10T20:39:54Z",
                   "Target": {
                     "FQDN": "",
                     "ID": "1234",
@@ -353,6 +402,61 @@ commented for clarity:
             }
         }
     ],
+    // The reporting section is divided in two parts: run reporters and final
+    // reporters. At least one reporter must be specified, of any type, or the
+    // job will be rejected.
+    "Reporting": {
+        // Run reporters are plugins that are executed at the end of each test
+        // run.
+        // They are meant to report results of individual runs, as opposed to
+        // the full job inclusive of all of its runs. The number of runs is
+        // specified above in the job descriptor.
+        //
+        // A reporter plugin can implement run reporting, or final reporting, or
+        // both. The two implementations would normally be different and
+        // independent.
+        "RunReporters": [
+            {
+                // TargetSuccess is the name of the reporter plugin. Every
+                // plugin has its own specific arguments, so there is no common
+                // format. The plugin will know how to parse the JSON
+                // subdocument.
+                // In this example, TargetSuccess will determine the success of
+                // the job based on how many devices could make it until the end
+                // of the test. Both percentage and target numbers can be
+                // specified.
+                "Name": "TargetSuccess",
+                "Parameters": {
+                    "SuccessExpression": ">80%"
+                }
+            },
+            {
+                // This is another run reporter. It will be executed after the
+                // above, and it will have its own concept of "success". Every
+                // reporter carries its own success indicator, so there is no
+                // overall "this job was successful", rather "this reporter was
+                // successful". For example, one reporter may succeed if enough
+                // targets made it until the end of the tests, whike another
+                // reporter may measure performance regressions, and fail. The
+                // two results would be independent from each other.
+                "Name": "Noop"
+            }
+        ],
+        // Final reporters instead will be executed at the very end, and will
+        // normally be used to report the results of the whole set of runs.
+        //
+        // If the job is running in continuous mode (i.e. Runs is 0), the final
+        // reporters will only be run if the job is cancelled.
+        //
+        // In the example below there is only one reporter, but it's possible to
+        // specify more, just like for run reporters.
+        "FinalReporters": [
+            {
+                "Name": "noop"
+            }
+        ]
+    }
+
     // The name of the reporter plugin. This is used to decide and report
     whether a job was successful or not.
     "ReporterName": "TargetSuccess",
