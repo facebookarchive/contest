@@ -131,6 +131,14 @@ func TestEventTestStepLabel(ev testevent.Event) interface{} {
 	return ev.Header.TestStepLabel
 }
 
+// TestEventTestStepIndex returns the test step index from a events.TestEvent object
+func TestEventTestStepIndex(ev testevent.Event) interface{} {
+	if ev.Data == nil {
+		return nil
+	}
+	return ev.Data.TestStepIndex
+}
+
 // TestEventName returns the event name from a events.TestEvent object
 func TestEventName(ev testevent.Event) interface{} {
 	if ev.Data == nil {
@@ -199,13 +207,14 @@ func (r *RDBMS) FlushTestEvents() error {
 		return nil
 	}
 
-	insertStatement := "insert into test_events (job_id, test_name, test_step_label, event_name, target_name, target_id, payload, emit_time) values (?, ?, ?, ?, ?, ?, ?, ?)"
+	insertStatement := "insert into test_events (job_id, test_name, test_step_label, test_step_index, event_name, target_name, target_id, payload, emit_time) values (?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	for _, event := range r.buffTestEvents {
 		_, err := r.db.Exec(
 			insertStatement,
 			TestEventJobID(event),
 			TestEventTestName(event),
 			TestEventTestStepLabel(event),
+			TestEventTestStepIndex(event),
 			TestEventName(event),
 			TestEventTargetName(event),
 			TestEventTargetID(event),

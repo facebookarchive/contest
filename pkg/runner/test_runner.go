@@ -191,7 +191,7 @@ func (tr *TestRunner) Route(terminateRoute <-chan struct{}, bundle test.TestStep
 				}
 				break
 			}
-			targetInEv := testevent.Data{EventName: target.EventTargetIn, Target: injectionResult.target}
+			targetInEv := testevent.Data{EventName: target.EventTargetIn, TestStepIndex: bundle.TestStepIndex, Target: injectionResult.target}
 			if err := ev.Emit(targetInEv); err != nil {
 				log.Warningf("Could not emit %v event for Target: %v", targetInEv, *injectionResult.target)
 			}
@@ -227,7 +227,7 @@ func (tr *TestRunner) Route(terminateRoute <-chan struct{}, bundle test.TestStep
 					break
 				}
 				// Emit an event signaling that the target has lef the TestStep
-				targetOutEv := testevent.Data{EventName: target.EventTargetOut, Target: t}
+				targetOutEv := testevent.Data{EventName: target.EventTargetOut, TestStepIndex: bundle.TestStepIndex, Target: t}
 				if err := ev.Emit(targetOutEv); err != nil {
 					log.Warningf("Could not emit %v event for Target: %v", targetOutEv, *t)
 				}
@@ -247,7 +247,7 @@ func (tr *TestRunner) Route(terminateRoute <-chan struct{}, bundle test.TestStep
 				}
 				// Emit an event signaling that the target has lef the TestStep with an error
 				payload := json.RawMessage(fmt.Sprintf(`{"error": "%s"}`, targetError.Err))
-				targetErrEv := testevent.Data{EventName: target.EventTargetErr, Target: targetError.Target, Payload: &payload}
+				targetErrEv := testevent.Data{EventName: target.EventTargetErr, Target: targetError.Target, TestStepIndex: bundle.TestStepIndex, Payload: &payload}
 				if err := ev.Emit(targetErrEv); err != nil {
 					log.Warningf("Could not emit %v event for Target: %v", targetErrEv, *targetError.Target)
 				}
