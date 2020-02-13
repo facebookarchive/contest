@@ -135,14 +135,16 @@ func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, 
 		// look up test step plugins in the plugin registry
 		var stepBundles []test.TestStepBundle
 		labels := make(map[string]bool)
-		for _, testStepDesc := range testStepDescs {
+		for idx, testStepDesc := range testStepDescs {
 			tse, err := pr.NewTestStepEvents(testStepDesc.Name)
 			if err != nil {
 				return nil, err
 			}
-			tsb, err := pr.NewTestStepBundle(*testStepDesc, tse)
+			// test step index is incremented by 1 so we can use 0 to signal an
+			// anomaly.
+			tsb, err := pr.NewTestStepBundle(*testStepDesc, uint(idx)+1, tse)
 			if err != nil {
-				return nil, fmt.Errorf("NewTestStepBundle for test step '%s' failed: %v", testStepDesc.Name, err)
+				return nil, fmt.Errorf("NewTestStepBundle for test step '%s' with index %d failed: %v", testStepDesc.Name, idx, err)
 			}
 			if _, ok := labels[tsb.TestStepLabel]; ok {
 				// validate that the label associated to the test step does not clash
