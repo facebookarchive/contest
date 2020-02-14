@@ -19,6 +19,14 @@ import (
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
+// JobCompletionEvents gather all event that mark the end of a job
+var JobCompletionEvents = []event.Name{
+	EventJobCompleted,
+	EventJobFailed,
+	EventJobCancelled,
+	EventJobCancellationFailed,
+}
+
 // JobStateEvents gather all event names which track the state of a job
 var JobStateEvents = []event.Name{
 	EventJobStarted,
@@ -38,127 +46,179 @@ var TargetRoutingEvents = []event.Name{
 	target.EventTargetInErr,
 }
 
+// RunCoordinates collects information to identify the run for which we want to rebuild the status
+type RunCoordinates struct {
+	JobID types.JobID
+	RunID types.RunID
+}
+
+// TestCoordinates collects information to identify the test for which we want to rebuild the status
+type TestCoordinates struct {
+	RunCoordinates
+	TestName string
+}
+
+// TestStepCoordinates collects information to identify the test step for which we want to rebuild the status
+type TestStepCoordinates struct {
+	TestCoordinates
+	TestStepName  string
+	TestStepLabel string
+}
+
 // buildTargetStatus populates a TestStepStatus object with TestStepStatus information
-func (jm *JobManager) buildTargetStatus(jobID types.JobID, currentTestStepStatus *job.TestStepStatus) error {
+func (jm *JobManager) buildTargetStatuses(coordinates TestStepCoordinates) ([]job.TargetStatus, error) {
 
 	// Fetch all the events associated to Targets routing
 	routingEvents, err := jm.testEvManager.Fetch(
-		testevent.QueryJobID(jobID),
+		testevent.QueryJobID(coordinates.JobID),
+		testevent.QueryTestName(coordinates.TestName),
+		testevent.QueryTestStepLabel(coordinates.TestStepLabel),
 		testevent.QueryEventNames(TargetRoutingEvents),
 	)
 	if err != nil {
-		return fmt.Errorf("could not fetch events associated to target routing: %v", err)
+		return nil, fmt.Errorf("could not fetch events associated to target routing: %v", err)
 	}
 
-	// Filter only the events emitted by this TestStep, group events by Target
+	var targetStatuses []job.TargetStatus
 	for _, testEvent := range routingEvents {
-		if testEvent.Header.TestStepLabel != currentTestStepStatus.TestStepLabel {
-			continue
-		}
-		// Update the TargetStatus object associated to the Target. If there is no
-		// TargetStatus associated yet, append it
-		var currentTargetStatus *job.TargetStatus
-		for index, candidateTargetStatus := range currentTestStepStatus.TargetStatus {
-			if *candidateTargetStatus.Target == *testEvent.Data.Target {
-				currentTargetStatus = &currentTestStepStatus.TargetStatus[index]
+		// Update the TargetStatus object associated to the Target.
+		// If there is no TargetStatus associated yet, append it
+		var targetStatus *job.TargetStatus
+		for index, candidateStatus := range targetStatuses {
+			if *candidateStatus.Target == *testEvent.Data.Target {
+				targetStatus = &targetStatuses[index]
 				break
 			}
 		}
-		if currentTargetStatus == nil {
+
+		if targetStatus == nil {
 			// There is no TargetStatus associated with this Target, create one
-			currentTestStepStatus.TargetStatus = append(
-				currentTestStepStatus.TargetStatus,
-				job.TargetStatus{Target: testEvent.Data.Target},
-			)
-			lastTargetStatus := len(currentTestStepStatus.TargetStatus) - 1
-			currentTargetStatus = &currentTestStepStatus.TargetStatus[lastTargetStatus]
+			targetStatuses = append(targetStatuses, job.TargetStatus{Target: testEvent.Data.Target})
+			targetStatus = &targetStatuses[len(targetStatuses)-1]
 		}
 
-		switch eventName := testEvent.Data.EventName; eventName {
-		case target.EventTargetIn:
-			currentTargetStatus.InTime = testEvent.EmitTime
-		case target.EventTargetOut:
-			currentTargetStatus.OutTime = testEvent.EmitTime
-		case target.EventTargetErr:
-			currentTargetStatus.OutTime = testEvent.EmitTime
-			currentTargetStatus.Error = testEvent.Data.Payload
+		if testEvent.Data.EventName == target.EventTargetIn {
+			targetStatus.InTime = testEvent.EmitTime
+		} else if testEvent.Data.EventName == target.EventTargetOut {
+			targetStatus.OutTime = testEvent.EmitTime
+		} else if testEvent.Data.EventName == target.EventTargetErr {
+			targetStatus.OutTime = testEvent.EmitTime
+			targetStatus.Error = testEvent.Data.Payload
 		}
 	}
 
-	return nil
+	return targetStatuses, nil
 }
 
-// buildTestStepStatus populates a TestStatus object with TestStep status information
-func (jm *JobManager) buildTestStepStatus(jobID types.JobID, currentTest *test.Test, currentTestStatus *job.TestStatus) error {
+// buildTestStepStatus builds the status object of a test step belonging to a test
+func (jm *JobManager) buildTestStepStatus(coordinates TestStepCoordinates) (*job.TestStepStatus, error) {
 
-	// Build a map of events that should not be rendered as part of the status
-	skipEvents := make(map[event.Name]bool)
+	testStepStatus := job.TestStepStatus{TestStepName: coordinates.TestStepName, TestStepLabel: coordinates.TestStepLabel}
+
+	// Fetch all Events associated to this TestStep
+	// TODO: This query will have to include the runID, which can be found in the coordinates
+	testEvents, err := jm.testEvManager.Fetch(
+		testevent.QueryJobID(coordinates.JobID),
+		testevent.QueryTestName(coordinates.TestName),
+		testevent.QueryTestStepLabel(coordinates.TestStepLabel),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not fetch events associated to test step %s: %v", coordinates.TestStepLabel, err)
+	}
+
+	// Build a map of events that should not be rendered as part of the status (e.g. routing events)
+	skipEvents := make(map[event.Name]struct{})
 	for _, eventName := range TargetRoutingEvents {
-		skipEvents[eventName] = true
+		skipEvents[eventName] = struct{}{}
+	}
+	filteredTestEvents := []testevent.Event{}
+	for _, event := range testEvents {
+		if _, skip := skipEvents[event.Data.EventName]; !skip {
+			filteredTestEvents = append(filteredTestEvents, event)
+		}
 	}
 
-	// Go through every bundle describing a TestStep and rebuild the status of that TestStep
-	for _, testStepBundle := range currentTest.TestStepsBundles {
-		// Fetch all Events associated to this TestStep and render them as part of the
-		testEvents, err := jm.testEvManager.Fetch(
-			testevent.QueryJobID(jobID),
-			testevent.QueryTestStepLabel(testStepBundle.TestStepLabel),
-		)
-		if err != nil {
-			return fmt.Errorf("could not fetch events associated to TestStep: %v", err)
-		}
-
-		// Filter out events associated to the TestStep that were emitted by the framework
-		// (e.g. routing events)
-		filteredTestEvent := []testevent.Event{}
-		for _, event := range testEvents {
-			if _, skip := skipEvents[event.Data.EventName]; !skip {
-				filteredTestEvent = append(filteredTestEvent, event)
-			}
-		}
-		currentTestStatus.TestStepStatus = append(
-			currentTestStatus.TestStepStatus,
-			job.TestStepStatus{
-				TestStepName:  testStepBundle.TestStep.Name(),
-				TestStepLabel: testStepBundle.TestStepLabel,
-				Events:        filteredTestEvent,
-				TargetStatus:  make([]job.TargetStatus, 0),
-			},
-		)
-		last := len(currentTestStatus.TestStepStatus) - 1
-		currenTestStepStatus := &currentTestStatus.TestStepStatus[last]
-
-		if err := jm.buildTargetStatus(jobID, currenTestStepStatus); err != nil {
-			return err
-		}
+	testStepStatus.Events = filteredTestEvents
+	targetStatuses, err := jm.buildTargetStatuses(coordinates)
+	if err != nil {
+		return nil, fmt.Errorf("could not build target status for test step %s: %v", coordinates.TestStepLabel, err)
 	}
-	return nil
+	testStepStatus.TargetStatuses = targetStatuses
+	return &testStepStatus, nil
 }
 
-// buildTestStatus populates a JobStatus object with TestStatus information
-func (jm *JobManager) buildTestStatus(jobID types.JobID, tests []*test.Test, jobStatus *job.Status) error {
-	for _, test := range tests {
-		jobStatus.TestStatus = append(
-			jobStatus.TestStatus,
-			job.TestStatus{
-				TestName:       test.Name,
-				TestStepStatus: make([]job.TestStepStatus, 0, len(test.TestStepsBundles)),
-			},
-		)
-		currentTestStatus := &jobStatus.TestStatus[len(jobStatus.TestStatus)-1]
+// buildTestStatus builds the status of a test belonging to a specific to a test
+func (jm *JobManager) buildTestStatus(coordinates TestCoordinates, currentJob *job.Job) (*job.TestStatus, error) {
 
-		if err := jm.buildTestStepStatus(jobID, test, currentTestStatus); err != nil {
-			return err
+	var currentTest *test.Test
+	// Identify the test within the Job for which we are asking to calculate the status
+	for _, candidateTest := range currentJob.Tests {
+		if candidateTest.Name == coordinates.TestName {
+			currentTest = candidateTest
+			break
 		}
 	}
-	return nil
+
+	if currentTest == nil {
+		return nil, fmt.Errorf("job with id %d does not include any test named %s", coordinates.JobID, coordinates.TestName)
+	}
+	testStatus := job.TestStatus{
+		TestName:         coordinates.TestName,
+		TestStepStatuses: make([]job.TestStepStatus, len(currentTest.TestStepsBundles)),
+	}
+
+	// Build a TestStepStatus object for each TestStep
+	for index, bundle := range currentTest.TestStepsBundles {
+		testStepCoordinates := TestStepCoordinates{
+			TestCoordinates: coordinates,
+			TestStepName:    bundle.TestStep.Name(),
+			TestStepLabel:   bundle.TestStepLabel,
+		}
+		status, err := jm.buildTestStepStatus(testStepCoordinates)
+		if err != nil {
+			return nil, fmt.Errorf("could not build TestStatus for test %s: %v", bundle.TestStep.Name(), err)
+		}
+		testStatus.TestStepStatuses[index] = *status
+	}
+	return &testStatus, nil
+}
+
+// BuildRunStatus builds the status of a run with a job
+func (jm *JobManager) BuildRunStatus(coordinates RunCoordinates, currentJob *job.Job) (*job.RunStatus, error) {
+
+	runStatus := job.RunStatus{RunID: coordinates.RunID, TestStatuses: make([]job.TestStatus, len(currentJob.Tests))}
+
+	for index, currentTest := range currentJob.Tests {
+		testCoordinates := TestCoordinates{RunCoordinates: coordinates, TestName: currentTest.Name}
+		testStatus, err := jm.buildTestStatus(testCoordinates, currentJob)
+		if err != nil {
+			return nil, fmt.Errorf("could not rebuild status for test %s: %v", currentTest.Name, err)
+		}
+		runStatus.TestStatuses[index] = *testStatus
+	}
+	return &runStatus, nil
+}
+
+// BuildStatus builds the status of all runs belonging to the job
+func (jm *JobManager) BuildStatus(currentJob *job.Job) ([]job.RunStatus, error) {
+
+	runStatuses := make([]job.RunStatus, 0, currentJob.Runs)
+	for runID := uint(0); runID < currentJob.Runs; runID++ {
+		runCoordinates := RunCoordinates{JobID: currentJob.ID, RunID: types.RunID(runID)}
+		runStatus, err := jm.BuildRunStatus(runCoordinates, currentJob)
+		if err != nil {
+			return nil, fmt.Errorf("could not rebuild run status for run %d: %v", runID, err)
+		}
+		runStatuses[runID] = *runStatus
+	}
+	return runStatuses, nil
 }
 
 func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 	msg := ev.Msg.(api.EventStatusMsg)
 	jobID := msg.JobID
 
-	jobReport, err := jm.jobReportManager.Fetch(jobID)
+	report, err := jm.jobReportManager.Fetch(jobID)
 	if err != nil {
 		return &api.EventResponse{
 			JobID:     jobID,
@@ -166,10 +226,6 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 			Err:       fmt.Errorf("could not fetch job report: %v", err),
 		}
 	}
-
-	// TODO: JobManager relies only on events to rebuild the status of the job.
-	// It should fetch a complete list of targets, and render the progress based
-	// on events instead.
 
 	// Fetch all the events associated to changes of state of the Job
 	jobEvents, err := jm.frameworkEvManager.Fetch(
@@ -184,41 +240,65 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 		}
 	}
 	currentJob, ok := jm.jobs[jobID]
-	// BUG If we return an error via the API, the HTTP listener simply returns a nil response?
 	if !ok {
 		return &api.EventResponse{
 			JobID:     jobID,
 			Requestor: ev.Msg.Requestor(),
-			Err:       fmt.Errorf("job manager is not owned of job id: %v", jobID),
+			Err:       fmt.Errorf("job manager is not owner of job id: %v", jobID),
 		}
 	}
 
-	// Lookup job starting time and job termination time (i.e. when the job report was built)
+	// Lookup job starting time and job termination time based on the events emitted
 	var (
-		startTime  time.Time
-		reportTime time.Time
+		startTime time.Time
+		endTime   time.Time
 	)
+
+	completionEvents := make(map[event.Name]bool)
+	for _, eventName := range JobCompletionEvents {
+		completionEvents[eventName] = true
+	}
+
 	for _, ev := range jobEvents {
 		if ev.EventName == EventJobStarted {
 			startTime = ev.EmitTime
+		} else if _, ok := completionEvents[ev.EventName]; ok {
+			// A completion event has been seen for this Job. Only one completion event can be associated to the job
+			if !endTime.IsZero() {
+				log.Warningf("Job %d is associated to multiple completion events", jobID)
+			}
+			endTime = ev.EmitTime
 		}
 	}
-	jobStatus := job.Status{
-		Name:       currentJob.Name,
-		StartTime:  startTime,
-		EndTime:    reportTime,
-		JobReport:  jobReport,
-		TestStatus: make([]job.TestStatus, 0, len(currentJob.Tests)),
+
+	state := "Unknown"
+	if len(jobEvents) > 0 {
+		eventName := jobEvents[len(jobEvents)-1].EventName
+		state = string(eventName)
 	}
 
-	if err := jm.buildTestStatus(jobID, currentJob.Tests, &jobStatus); err != nil {
+	jobStatus := job.Status{Name: currentJob.Name, StartTime: startTime, EndTime: endTime, State: state, JobReport: report}
+
+	// Fetch the ID of the last run that was started
+	runID, err := jm.jobRunner.GetCurrentRun(jobID)
+	if err != nil {
+		return &api.EventResponse{
+			JobID:     jobID,
+			Requestor: ev.Msg.Requestor(),
+			Err:       fmt.Errorf("could not determine the current run id being executed: %v", err),
+		}
+
+	}
+	runCoordinates := RunCoordinates{JobID: jobID, RunID: runID}
+	runStatus, err := jm.BuildRunStatus(runCoordinates, currentJob)
+	if err != nil {
 		return &api.EventResponse{
 			JobID:     jobID,
 			Requestor: ev.Msg.Requestor(),
 			Err:       fmt.Errorf("could not rebuild the status of the job: %v", err),
 		}
 	}
-
+	jobStatus.RunStatus = *runStatus
 	return &api.EventResponse{
 		JobID:     jobID,
 		Requestor: ev.Msg.Requestor(),

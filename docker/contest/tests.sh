@@ -75,4 +75,5 @@ for tag in integration integration_storage; do
     done
 done
 
+echo "Uploading coverage profile"
 [[ ! -z ${TRAVIS} ]] && bash <(curl -s https://codecov.io/bash) -c -F integration

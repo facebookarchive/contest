@@ -1,0 +1,12 @@
+{
+    "steps": [
+        {
+            "name": "slowecho",
+	        "label": "aslowecho",
+            "parameters": {
+                "sleep": ["3"],
+		"text": ["nel mezzo del cammin"] }
+        }
+    ]
+}
+

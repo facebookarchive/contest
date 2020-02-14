@@ -105,12 +105,12 @@ processing:
 				log.Infof("Waiting %v for target %s", sleep, t.Name)
 				select {
 				case <-cancel:
-					log.Debug("Returning because cancellation is requested")
+					log.Infof("Returning because cancellation is requested")
 					return
 				case <-pause:
-					log.Debug("Returning because pause is requested")
+					log.Infof("Returning because pause is requested")
 					return
-				case <-time.After(sleep * time.Second):
+				case <-time.After(sleep):
 				}
 				log.Infof("target %s: %s", t, params.GetOne("text"))
 				select {

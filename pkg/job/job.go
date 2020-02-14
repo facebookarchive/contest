@@ -48,12 +48,13 @@ type Job struct {
 	// A "run" is the execution of a sequence of tests. For example, setting
 	// Runs to 2 will execute all the tests defined in `Tests` once, and then
 	// will execute them again.
-	// TODO clarify further details of how Runs will work
 	Runs uint
+
 	// RunInterval is the interval between multiple runs, if more than one, or
 	// unlimited, are specified.
 	RunInterval time.Duration
-	Tests       []*test.Test
+
+	Tests []*test.Test
 	// RunReporterBundles and FinalReporterBundles wrap the reporter instances
 	// chosen for the Job and its associated parameters, which have already
 	// gone through validation

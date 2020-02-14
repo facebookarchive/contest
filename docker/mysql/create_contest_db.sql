@@ -8,7 +8,6 @@ CREATE TABLE test_events (
 	job_id BIGINT(20) NOT NULL,
 	test_name VARCHAR(32) NULL,
 	test_step_label VARCHAR(32) NULL,
-	test_step_index BIGINT(20) NULL,
 	event_name VARCHAR(32) NULL,
 	target_name VARCHAR(64) NULL,
 	target_id VARCHAR(64) NULL,

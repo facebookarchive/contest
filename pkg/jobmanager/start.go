@@ -85,16 +85,14 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 			}
 			_ = jm.emitEvent(jobID, eventToEmit)
 		}
-		if err == nil {
-			jobReport := job.JobReport{
-				JobID:        j.ID,
-				RunReports:   runReports,
-				FinalReports: finalReports,
-			}
-			err := jm.jobReportManager.Emit(&jobReport)
-			if err != nil {
-				log.Warningf("Could not emit job report: %v", err)
-			}
+		jobReport := job.JobReport{
+			JobID:        j.ID,
+			RunReports:   runReports,
+			FinalReports: finalReports,
+		}
+		err = jm.jobReportManager.Emit(&jobReport)
+		if err != nil {
+			log.Warningf("Could not emit job report: %v", err)
 		}
 	}()
 

@@ -11,7 +11,14 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/types"
 )
+
+// The hierarchy of status objects is the following
+// (jobID,)                                -> []RunStatus [within a job, there might be multiple runs]
+// (jobID, runID)                          -> []TestStatus [within a run, there might be multiple tests]
+// (jobID, runID, testName)                -> []TestStepStatus [within a test there might be multiple steps]
+// (jobID, runID, testName, testStepLabel) -> []TargetStatus [within a step, multiple targets have been tested]
 
 // TargetStatus bundles the input time and the output time of a target through a TestStep.
 type TargetStatus struct {
@@ -24,16 +31,23 @@ type TargetStatus struct {
 // TestStepStatus bundles together all the TargetStatus for a specific TestStep (represented via
 // its name and label)
 type TestStepStatus struct {
-	TestStepName  string
-	TestStepLabel string
-	Events        []testevent.Event
-	TargetStatus  []TargetStatus
+	TestStepName   string
+	TestStepLabel  string
+	Events         []testevent.Event
+	TargetStatuses []TargetStatus
 }
 
-// TestStatus bundles together all TestStepStatus for a specific Test
+// TestStatus bundles together all TestStepStatus for a specific Test within the run
 type TestStatus struct {
-	TestName       string
-	TestStepStatus []TestStepStatus
+	TestName         string
+	TestStepStatuses []TestStepStatus
+}
+
+// RunStatus bundles together all TestStatus for a specific run within the job
+type RunStatus struct {
+	RunID        types.RunID
+	StartTime    time.Time
+	TestStatuses []TestStatus
 }
 
 // Status contains information about a job's current status which is conveyed
@@ -53,8 +67,8 @@ type Status struct {
 	// `Finished` is false.
 	EndTime time.Time
 
-	// TestStatus represents a list of status objects for each test in the job
-	TestStatus []TestStatus
+	// RunStatuses represents the status of the current run of the job
+	RunStatus RunStatus
 
 	// Job report information
 	JobReport *JobReport
