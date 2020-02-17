@@ -75,7 +75,7 @@ func (suite *FrameworkEventsSuite) TestPersistFrameworkEvents() {
 	require.NoError(suite.T(), err)
 
 	eventQuery := &frameworkevent.Query{}
-	frameworkevent.QueryEventName("AFrameworkEvent")(eventQuery)
+	frameworkevent.QueryEventName("AFrameworkEvent").ApplyToQuery(eventQuery)
 }
 
 func (suite *FrameworkEventsSuite) TestRetrieveSingleFrameworkEvent() {
@@ -85,7 +85,7 @@ func (suite *FrameworkEventsSuite) TestRetrieveSingleFrameworkEvent() {
 	require.NoError(suite.T(), err)
 
 	eventQuery := &frameworkevent.Query{}
-	frameworkevent.QueryEventName("AFrameworkEvent")(eventQuery)
+	frameworkevent.QueryEventName("AFrameworkEvent").ApplyToQuery(eventQuery)
 	results, err := suite.storage.GetFrameworkEvent(eventQuery)
 
 	require.NoError(suite.T(), err)
@@ -96,7 +96,7 @@ func (suite *FrameworkEventsSuite) TestRetrieveSingleFrameworkEvent() {
 func (suite *FrameworkEventsSuite) TestRetrieveMultipleFrameworkEvents() {
 
 	eventQuery := &frameworkevent.Query{}
-	frameworkevent.QueryJobID(types.JobID(1))(eventQuery)
+	frameworkevent.QueryJobID(types.JobID(1)).ApplyToQuery(eventQuery)
 	results, err := suite.storage.GetFrameworkEvent(eventQuery)
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 0, len(results))
@@ -106,7 +106,7 @@ func (suite *FrameworkEventsSuite) TestRetrieveMultipleFrameworkEvents() {
 	require.NoError(suite.T(), err)
 
 	eventQuery = &frameworkevent.Query{}
-	frameworkevent.QueryJobID(types.JobID(1))(eventQuery)
+	frameworkevent.QueryJobID(types.JobID(1)).ApplyToQuery(eventQuery)
 	results, err = suite.storage.GetFrameworkEvent(eventQuery)
 
 	require.NoError(suite.T(), err)
@@ -126,7 +126,7 @@ func (suite *FrameworkEventsSuite) TestRetrieveSingleFrameworkEventByEmitTime() 
 	require.NoError(suite.T(), err)
 
 	eventQuery := &frameworkevent.Query{}
-	frameworkevent.QueryEmittedStartTime(emitTime)(eventQuery)
+	frameworkevent.QueryEmittedStartTime(emitTime).ApplyToQuery(eventQuery)
 	results, err := suite.storage.GetFrameworkEvent(eventQuery)
 
 	require.NoError(suite.T(), err)
@@ -134,7 +134,7 @@ func (suite *FrameworkEventsSuite) TestRetrieveSingleFrameworkEventByEmitTime() 
 	assertFrameworkEvents(suite.T(), results, emitTime)
 
 	eventQuery = &frameworkevent.Query{}
-	frameworkevent.QueryEmittedStartTime(emitTime.Add(-delta))(eventQuery)
+	frameworkevent.QueryEmittedStartTime(emitTime.Add(-delta)).ApplyToQuery(eventQuery)
 	results, err = suite.storage.GetFrameworkEvent(eventQuery)
 
 	require.NoError(suite.T(), err)
