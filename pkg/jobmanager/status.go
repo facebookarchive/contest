@@ -43,10 +43,8 @@ func (jm *JobManager) buildTargetStatus(jobID types.JobID, currentTestStepStatus
 
 	// Fetch all the events associated to Targets routing
 	routingEvents, err := jm.testEvManager.Fetch(
-		[]testevent.QueryField{
-			testevent.QueryJobID(jobID),
-			testevent.QueryEventNames(TargetRoutingEvents),
-		},
+		testevent.QueryJobID(jobID),
+		testevent.QueryEventNames(TargetRoutingEvents),
 	)
 	if err != nil {
 		return fmt.Errorf("could not fetch events associated to target routing: %v", err)
@@ -103,10 +101,8 @@ func (jm *JobManager) buildTestStepStatus(jobID types.JobID, currentTest *test.T
 	for _, testStepBundle := range currentTest.TestStepsBundles {
 		// Fetch all Events associated to this TestStep and render them as part of the
 		testEvents, err := jm.testEvManager.Fetch(
-			[]testevent.QueryField{
-				testevent.QueryJobID(jobID),
-				testevent.QueryTestStepLabel(testStepBundle.TestStepLabel),
-			},
+			testevent.QueryJobID(jobID),
+			testevent.QueryTestStepLabel(testStepBundle.TestStepLabel),
 		)
 		if err != nil {
 			return fmt.Errorf("could not fetch events associated to TestStep: %v", err)
@@ -177,10 +173,8 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 
 	// Fetch all the events associated to changes of state of the Job
 	jobEvents, err := jm.frameworkEvManager.Fetch(
-		[]frameworkevent.QueryField{
-			frameworkevent.QueryJobID(jobID),
-			frameworkevent.QueryEventNames(JobStateEvents),
-		},
+		frameworkevent.QueryJobID(jobID),
+		frameworkevent.QueryEventNames(JobStateEvents),
 	)
 	if err != nil {
 		return &api.EventResponse{

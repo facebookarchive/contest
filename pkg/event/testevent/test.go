@@ -111,7 +111,7 @@ type Emitter interface {
 
 // Fetcher defines the interface that fetcher objects must implement
 type Fetcher interface {
-	Fetch(fields []QueryField) ([]Event, error)
+	Fetch(fields ...QueryField) ([]Event, error)
 }
 
 // EmitterFetcher defines the interface that objects supporting emitting and fetching events must implement
