@@ -7,9 +7,11 @@ package testevent
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/event"
+	"github.com/facebookincubator/contest/pkg/event/internal/querytools"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
 )
@@ -51,57 +53,80 @@ type Query struct {
 	TestStepLabel string
 }
 
-// QueryField defines a function type used to set fields on a Query object
-type QueryField func(opts *Query)
+// QueryField defines a function type used to set a field's value on Query objects
+type QueryField interface {
+	queryFieldPointer(query *Query) interface{}
+}
+
+// QueryFields is a set of field values for a Query object
+type QueryFields []QueryField
+
+// BuildQuery compiles a Query from scratch using values of queryFields.
+// It does basically just creates an empty query an applies queryFields to it.
+func (queryFields QueryFields) BuildQuery() (*Query, error) {
+	query := &Query{}
+	for idx, queryField := range queryFields {
+		if err := querytools.ApplyQueryField(queryField.queryFieldPointer(query), queryField); err != nil {
+			return nil, fmt.Errorf("unable to apply field %d:%T(%v): %w", idx, queryField, queryField, err)
+		}
+	}
+	return query, nil
+}
+
+// BuildQuery compiles a Query from scratch using values of queryFields.
+// It does basically just creates an empty query an applies queryFields to it.
+func BuildQuery(queryFields ...QueryField) (*Query, error) {
+	return QueryFields(queryFields).BuildQuery()
+}
+
+type queryFieldJobID types.JobID
+type queryFieldEventNames []event.Name
+type queryFieldEmittedStartTime time.Time
+type queryFieldEmittedEndTime time.Time
+type queryFieldTestName string
+type queryFieldTestStepLabel string
 
 // QueryJobID sets the JobID field of the Query object
-func QueryJobID(jobID types.JobID) QueryField {
-	return func(eq *Query) {
-		eq.JobID = jobID
-	}
-}
+func QueryJobID(jobID types.JobID) QueryField                            { return queryFieldJobID(jobID) }
+func (value queryFieldJobID) queryFieldPointer(query *Query) interface{} { return &query.JobID }
 
 // QueryEventNames the EventNames field of the Query object
-func QueryEventNames(eventNames []event.Name) QueryField {
-	return func(eq *Query) {
-		eq.EventNames = eventNames
-	}
+func QueryEventNames(eventNames []event.Name) QueryField { return queryFieldEventNames(eventNames) }
+func (value queryFieldEventNames) queryFieldPointer(query *Query) interface{} {
+	return &query.EventNames
 }
 
-// QueryEventName sets a single EventName field in the Query object
-func QueryEventName(eventName event.Name) QueryField {
-	return func(eq *Query) {
-		eventNames := []event.Name{eventName}
-		eq.EventNames = eventNames
-	}
-}
+// QueryEventName sets a single EventName field in the Query objec
+func QueryEventName(eventName event.Name) QueryField { return queryFieldEventNames{eventName} }
 
 // QueryEmittedStartTime sets the EmittedStartTime field of the Query object
 func QueryEmittedStartTime(emittedStartTime time.Time) QueryField {
-	return func(eq *Query) {
-		eq.EmittedStartTime = emittedStartTime
-	}
+	return queryFieldEmittedStartTime(emittedStartTime)
+}
+func (value queryFieldEmittedStartTime) queryFieldPointer(query *Query) interface{} {
+	return &query.EmittedStartTime
 }
 
 // QueryEmittedEndTime sets the EmittedEndTime field of the Query object
-func QueryEmittedEndTime(emittedUntil time.Time) QueryField {
-	return func(eq *Query) {
-		eq.EmittedEndTime = emittedUntil
-	}
+func QueryEmittedEndTime(emittedEndTime time.Time) QueryField {
+	return queryFieldEmittedEndTime(emittedEndTime)
+}
+func (value queryFieldEmittedEndTime) queryFieldPointer(query *Query) interface{} {
+	return &query.EmittedEndTime
 }
 
 // QueryTestName sets the TestName field of the Query object
 func QueryTestName(testName string) QueryField {
-	return func(eq *Query) {
-		eq.TestName = testName
-	}
+	return queryFieldTestName(testName)
 }
+func (value queryFieldTestName) queryFieldPointer(query *Query) interface{} { return &query.TestName }
 
 // QueryTestStepLabel sets the TestStepLabel field of the Query object
 func QueryTestStepLabel(testStepLabel string) QueryField {
-	return func(eq *Query) {
-		eq.TestStepLabel = testStepLabel
-	}
+	return queryFieldTestStepLabel(testStepLabel)
+}
+func (value queryFieldTestStepLabel) queryFieldPointer(query *Query) interface{} {
+	return &query.TestStepLabel
 }
 
 // Emitter defines the interface that emitter objects must implement

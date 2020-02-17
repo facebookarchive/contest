@@ -18,3 +18,5 @@ type Query struct {
 	EmittedStartTime time.Time
 	EmittedEndTime   time.Time
 }
+
+type QueryField interface{}
