@@ -2,6 +2,7 @@
     "steps": [
         {
             "name": "sshcmd",
+            "label": "some label",
             "parameters": {
                 "user": ["your_username"],
                 "host": ["{{ .Name }}"],

@@ -482,6 +482,7 @@ Test steps are encoded encodes in JSON format. For example:
     "steps": [
         {
             "name": "cmd",
+            "label": "some label",
             "parameters": {
                 "executable": ["echo"],
                 "args": ["Hello, world!"]
@@ -538,6 +539,7 @@ section. For example, to print a target's name and ID with the `cmd` plugin:
     "steps": [
         {
             "name": "cmd",
+            "label": "some label",
             "parameters": {
                 "executable": ["echo"],
                 "args": ["Name is {{ .Name }} and ID is {{ .ID }}"]
@@ -570,6 +572,7 @@ plugin executes a command on the ConTest server, not on the targets.
 ...
     {
         "name": "cmd",
+        "label": "some label",
         "parameters: {
             "executable": ["echo"],
             "args": ["My name is {{ .Name }}"]
@@ -606,6 +609,7 @@ write:
 ...
     {
         "name": "cmd",
+        "label": "some label",
         "parameters: {
             "executable": ["echo"],
             "args": ["The first four letters of my name are {{ slice .Name 0 4 }}"]
@@ -622,6 +626,7 @@ capitalzing its letter, one can write:
 ...
     {
         "name": "cmd",
+        "label": "some label",
         "parameters: {
             "executable": ["echo"],
             "args": ["My capitalized name is {{ ToUpper .Name }}"]
@@ -649,6 +654,7 @@ remote host.
 ...
     {
         "name": "sshcmd",
+        "label": "some label...",
         "parameters: {
             "user": "contest",
             "host": "{{ jumphost .Name }}",

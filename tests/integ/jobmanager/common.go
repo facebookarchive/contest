@@ -31,7 +31,6 @@ import (
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/fail"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/noop"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/noreturn"
-
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -423,4 +422,25 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCancellationFailure() {
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
+}
+
+func (suite *TestJobManagerSuite) TestTestStepNoLabel() {
+	go func() {
+		suite.jm.Start(suite.sigs)
+		close(suite.jobManagerCh)
+	}()
+
+	_, err := suite.startJob(jobDescriptorNoLabel)
+	require.Error(suite.T(), err)
+	requireErrorType(suite.T(), err, pluginregistry.ErrStepLabelIsMandatory{})
+}
+
+func (suite *TestJobManagerSuite) TestTestStepLabelDuplication() {
+	go func() {
+		suite.jm.Start(suite.sigs)
+		close(suite.jobManagerCh)
+	}()
+
+	_, err := suite.startJob(jobDescriptorLabelDuplication)
+	require.Error(suite.T(), err)
 }

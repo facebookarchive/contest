@@ -22,6 +22,7 @@
                 "Steps": [
                     {
                         "name": "cmd",
+                        "label": "some label",
                         "parameters": {
                             "executable": ["echo"],
                             "args": ["Title={{ Title .Name }}, ToUpper={{ ToUpper .Name }}"]
