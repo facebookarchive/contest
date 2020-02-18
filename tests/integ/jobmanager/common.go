@@ -104,7 +104,7 @@ func pollForEvent(eventManager frameworkevent.EmitterFetcher, ev event.Name, job
 				frameworkevent.QueryJobID(jobID),
 				frameworkevent.QueryEventName(ev),
 			}
-			ev, err := eventManager.Fetch(queryFields)
+			ev, err := eventManager.Fetch(queryFields...)
 			if err != nil {
 				return nil, err
 			}
