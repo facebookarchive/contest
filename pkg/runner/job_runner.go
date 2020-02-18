@@ -17,7 +17,6 @@ import (
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
-	"github.com/facebookincubator/contest/plugins/targetlocker/inmemory"
 )
 
 var jobLog = logging.GetLogger("pkg/runner")
@@ -63,9 +62,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 	} else {
 		jobLog.Infof("Running job '%s' %d times", j.Name, j.Runs)
 	}
-	// TODO make this configurable
-	lockTimeout := 10 * time.Second
-	tl := inmemory.New(lockTimeout)
+	tl := target.GetLocker()
 	ev := storage.NewTestEventFetcher()
 	var (
 		allRunsReports [][]*job.Report
@@ -157,7 +154,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 						}
 					}
 				}
-			}(j, tl, targets, lockTimeout)
+			}(j, tl, targets, config.LockTimeout)
 
 			// Run the job
 			jobLog.Infof("Run #%d: running test #%d for job '%s' (job ID: %d) on %d targets", run+1, idx, j.Name, j.ID, len(targets))

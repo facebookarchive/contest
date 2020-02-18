@@ -6,8 +6,17 @@
 package target
 
 import (
+	"time"
+
 	"github.com/facebookincubator/contest/pkg/types"
 )
+
+// locker defines the locking engine used by ConTest.
+var locker Locker
+
+// LockerFactory is a type representing a function which builds
+// a Locker.
+type LockerFactory func(time.Duration) Locker
 
 // Locker defines an interface to lock and unlock targets. It is passed
 // to TargetManager's Acquire and Release methods, and the target manager
@@ -32,4 +41,14 @@ type Locker interface {
 	// CheckLocks returns whether all the targets are locked by the given job ID,
 	// an array of locked targets, and an array of not-locked targets.
 	CheckLocks(types.JobID, []*Target) (bool, []*Target, []*Target)
+}
+
+// SetLocker sets the desired lock engine for targets.
+func SetLocker(targetLocker Locker) {
+	locker = targetLocker
+}
+
+// GetLocker gets the desired lock engine for targets.
+func GetLocker() Locker {
+	return locker
 }

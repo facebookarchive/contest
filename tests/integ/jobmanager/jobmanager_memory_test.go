@@ -9,9 +9,13 @@ package test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/facebookincubator/contest/pkg/storage"
+	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/plugins/storage/memory"
+	"github.com/facebookincubator/contest/plugins/targetlocker/inmemory"
+
 	"github.com/stretchr/testify/suite"
 )
 
@@ -22,6 +26,9 @@ func TestJobManagerSuiteMemoryStorage(t *testing.T) {
 	storagelayer := memory.New()
 	testSuite.storage = storagelayer
 	storage.SetStorage(storagelayer)
+
+	targetLocker := inmemory.New(10 * time.Second)
+	target.SetLocker(targetLocker)
 
 	suite.Run(t, &testSuite)
 }
