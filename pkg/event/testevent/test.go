@@ -25,10 +25,9 @@ type Header struct {
 
 // Data models the data of a test event. It is populated by the TestStep
 type Data struct {
-	EventName     event.Name
-	TestStepIndex uint
-	Target        *target.Target
-	Payload       *json.RawMessage
+	EventName event.Name
+	Target    *target.Target
+	Payload   *json.RawMessage
 }
 
 // Event models an event object that can be emitted by a TestStep

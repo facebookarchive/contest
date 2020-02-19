@@ -2,6 +2,7 @@
     "steps": [
         {
             "name": "randecho",
+	    "label": "thefirstrandecho",
             "parameters": {
                 "text": ["some very random text"]
             }

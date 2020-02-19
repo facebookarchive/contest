@@ -6,11 +6,14 @@
 package runner
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/config"
+	"github.com/facebookincubator/contest/pkg/event"
+	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/storage"
@@ -28,6 +31,8 @@ type JobRunner struct {
 	targetMap map[types.JobID][]*target.Target
 	// targetLock protects the access to targetMap
 	targetLock *sync.RWMutex
+	// eventManager is used by the JobRunner to emit framework events
+	eventManager frameworkevent.EmitterFetcher
 }
 
 // GetTargets returns a list of acquired targets for JobID
@@ -72,6 +77,15 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 		if j.Runs != 0 && run == j.Runs {
 			break
 		}
+
+		// If we can't emit the run start event, we ignore the error. The framework will
+		// try to rebuild the status if it detects that an event might have gone missing
+		payload := runStartedPayload{RunID: types.RunID(run + 1)}
+		err := jr.emitEvent(j.ID, EventRunStarted, payload)
+		if err != nil {
+			jobLog.Warningf("Could not emit event run (run %d) start for job %d: %v", run+1, j.ID, err)
+		}
+
 		for idx, t := range j.Tests {
 			if j.IsCancelled() {
 				jobLog.Debugf("Cancellation requested, skipping test #%d of run #%d", idx, run+1)
@@ -253,10 +267,51 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 	return allRunsReports, finalReports, nil
 }
 
+// GetCurrentRun returns the run which is currently being executed
+func (jr *JobRunner) GetCurrentRun(jobID types.JobID) (types.RunID, error) {
+
+	var runID types.RunID
+
+	runEvents, err := jr.eventManager.Fetch(
+		frameworkevent.QueryJobID(jobID),
+		frameworkevent.QueryEventName(EventRunStarted),
+	)
+	if err != nil {
+		return runID, fmt.Errorf("could not fetch last run id for job %d: %v", jobID, err)
+	}
+
+	lastEvent := runEvents[len(runEvents)-1]
+	payload := runStartedPayload{}
+	if err := json.Unmarshal([]byte(*lastEvent.Payload), &payload); err != nil {
+		return runID, fmt.Errorf("could not fetch last run id for job %d: %v", jobID, err)
+	}
+	return payload.RunID, nil
+
+}
+
+func (jr *JobRunner) emitEvent(jobID types.JobID, eventName event.Name, payload interface{}) error {
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		jobLog.Warningf("could not encode payload for event %s: %v", eventName, err)
+		return err
+	}
+
+	rawPayload := json.RawMessage(payloadJSON)
+	ev := frameworkevent.Event{JobID: jobID, EventName: eventName, Payload: &rawPayload, EmitTime: time.Now()}
+	if err := jr.eventManager.Emit(ev); err != nil {
+		jobLog.Warningf("could not emit event %s: %v", eventName, err)
+		return err
+	}
+	return nil
+}
+
+// Runner not relevant
+
 // NewJobRunner returns a new JobRunner, which holds an empty registry of jobs
 func NewJobRunner() *JobRunner {
 	jr := JobRunner{}
 	jr.targetMap = make(map[types.JobID][]*target.Target)
 	jr.targetLock = &sync.RWMutex{}
+	jr.eventManager = storage.NewFrameworkEventEmitterFetcher()
 	return &jr
 }
