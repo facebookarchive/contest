@@ -19,6 +19,7 @@ import (
 // by the TestStep
 type Header struct {
 	JobID         types.JobID
+	RunID         types.RunID
 	TestName      string
 	TestStepLabel string
 }
@@ -46,6 +47,7 @@ func New(header *Header, data *Data) Event {
 // test events, on top of the common EventQuery fields
 type Query struct {
 	event.Query
+	RunID         types.RunID
 	TestName      string
 	TestStepLabel string
 }
@@ -100,6 +102,13 @@ func QueryTestName(testName string) QueryField {
 func QueryTestStepLabel(testStepLabel string) QueryField {
 	return func(eq *Query) {
 		eq.TestStepLabel = testStepLabel
+	}
+}
+
+// QueryRunID sets the RunID field of the Query object
+func QueryRunID(runID types.RunID) QueryField {
+	return func(eq *Query) {
+		eq.RunID = runID
 	}
 }
 
