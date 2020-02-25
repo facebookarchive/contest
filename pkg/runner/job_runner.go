@@ -173,7 +173,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			// Run the job
 			jobLog.Infof("Run #%d: running test #%d for job '%s' (job ID: %d) on %d targets", run+1, idx, j.Name, j.ID, len(targets))
 			runner := NewTestRunner()
-			testResult, runErr := runner.Run(j.CancelCh, j.PauseCh, t, targets, j.ID)
+			testResult, runErr := runner.Run(j.CancelCh, j.PauseCh, t, targets, j.ID, types.RunID(run+1))
 			if testResult != nil {
 				testResults = append(testResults, testResult)
 			}

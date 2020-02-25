@@ -6,11 +6,15 @@
 CREATE TABLE test_events (
 	event_id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
 	job_id BIGINT(20) NOT NULL,
+	run_id BIGINT(20) NOT NULL,
+	-- Test related information
 	test_name VARCHAR(32) NULL,
 	test_step_label VARCHAR(32) NULL,
 	event_name VARCHAR(32) NULL,
+	-- Target related information
 	target_name VARCHAR(64) NULL,
 	target_id VARCHAR(64) NULL,
+	-- Additional metadata
 	payload TEXT NULL,
 	emit_time TIMESTAMP NOT NULL,
 	PRIMARY KEY (event_id)
@@ -26,22 +30,20 @@ CREATE TABLE framework_events (
 );
 
 CREATE TABLE run_reports (
-	report_id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
 	job_id BIGINT(20) NOT NULL,
-	run_number BIGINT(20) NOT NULL,
+	run_id BIGINT(20) NOT NULL,
 	success TINYINT(1) NULL,
 	report_time TIMESTAMP NOT NULL,
 	data TEXT NOT NULL,
-	PRIMARY KEY (report_id)
+	PRIMARY KEY (job_id, run_id)
 );
 
 CREATE TABLE final_reports (
-	report_id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
 	job_id BIGINT(20) NOT NULL,
 	success TINYINT(1) NULL,
 	report_time TIMESTAMP NOT NULL,
 	data TEXT NOT NULL,
-	PRIMARY KEY (report_id)
+	PRIMARY KEY (job_id)
 );
 
 CREATE TABLE jobs (

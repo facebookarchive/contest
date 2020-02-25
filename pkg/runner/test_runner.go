@@ -571,7 +571,7 @@ func (tr *TestRunner) WaitPipelineCompletion(terminate <-chan struct{}, ch compl
 
 // Run implements the main logic of the TestRunner, i.e. the instantiation and
 // connection of the TestSteps, routing blocks and pipeline runner.
-func (tr *TestRunner) Run(cancel, pause <-chan struct{}, t *test.Test, targets []*target.Target, jobID types.JobID) (*test.TestResult, error) {
+func (tr *TestRunner) Run(cancel, pause <-chan struct{}, t *test.Test, targets []*target.Target, jobID types.JobID, runID types.RunID) (*test.TestResult, error) {
 	testStepBundles := t.TestStepsBundles
 	if len(testStepBundles) == 0 {
 		return nil, fmt.Errorf("no steps to run for test")
@@ -636,6 +636,7 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, t *test.Test, targets [
 		// Build the Header that the the TestStep will be using for emitting events
 		Header := testevent.Header{
 			JobID:         jobID,
+			RunID:         runID,
 			TestName:      t.Name,
 			TestStepLabel: testStepBundle.TestStepLabel,
 		}
