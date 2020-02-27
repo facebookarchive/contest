@@ -11,7 +11,6 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/job"
-	"github.com/facebookincubator/contest/pkg/test"
 )
 
 // Name defines the name of the reporter used within the plugin registry
@@ -33,16 +32,16 @@ func (n *Noop) ValidateFinalParameters(params []byte) (interface{}, error) {
 }
 
 // RunReport calculates the report to be associated with a job run.
-func (n *Noop) RunReport(cancel <-chan struct{}, parameters interface{}, runNumber uint, result *test.TestResult, ev testevent.Fetcher) (*job.Report, error) {
+func (n *Noop) RunReport(cancel <-chan struct{}, parameters interface{}, testStatus *job.TestStatus, ev testevent.Fetcher) (*job.Report, error) {
 	return &job.Report{
 		Success:    true,
 		ReportTime: time.Now(),
-		Data:       fmt.Sprintf("I did nothing on run #%d, all good", runNumber),
+		Data:       fmt.Sprintf("I did nothing"),
 	}, nil
 }
 
 // FinalReport calculates the final report to be associated to a job.
-func (n *Noop) FinalReport(cancel <-chan struct{}, parameters interface{}, results []*test.TestResult, ev testevent.Fetcher) (*job.Report, error) {
+func (n *Noop) FinalReport(cancel <-chan struct{}, parameters interface{}, runStatuses []job.RunStatus, ev testevent.Fetcher) (*job.Report, error) {
 	return &job.Report{
 		Success:    true,
 		ReportTime: time.Now(),

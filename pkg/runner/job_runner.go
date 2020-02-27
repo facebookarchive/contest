@@ -14,11 +14,11 @@ import (
 	"github.com/facebookincubator/contest/pkg/config"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
+	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
-	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
@@ -31,8 +31,10 @@ type JobRunner struct {
 	targetMap map[types.JobID][]*target.Target
 	// targetLock protects the access to targetMap
 	targetLock *sync.RWMutex
-	// eventManager is used by the JobRunner to emit framework events
-	eventManager frameworkevent.EmitterFetcher
+	// frameworkEventManager is used by the JobRunner to emit framework events
+	frameworkEventManager frameworkevent.EmitterFetcher
+	// testEvManager is used by the JobRunner to emit test events
+	testEvManager testevent.Fetcher
 }
 
 // GetTargets returns a list of acquired targets for JobID
@@ -56,10 +58,8 @@ func (jr *JobRunner) GetTargets(jobID types.JobID) []*target.Target {
 // * error:          an error, if any
 func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 	var (
-		err                    error
 		runReport, finalReport *job.Report
 		run                    uint
-		testResults            []*test.TestResult
 	)
 
 	if j.Runs == 0 {
@@ -69,9 +69,11 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 	}
 	tl := target.GetLocker()
 	ev := storage.NewTestEventFetcher()
+
 	var (
 		allRunsReports [][]*job.Report
 		thisRunReports []*job.Report
+		runErr         error
 	)
 	for {
 		if j.Runs != 0 && run == j.Runs {
@@ -170,13 +172,16 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				}
 			}(j, tl, targets, config.LockTimeout)
 
-			// Run the job
-			jobLog.Infof("Run #%d: running test #%d for job '%s' (job ID: %d) on %d targets", run+1, idx, j.Name, j.ID, len(targets))
-			runner := NewTestRunner()
-			testResult, runErr := runner.Run(j.CancelCh, j.PauseCh, t, targets, j.ID, types.RunID(run+1))
-			if testResult != nil {
-				testResults = append(testResults, testResult)
+			// Emit events tracking targets acquisition
+			header := testevent.Header{JobID: j.ID, RunID: types.RunID(run + 1), TestName: t.Name}
+			testEvenEmitter := storage.NewTestEventEmitter(header)
+
+			if runErr = jr.emitAcquiredTargets(testEvenEmitter, targets); runErr == nil {
+				jobLog.Infof("Run #%d: running test #%d for job '%s' (job ID: %d) on %d targets", run+1, idx, j.Name, j.ID, len(targets))
+				testRunner := NewTestRunner()
+				runErr = testRunner.Run(j.CancelCh, j.PauseCh, t, targets, j.ID, types.RunID(run+1))
 			}
+
 			// Job is done, release all the targets
 			go func() {
 				// the Release semantic is synchronous, so that the implementation
@@ -208,13 +213,19 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			if runErr != nil {
 				return nil, nil, runErr
 			}
-			if len(testResults) == 0 {
-				jobLog.Warningf("Skipping reporting phase because test did not produce any result")
-				return nil, nil, fmt.Errorf("Report skipped because test did not produce any result")
-			}
+
 			thisRunReports = make([]*job.Report, 0)
 			for _, bundle := range j.RunReporterBundles {
-				runReport, err = bundle.Reporter.RunReport(j.CancelCh, bundle.Parameters, run+1, testResult, ev)
+				testCoordinates := job.TestCoordinates{
+					RunCoordinates: job.RunCoordinates{JobID: j.ID, RunID: types.RunID(run + 1)},
+					TestName:       t.Name,
+				}
+				testStatus, err := jr.buildTestStatus(testCoordinates, j)
+				if err != nil {
+					jobLog.Warningf("could not build test status: %v. Run report will not execute", err)
+					continue
+				}
+				runReport, err = bundle.Reporter.RunReport(j.CancelCh, bundle.Parameters, testStatus, ev)
 				if err != nil {
 					jobLog.Warningf("Run reporter failed while calculating test results, proceeding anyway: %v", err)
 				} else {
@@ -224,6 +235,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 						jobLog.Errorf("Run #%d of job %d considered failed", run+1, j.ID)
 					}
 				}
+
 				// TODO run report must be sent to the storage layer as soon as it's
 				//      ready, not at the end of the runs. This requires a change in
 				//      how we store and expose reports, because this will require
@@ -251,7 +263,16 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 	}
 	var finalReports []*job.Report
 	for _, bundle := range j.FinalReporterBundles {
-		finalReport, err = bundle.Reporter.FinalReport(j.CancelCh, bundle.Parameters, testResults, ev)
+
+		// Build a RunStatus object for each run that we executed. We need to check if we interrupted
+		// execution early and we did not perform all runs
+		runStatuses, err := jr.BuildRunStatuses(j)
+		if err != nil {
+			jobLog.Warningf("could not calculate run statuses: %v. Run report will not execute", err)
+			continue
+		}
+
+		finalReport, err = bundle.Reporter.FinalReport(j.CancelCh, bundle.Parameters, runStatuses, ev)
 		if err != nil {
 			jobLog.Warningf("Final reporter failed while calculating test results, proceeding anyway: %v", err)
 		} else {
@@ -267,12 +288,25 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 	return allRunsReports, finalReports, nil
 }
 
+// emitAcquiredTargets emits test events to keep track of Target acquisition
+func (jr *JobRunner) emitAcquiredTargets(emitter testevent.Emitter, targets []*target.Target) error {
+	// The events hold a serialization of the Target in the payload
+	for _, t := range targets {
+		data := testevent.Data{EventName: target.EventTargetAcquired, Target: t}
+		if err := emitter.Emit(data); err != nil {
+			jobLog.Warningf("could not emit event %s: %v", target.EventTargetAcquired, err)
+			return err
+		}
+	}
+	return nil
+}
+
 // GetCurrentRun returns the run which is currently being executed
 func (jr *JobRunner) GetCurrentRun(jobID types.JobID) (types.RunID, error) {
 
 	var runID types.RunID
 
-	runEvents, err := jr.eventManager.Fetch(
+	runEvents, err := jr.frameworkEventManager.Fetch(
 		frameworkevent.QueryJobID(jobID),
 		frameworkevent.QueryEventName(EventRunStarted),
 	)
@@ -298,20 +332,19 @@ func (jr *JobRunner) emitEvent(jobID types.JobID, eventName event.Name, payload 
 
 	rawPayload := json.RawMessage(payloadJSON)
 	ev := frameworkevent.Event{JobID: jobID, EventName: eventName, Payload: &rawPayload, EmitTime: time.Now()}
-	if err := jr.eventManager.Emit(ev); err != nil {
+	if err := jr.frameworkEventManager.Emit(ev); err != nil {
 		jobLog.Warningf("could not emit event %s: %v", eventName, err)
 		return err
 	}
 	return nil
 }
 
-// Runner not relevant
-
 // NewJobRunner returns a new JobRunner, which holds an empty registry of jobs
 func NewJobRunner() *JobRunner {
 	jr := JobRunner{}
 	jr.targetMap = make(map[types.JobID][]*target.Target)
 	jr.targetLock = &sync.RWMutex{}
-	jr.eventManager = storage.NewFrameworkEventEmitterFetcher()
+	jr.frameworkEventManager = storage.NewFrameworkEventEmitterFetcher()
+	jr.testEvManager = storage.NewTestEventFetcher()
 	return &jr
 }

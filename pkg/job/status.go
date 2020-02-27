@@ -6,7 +6,6 @@
 package job
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/event/testevent"
@@ -18,34 +17,54 @@ import (
 // (jobID,)                                -> []RunStatus [within a job, there might be multiple runs]
 // (jobID, runID)                          -> []TestStatus [within a run, there might be multiple tests]
 // (jobID, runID, testName)                -> []TestStepStatus [within a test there might be multiple steps]
-// (jobID, runID, testName, testStepLabel) -> []TargetStatus [within a step, multiple targets have been tested]
+// (jobID, runID, testName, testStepLabel) -> []TargetStepStatus [within a step, multiple targets have been tested]
 
-// TargetStatus bundles the input time and the output time of a target through a TestStep.
+// RunCoordinates collects information to identify the run for which we want to rebuild the status
+type RunCoordinates struct {
+	JobID types.JobID
+	RunID types.RunID
+}
+
+// TestCoordinates collects information to identify the test for which we want to rebuild the status
+type TestCoordinates struct {
+	RunCoordinates
+	TestName string
+}
+
+// TestStepCoordinates collects information to identify the test step for which we want to rebuild the status
+type TestStepCoordinates struct {
+	TestCoordinates
+	TestStepName  string
+	TestStepLabel string
+}
+
+// TargetStatus represents the status of a Target within a TestStep
 type TargetStatus struct {
+	TestStepCoordinates
 	Target  *target.Target
 	InTime  time.Time
 	OutTime time.Time
-	Error   *json.RawMessage
+	Error   string
 }
 
 // TestStepStatus bundles together all the TargetStatus for a specific TestStep (represented via
 // its name and label)
 type TestStepStatus struct {
-	TestStepName   string
-	TestStepLabel  string
+	TestStepCoordinates
 	Events         []testevent.Event
 	TargetStatuses []TargetStatus
 }
 
 // TestStatus bundles together all TestStepStatus for a specific Test within the run
 type TestStatus struct {
-	TestName         string
+	TestCoordinates
 	TestStepStatuses []TestStepStatus
+	TargetStatuses   []TargetStatus
 }
 
 // RunStatus bundles together all TestStatus for a specific run within the job
 type RunStatus struct {
-	RunID        types.RunID
+	RunCoordinates
 	StartTime    time.Time
 	TestStatuses []TestStatus
 }
