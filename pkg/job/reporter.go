@@ -7,7 +7,6 @@ package job
 
 import (
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/test"
 )
 
 // ReporterFactory is a type representing a function which builds a Reporter object
@@ -22,8 +21,10 @@ type ReporterLoader func() (string, ReporterFactory)
 type Reporter interface {
 	ValidateRunParameters([]byte) (interface{}, error)
 	ValidateFinalParameters([]byte) (interface{}, error)
-	RunReport(cancel <-chan struct{}, parameters interface{}, runNumber uint, results *test.TestResult, ev testevent.Fetcher) (*Report, error)
-	FinalReport(cancel <-chan struct{}, parameters interface{}, results []*test.TestResult, ev testevent.Fetcher) (*Report, error)
+
+	// TODO: RunReport it's actually a TestReport and needs to be renamed accordingly
+	RunReport(cancel <-chan struct{}, parameters interface{}, testStatus *TestStatus, ev testevent.Fetcher) (*Report, error)
+	FinalReport(cancel <-chan struct{}, parameters interface{}, runStatuses []RunStatus, ev testevent.Fetcher) (*Report, error)
 }
 
 // ReporterBundle bundles the selected Reporter together with its parameters

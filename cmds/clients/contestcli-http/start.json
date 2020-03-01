@@ -1,6 +1,6 @@
 {
     "JobName": "test job",
-    "Runs": 3,
+    "Runs": 1,
     "RunInterval": "5s",
     "Tags": ["test", "csv"],
     "TestDescriptors": [
@@ -19,24 +19,6 @@
             "TestFetcherFetchParameters": {
                 "TestName": "RackSwitchProvisioning",
                 "URI": "test_samples/randecho.json"
-            }
-        },
-
-        {
-            "TargetManagerName": "CSVFileTargetManager",
-            "TargetManagerAcquireParameters": {
-                "FileURI": "hosts02.csv",
-                "MinNumberDevices": 2,
-                "MaxNumberDevices": 4,
-                "HostPrefixes": [
-                ]
-            },
-            "TargetManagerReleaseParameters": {
-            },
-            "TestFetcherName": "URI",
-            "TestFetcherFetchParameters": {
-                "TestName": "CyborgProvisioning",
-                "URI": "test_samples/slowecho.json"
             }
         }
     ],

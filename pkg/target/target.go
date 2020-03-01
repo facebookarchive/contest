@@ -23,6 +23,14 @@ var EventTargetOut = event.Name("TargetOut")
 // EventTargetErr indicates that a target has encountered an error in a TestStep
 var EventTargetErr = event.Name("TargetErr")
 
+// EventTargetAcquired indicates that a target has been acquired for a Test
+var EventTargetAcquired = event.Name("TargetAcquired")
+
+// ErrPayload represents the payload associated with a TargetErr event
+type ErrPayload struct {
+	Error string
+}
+
 // Target represents a target to run tests on
 type Target struct {
 	Name string

@@ -31,6 +31,11 @@ var log = logging.GetLogger("pkg/jobmanager")
 
 var cancellationTimeout = 60 * time.Second
 
+// errorPayload represents the payload carried by a failure event (e.g. JobStateFailed, JobStateCancelled, etc.)
+type errorPayload struct {
+	Err string
+}
+
 // JobManager is the core component for the long-running job management service.
 // It handles API requests, test fetching, target fetching, and jobs lifecycle.
 //
@@ -316,7 +321,7 @@ func (jm *JobManager) CancelJob(jobID types.JobID) error {
 // CancelAll sends a cancellation request to the API listener and to every running
 // job.
 func (jm *JobManager) CancelAll() {
-	// TODO This doesn't see the right thing to do, if the listener fails we should
+	// TODO This doesn't seem the right thing to do, if the listener fails we should
 	// pause, not cancel.
 	log.Info("JobManager: cancelling all jobs")
 	close(jm.apiCancel)
