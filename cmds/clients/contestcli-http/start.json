@@ -1,6 +1,6 @@
 {
     "JobName": "test job",
-    "Runs": 1,
+    "Runs": 3,
     "RunInterval": "5s",
     "Tags": ["test", "csv"],
     "TestDescriptors": [
@@ -20,6 +20,23 @@
                 "TestName": "RackSwitchProvisioning",
                 "URI": "test_samples/randecho.json"
             }
+        },
+        {
+            "TargetManagerName": "CSVFileTargetManager",
+            "TargetManagerAcquireParameters": {
+                "FileURI": "hosts02.csv",
+                "MinNumberDevices": 2,
+                "MaxNumberDevices": 4,
+                "HostPrefixes": [
+                ]
+            },
+            "TargetManagerReleaseParameters": {
+            },
+            "TestFetcherName": "URI",
+            "TestFetcherFetchParameters": {
+                "TestName": "RackProvisioning",
+                "URI": "test_samples/randecho.json"
+            }
         }
     ],
     "Reporting": {
@@ -29,6 +46,9 @@
                 "Parameters": {
                     "SuccessExpression": ">80%"
                 }
+            },
+            {
+                "Name": "Noop"
             }
         ]
    }

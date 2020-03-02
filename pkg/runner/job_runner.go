@@ -57,10 +57,7 @@ func (jr *JobRunner) GetTargets(jobID types.JobID) []*target.Target {
 // * []job.Report:   all the final reports
 // * error:          an error, if any
 func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
-	var (
-		runReport, finalReport *job.Report
-		run                    uint
-	)
+	var run uint
 
 	if j.Runs == 0 {
 		jobLog.Infof("Running job '%s' (id %v) indefinitely", j.Name, j.ID)
@@ -71,10 +68,12 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 	ev := storage.NewTestEventFetcher()
 
 	var (
-		allRunsReports [][]*job.Report
-		thisRunReports []*job.Report
-		runErr         error
+		runReports      []*job.Report
+		allRunReports   [][]*job.Report
+		allFinalReports []*job.Report
+		runErr          error
 	)
+
 	for {
 		if j.Runs != 0 && run == j.Runs {
 			break
@@ -207,43 +206,45 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				return nil, nil, nil
 			}
 			// return the Run error only after releasing the targets, and only
-			// if we are not running indefinitely.
-			// TODO do the next runs even if one fails. We are interested in the
-			// signal from all of them. Or not? Should this go behind a flag?
+			// if we are not running indefinitely. An error returned by the TestRunner
+			// is considered a fatal condition and will cause the termination of the
+			// whole job.
 			if runErr != nil {
 				return nil, nil, runErr
 			}
-
-			thisRunReports = make([]*job.Report, 0)
-			for _, bundle := range j.RunReporterBundles {
-				testCoordinates := job.TestCoordinates{
-					RunCoordinates: job.RunCoordinates{JobID: j.ID, RunID: types.RunID(run + 1)},
-					TestName:       t.Name,
-				}
-				testStatus, err := jr.buildTestStatus(testCoordinates, j)
-				if err != nil {
-					jobLog.Warningf("could not build test status: %v. Run report will not execute", err)
-					continue
-				}
-				runReport, err = bundle.Reporter.RunReport(j.CancelCh, bundle.Parameters, testStatus, ev)
-				if err != nil {
-					jobLog.Warningf("Run reporter failed while calculating test results, proceeding anyway: %v", err)
-				} else {
-					if runReport.Success {
-						jobLog.Printf("Run #%d of job %d considered successful", run+1, j.ID)
-					} else {
-						jobLog.Errorf("Run #%d of job %d considered failed", run+1, j.ID)
-					}
-				}
-
-				// TODO run report must be sent to the storage layer as soon as it's
-				//      ready, not at the end of the runs. This requires a change in
-				//      how we store and expose reports, because this will require
-				//      one DB entry per run report rather than one for all of them.
-				thisRunReports = append(thisRunReports, runReport)
-			}
 		}
-		allRunsReports = append(allRunsReports, thisRunReports)
+
+		// Calculate results for this run via the registered run reporters reporters
+		runCoordinates := job.RunCoordinates{JobID: j.ID, RunID: types.RunID(run + 1)}
+
+		runReports = make([]*job.Report, 0, len(j.RunReporterBundles))
+		for _, bundle := range j.RunReporterBundles {
+			runStatus, err := jr.BuildRunStatus(runCoordinates, j)
+			if err != nil {
+				jobLog.Warningf("could not build run status for job %d: %v. Run report will not execute", j.ID, err)
+				continue
+			}
+			success, data, err := bundle.Reporter.RunReport(j.CancelCh, bundle.Parameters, runStatus, ev)
+			if err != nil {
+				jobLog.Warningf("Run reporter failed while calculating run results, proceeding anyway: %v", err)
+			} else {
+				if success {
+					jobLog.Printf("Run #%d of job %d considered successful according to %s", run+1, j.ID, bundle.Reporter.Name())
+				} else {
+					jobLog.Errorf("Run #%d of job %d considered failed according to %s", run+1, j.ID, bundle.Reporter.Name())
+				}
+			}
+
+			// TODO run report must be sent to the storage layer as soon as it's
+			//      ready, not at the end of the job. This requires a change in
+			//      how we store and expose reports, because this will require
+			//      one DB entry per run report rather than one for all of them.
+			r := job.Report{Success: success, Data: data, ReporterName: bundle.Reporter.Name(), ReportTime: time.Now()}
+			runReports = append(runReports, &r)
+
+		}
+		allRunReports = append(allRunReports, runReports)
+
 		if j.IsCancelled() {
 			jobLog.Debugf("Cancellation requested, skipping run #%d", run+1)
 			break
@@ -261,9 +262,8 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 	if j.IsCancelled() {
 		return nil, nil, nil
 	}
-	var finalReports []*job.Report
-	for _, bundle := range j.FinalReporterBundles {
 
+	for _, bundle := range j.FinalReporterBundles {
 		// Build a RunStatus object for each run that we executed. We need to check if we interrupted
 		// execution early and we did not perform all runs
 		runStatuses, err := jr.BuildRunStatuses(j)
@@ -272,20 +272,21 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			continue
 		}
 
-		finalReport, err = bundle.Reporter.FinalReport(j.CancelCh, bundle.Parameters, runStatuses, ev)
+		success, data, err := bundle.Reporter.FinalReport(j.CancelCh, bundle.Parameters, runStatuses, ev)
 		if err != nil {
 			jobLog.Warningf("Final reporter failed while calculating test results, proceeding anyway: %v", err)
 		} else {
-			if finalReport.Success {
+			if success {
 				jobLog.Printf("Job %d (%d runs out of %d desired) considered successful", j.ID, run, j.Runs)
 			} else {
 				jobLog.Errorf("Job %d (%d runs out of %d desired) considered failed", j.ID, run, j.Runs)
 			}
 		}
-		finalReports = append(finalReports, finalReport)
+		r := job.Report{Success: success, ReporterName: bundle.Reporter.Name(), ReportTime: time.Now(), Data: data}
+		allFinalReports = append(allFinalReports, &r)
 	}
 
-	return allRunsReports, finalReports, nil
+	return allRunReports, allFinalReports, nil
 }
 
 // emitAcquiredTargets emits test events to keep track of Target acquisition

@@ -8,7 +8,6 @@ package targetsuccess
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/job"
@@ -67,54 +66,66 @@ func (ts *TargetSuccessReporter) ValidateFinalParameters(params []byte) (interfa
 	return fp, nil
 }
 
-// RunReport calculates the report to be associated with a job run.
-func (ts *TargetSuccessReporter) RunReport(cancel <-chan struct{}, parameters interface{}, testStatus *job.TestStatus, ev testevent.Fetcher) (*job.Report, error) {
+// Name returns the Name of the reporter
+func (ts *TargetSuccessReporter) Name() string {
+	return Name
+}
 
-	var success, fail uint64
+// RunReport calculates the report to be associated with a job run.
+func (ts *TargetSuccessReporter) RunReport(cancel <-chan struct{}, parameters interface{}, runStatus *job.RunStatus, ev testevent.Fetcher) (bool, interface{}, error) {
+
+	var (
+		success, fail uint64
+		testReports   []string
+	)
+
+	runSuccess := true
 
 	reportParameters, ok := parameters.(RunParameters)
 	if !ok {
-		return nil, fmt.Errorf("report parameters should be of type TargetSuccessParameters")
+		return false, nil, fmt.Errorf("report parameters should be of type TargetSuccessParameters")
 	}
 
-	for _, t := range testStatus.TargetStatuses {
-		if t.Error != "" {
-			fail++
+	// Flag the run as successful only if all Tests within the Run where successful
+	for _, t := range runStatus.TestStatuses {
+		fail = 0
+		success = 0
+
+		for _, t := range t.TargetStatuses {
+			if t.Error != "" {
+				fail++
+			} else {
+				success++
+			}
+
+		}
+
+		if success+fail == 0 {
+			return false, nil, fmt.Errorf("overall count of success and failures is zero for test %s", t.TestCoordinates.TestName)
+		}
+		cmpExpr, err := comparison.ParseExpression(reportParameters.SuccessExpression)
+		if err != nil {
+			return false, nil, fmt.Errorf("error while calculating run report for test %s: %v", t.TestCoordinates.TestName, err)
+		}
+		res, err := cmpExpr.EvaluateSuccess(success, success+fail)
+		if err != nil {
+			return false, nil, fmt.Errorf("error while calculating run report for test %s: %v", t.TestCoordinates.TestName, err)
+		}
+
+		if !res.Pass {
+			testReports = append(testReports, fmt.Sprintf("Test %s does not pass success criteria: %s", t.TestCoordinates.TestName, res.Expr))
+			runSuccess = false
 		} else {
-			success++
+			testReports = append(testReports, fmt.Sprintf("Test %s passes success criteria: %s", t.TestCoordinates.TestName, res.Expr))
 		}
 	}
 
-	if success+fail == 0 {
-		return nil, fmt.Errorf("overall count of success and failures is zero")
-	}
-
-	cmpExpr, err := comparison.ParseExpression(reportParameters.SuccessExpression)
-	if err != nil {
-		return nil, fmt.Errorf("error while calculating run report: %v", err)
-	}
-	res, err := cmpExpr.EvaluateSuccess(success, success+fail)
-	if err != nil {
-		return nil, fmt.Errorf("error while calculating run report: %v", err)
-	}
-
-	reportData := TargetSuccessReport{
-		DesiredSuccess: fmt.Sprintf("%s%s", res.Op, res.RHS),
-	}
-	if !res.Pass {
-		reportData.Message = fmt.Sprintf("Test does not pass success criteria: %s", res.Expr)
-		reportData.AchievedSuccess = res.LHS
-		return &job.Report{Success: false, ReportTime: time.Now(), Data: reportData}, nil
-	}
-
-	reportData.Message = fmt.Sprintf("All tests pass success criteria: %s", res.Expr)
-	reportData.AchievedSuccess = res.LHS
-	return &job.Report{Success: true, ReportTime: time.Now(), Data: reportData}, nil
+	return runSuccess, testReports, nil
 }
 
 // FinalReport calculates the final report to be associated to a job.
-func (ts *TargetSuccessReporter) FinalReport(cancel <-chan struct{}, parameters interface{}, runStatuses []job.RunStatus, ev testevent.Fetcher) (*job.Report, error) {
-	return nil, fmt.Errorf("final reporting not implemented yet in %s", Name)
+func (ts *TargetSuccessReporter) FinalReport(cancel <-chan struct{}, parameters interface{}, runStatuses []job.RunStatus, ev testevent.Fetcher) (bool, interface{}, error) {
+	return false, nil, fmt.Errorf("final reporting not implemented yet in %s", Name)
 }
 
 // New builds a new TargetSuccessReporter
