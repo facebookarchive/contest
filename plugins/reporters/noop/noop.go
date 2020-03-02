@@ -31,18 +31,19 @@ func (n *Noop) ValidateFinalParameters(params []byte) (interface{}, error) {
 	return s, nil
 }
 
+// Name returns the Name of the reporter
+func (n *Noop) Name() string {
+	return Name
+}
+
 // RunReport calculates the report to be associated with a job run.
-func (n *Noop) RunReport(cancel <-chan struct{}, parameters interface{}, testStatus *job.TestStatus, ev testevent.Fetcher) (*job.Report, error) {
-	return &job.Report{
-		Success:    true,
-		ReportTime: time.Now(),
-		Data:       fmt.Sprintf("I did nothing"),
-	}, nil
+func (n *Noop) RunReport(cancel <-chan struct{}, parameters interface{}, runStatus *job.RunStatus, ev testevent.Fetcher) (bool, interface{}, error) {
+	return true, fmt.Sprintf("I did nothing"), nil
 }
 
 // FinalReport calculates the final report to be associated to a job.
-func (n *Noop) FinalReport(cancel <-chan struct{}, parameters interface{}, runStatuses []job.RunStatus, ev testevent.Fetcher) (*job.Report, error) {
-	return &job.Report{
+func (n *Noop) FinalReport(cancel <-chan struct{}, parameters interface{}, runStatuses []job.RunStatus, ev testevent.Fetcher) (bool, interface{}, error) {
+	return false, &job.Report{
 		Success:    true,
 		ReportTime: time.Now(),
 		Data:       "I did nothing at the end, all good",

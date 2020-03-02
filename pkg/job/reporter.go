@@ -22,9 +22,10 @@ type Reporter interface {
 	ValidateRunParameters([]byte) (interface{}, error)
 	ValidateFinalParameters([]byte) (interface{}, error)
 
-	// TODO: RunReport it's actually a TestReport and needs to be renamed accordingly
-	RunReport(cancel <-chan struct{}, parameters interface{}, testStatus *TestStatus, ev testevent.Fetcher) (*Report, error)
-	FinalReport(cancel <-chan struct{}, parameters interface{}, runStatuses []RunStatus, ev testevent.Fetcher) (*Report, error)
+	Name() string
+
+	RunReport(cancel <-chan struct{}, parameters interface{}, runStatus *RunStatus, ev testevent.Fetcher) (bool, interface{}, error)
+	FinalReport(cancel <-chan struct{}, parameters interface{}, runStatuses []RunStatus, ev testevent.Fetcher) (bool, interface{}, error)
 }
 
 // ReporterBundle bundles the selected Reporter together with its parameters
