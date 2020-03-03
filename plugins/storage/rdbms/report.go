@@ -36,7 +36,7 @@ func (r *RDBMS) StoreJobReport(jobReport *job.JobReport) error {
 		}
 	}
 	for _, report := range jobReport.FinalReports {
-		insertStatement := "insert into final_reports (job_id, reporter_name, success, report_time, data) values (?, ?, ?, ?)"
+		insertStatement := "insert into final_reports (job_id, reporter_name, success, report_time, data) values (?, ?, ?, ?, ?)"
 		reportJSON, err := report.ToJSON()
 		if err != nil {
 			return fmt.Errorf("could not serialize final report for job %v: %v", jobReport.JobID, err)
