@@ -11,7 +11,7 @@ import (
 )
 
 // Payload represents the payload carried by a failure event (e.g. JobStateFailed, JobStateCancelled, etc.)
-type runStartedPayload struct {
+type RunStartedPayload struct {
 	RunID types.RunID
 }
 
