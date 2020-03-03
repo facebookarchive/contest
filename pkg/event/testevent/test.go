@@ -86,6 +86,7 @@ type queryFieldEmittedStartTime time.Time
 type queryFieldEmittedEndTime time.Time
 type queryFieldTestName string
 type queryFieldTestStepLabel string
+type queryFieldRunID types.RunID
 
 // QueryJobID sets the JobID field of the Query object
 func QueryJobID(jobID types.JobID) QueryField                            { return queryFieldJobID(jobID) }
@@ -132,10 +133,9 @@ func (value queryFieldTestStepLabel) queryFieldPointer(query *Query) interface{}
 
 // QueryRunID sets the RunID field of the Query object
 func QueryRunID(runID types.RunID) QueryField {
-	return func(eq *Query) {
-		eq.RunID = runID
-	}
+	return queryFieldRunID(runID)
 }
+func (value queryFieldRunID) queryFieldPointer(query *Query) interface{} { return &query.RunID }
 
 // Emitter defines the interface that emitter objects must implement
 type Emitter interface {
