@@ -237,7 +237,7 @@ func (jr *JobRunner) BuildRunStatuses(currentJob *job.Job) ([]job.RunStatus, err
 
 	runStatuses := make([]job.RunStatus, 0, numRuns)
 
-	for runID := uint(0); runID < numRuns; runID++ {
+	for runID := uint(1); runID <= numRuns; runID++ {
 		runCoordinates := job.RunCoordinates{JobID: currentJob.ID, RunID: types.RunID(runID)}
 		runStatus, err := jr.BuildRunStatus(runCoordinates, currentJob)
 		if err != nil {
