@@ -8,10 +8,13 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
+	"github.com/facebookincubator/contest/pkg/abstract"
 	"github.com/facebookincubator/contest/pkg/config"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/jobmanager"
@@ -21,10 +24,12 @@ import (
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/plugins/listeners/httplistener"
-	"github.com/facebookincubator/contest/plugins/reporters/noop"
+	reportersNoop "github.com/facebookincubator/contest/plugins/reporters/noop"
 	"github.com/facebookincubator/contest/plugins/reporters/targetsuccess"
 	"github.com/facebookincubator/contest/plugins/storage/rdbms"
 	"github.com/facebookincubator/contest/plugins/targetlocker/inmemory"
+	"github.com/facebookincubator/contest/plugins/targetlocker/mysql"
+	targetLockerNoop "github.com/facebookincubator/contest/plugins/targetlocker/noop"
 	"github.com/facebookincubator/contest/plugins/targetmanagers/csvtargetmanager"
 	"github.com/facebookincubator/contest/plugins/targetmanagers/targetlist"
 	"github.com/facebookincubator/contest/plugins/testfetchers/literal"
@@ -39,15 +44,35 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const defaultDBURI = "contest:contest@tcp(localhost:3306)/contest?parseTime=true"
+const (
+	defaultDBURI        = "contest:contest@tcp(localhost:3306)/contest?parseTime=true"
+	defaultTargetLocker = "MySQL:%dbURI%"
+)
 
 var (
-	flagDBURI = flag.String("dbURI", defaultDBURI, "Database URI")
+	flagDBURI, flagTargetLocker *string
 )
+
+func setupFlags() {
+	flagDBURI = flag.String("dbURI", defaultDBURI, "MySQL DSN")
+	flagTargetLocker = flag.String("targetLocker", defaultTargetLocker,
+		fmt.Sprintf("The engine to lock targets. Possible engines (the part before the first colon): %s",
+			targetLockerFactories.ToAbstract(),
+		))
+	flag.Parse()
+}
+
+var log = logging.GetLogger("contest")
 
 var targetManagers = []target.TargetManagerLoader{
 	csvtargetmanager.Load,
 	targetlist.Load,
+}
+
+var targetLockerFactories = target.LockerFactories{
+	&mysql.Factory{},
+	&inmemory.Factory{},
+	&targetLockerNoop.Factory{},
 }
 
 var testFetchers = []test.TestFetcherLoader{
@@ -67,7 +92,7 @@ var testSteps = []test.TestStepLoader{
 
 var reporters = []job.ReporterLoader{
 	targetsuccess.Load,
-	noop.Load,
+	reportersNoop.Load,
 }
 
 // user-defined functions that will be made available to plugins for advanced
@@ -82,9 +107,37 @@ var userFunctions = map[string]interface{}{
 	},
 }
 
+func expandArgument(arg string) string {
+	// it does not support correct expanding into depth more one.
+	flag.CommandLine.VisitAll(func(f *flag.Flag) {
+		arg = strings.Replace(arg, `%`+f.Name+`%`, f.Value.String(), -1)
+	})
+	return arg
+}
+
+func parseFactoryInfo(
+	factories abstract.Factories,
+	flagValue string,
+) (factory abstract.Factory, factoryImplName, factoryArgument string) {
+	factoryInfo := strings.SplitN(flagValue, `:`, 2)
+	factoryImplName = factoryInfo[0]
+
+	if len(factoryInfo) > 1 {
+		factoryArgument = expandArgument(factoryInfo[1])
+	}
+
+	factory = factories.Find(factoryImplName)
+	if factory == nil {
+		log.Fatalf("Implementation '%s' is not found (possible values: %s)",
+			factoryImplName, factories)
+	}
+	return
+}
+
 func main() {
-	flag.Parse()
-	log := logging.GetLogger("contest")
+	setupFlags()
+
+	logrus.SetLevel(logrus.DebugLevel)
 	log.Level = logrus.DebugLevel
 
 	pluginRegistry := pluginregistry.NewPluginRegistry()
@@ -107,7 +160,6 @@ func main() {
 	for _, tsloader := range testSteps {
 		if err := pluginRegistry.RegisterTestStep(tsloader()); err != nil {
 			log.Fatal(err)
-
 		}
 	}
 
@@ -119,11 +171,19 @@ func main() {
 	}
 
 	// storage initialization
-	log.Infof("Using database URI: %s", *flagDBURI)
+	log.Infof("Using database URI (MySQL DSN) for the main storage: %s", *flagDBURI)
 	storage.SetStorage(rdbms.New(*flagDBURI))
 
 	// set Locker engine
-	target.SetLocker(inmemory.New(config.LockTimeout))
+	targetLockerFactory, targetLockerImplName, targetLockerArgument :=
+		parseFactoryInfo(targetLockerFactories.ToAbstract(), *flagTargetLocker)
+
+	log.Infof("Using target locker '%s' with argument: '%s'", targetLockerImplName, targetLockerArgument)
+	targetLocker, err := targetLockerFactory.(target.LockerFactory).New(config.LockTimeout, targetLockerArgument)
+	if err != nil {
+		log.Fatalf("Unable to initialize target locker: %v", err)
+	}
+	target.SetLocker(targetLocker)
 
 	// user-defined function registration
 	for name, fn := range userFunctions {

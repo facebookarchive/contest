@@ -15,13 +15,15 @@ import (
 )
 
 func TestNoopNew(t *testing.T) {
-	tl := New(time.Second)
+	tl, err := (&Factory{}).New(time.Second, "")
+	require.NoError(t, err)
 	require.NotNil(t, tl)
 	require.IsType(t, &Noop{}, tl)
 }
 
 func TestNoopLock(t *testing.T) {
-	tl := New(time.Second)
+	tl, err := (&Factory{}).New(time.Second, "")
+	require.NoError(t, err)
 	// we don't enforce that at least one target is passed, as checking on
 	// non-zero targets is the framework's responsibility, not the plugin.
 	// So, zero targets is OK.
@@ -38,7 +40,8 @@ func TestNoopLock(t *testing.T) {
 }
 
 func TestNoopUnlock(t *testing.T) {
-	tl := New(time.Second)
+	tl, err := (&Factory{}).New(time.Second, "")
+	require.NoError(t, err)
 	// we don't enforce that at least one target is passed, as checking on
 	// non-zero targets is the framework's responsibility, not the plugin.
 	// So, zero targets is OK.
@@ -55,22 +58,23 @@ func TestNoopUnlock(t *testing.T) {
 }
 
 func TestNoopCheckLocks(t *testing.T) {
-	tl := New(time.Second)
+	tl, err := (&Factory{}).New(time.Second, "")
+	require.NoError(t, err)
 	// we don't enforce that at least one target is passed, as checking on
 	// non-zero targets is the framework's responsibility, not the plugin.
 	// So, zero targets is OK.
 	jobID := types.JobID(123)
-	allAreLocked, locked, notLocked := tl.CheckLocks(jobID, nil)
-	require.True(t, allAreLocked)
+	locked, notLocked, err := tl.CheckLocks(jobID, nil)
 	require.Nil(t, locked)
 	require.Nil(t, notLocked)
+	require.NoError(t, err)
 
 	targets := []*target.Target{
 		&target.Target{Name: "t1"},
 		&target.Target{Name: "t2"},
 	}
-	allAreLocked, locked, notLocked = tl.CheckLocks(jobID, targets)
-	require.True(t, allAreLocked)
+	locked, notLocked, err = tl.CheckLocks(jobID, targets)
 	require.Equal(t, locked, targets)
 	require.Nil(t, notLocked, nil)
+	require.NoError(t, err)
 }

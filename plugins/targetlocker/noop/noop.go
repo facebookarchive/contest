@@ -16,9 +16,9 @@ import (
 )
 
 // Name is the name used to look this plugin up.
-var Name = "Noop"
+const Name = "Noop"
 
-var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
+var log = logging.GetLogger("teststeps/" + strings.ToLower((*Factory).UniqueImplementationName(nil)))
 
 // Noop is the no-op target locker. It does nothing.
 type Noop struct {
@@ -38,9 +38,9 @@ func (tl Noop) Unlock(_ types.JobID, targets []*target.Target) error {
 
 // CheckLocks tells whether all the targets are locked. They all are, always. It
 // also returns an array of the ones that are locked, and the ones that are not locked.
-func (tl Noop) CheckLocks(jobID types.JobID, targets []*target.Target) (bool, []*target.Target, []*target.Target) {
+func (tl Noop) CheckLocks(jobID types.JobID, targets []*target.Target) ([]*target.Target, []*target.Target, error) {
 	log.Infof("All %d targets are obviously locked, since I did nothing", len(targets))
-	return true, targets, nil
+	return targets, nil, nil
 }
 
 // RefreshLocks refreshes all the locks by the internal (non-existing) timeout,
@@ -50,7 +50,16 @@ func (tl Noop) RefreshLocks(jobID types.JobID, targets []*target.Target) error {
 	return nil
 }
 
+// Factory is the implementation of target.LockerFactory based
+// on Noop.
+type Factory struct{}
+
 // New initializes and returns a new ExampleTestStep.
-func New(_ time.Duration) target.Locker {
-	return &Noop{}
+func (f *Factory) New(timeout time.Duration, _ string) (target.Locker, error) {
+	return &Noop{}, nil
+}
+
+// UniqueImplementationName returns the unique name of the implementation
+func (f *Factory) UniqueImplementationName() string {
+	return "Noop"
 }

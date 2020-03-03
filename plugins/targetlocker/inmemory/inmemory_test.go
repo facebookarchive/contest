@@ -15,13 +15,15 @@ import (
 )
 
 func TestInMemoryNew(t *testing.T) {
-	tl := New(time.Second)
+	tl, err := (&Factory{}).New(time.Second, "")
+	require.NoError(t, err)
 	require.NotNil(t, tl)
 	require.IsType(t, &InMemory{}, tl)
 }
 
 func TestInMemoryLock(t *testing.T) {
-	tl := New(time.Second)
+	tl, err := (&Factory{}).New(time.Second, "")
+	require.NoError(t, err)
 	// we don't enforce that at least one target is passed, as checking on
 	// non-zero targets is the framework's responsibility, not the plugin.
 	// So, zero targets is OK.
@@ -38,7 +40,8 @@ func TestInMemoryLock(t *testing.T) {
 }
 
 func TestInMemoryUnlock(t *testing.T) {
-	tl := New(time.Second)
+	tl, err := (&Factory{}).New(time.Second, "")
+	require.NoError(t, err)
 	// we don't enforce that at least one target is passed, as checking on
 	// non-zero targets is the framework's responsibility, not the plugin.
 	// So, zero targets is OK.

@@ -31,7 +31,10 @@ func TestJobManagerSuiteRdbmsStorage(t *testing.T) {
 	storage.SetStorage(storageLayer)
 	testSuite.storage = storageLayer
 
-	targetLocker := inmemory.New(10 * time.Second)
+	targetLocker, err := (&inmemory.Factory{}).New(10 * time.Second, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	target.SetLocker(targetLocker)
 
 	suite.Run(t, &testSuite)

@@ -105,13 +105,20 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				// order to use a timeout for target acquisition.
 				targets, err := bundle.TargetManager.Acquire(j.ID, j.CancelCh, bundle.AcquireParameters, tl)
 				if err != nil {
-					errCh <- err
+					errCh <- fmt.Errorf("unable to acquire targets (%v): %w", bundle.AcquireParameters, err)
 					targetsCh <- nil
 					return
 				}
-				if allAreLocked, _, notLocked := tl.CheckLocks(j.ID, targets); !allAreLocked {
-					errCh <- fmt.Errorf("Could not lock %d targets out of %d are not locked: %v", len(notLocked), len(targets), notLocked)
+				_, notLocked, err := tl.CheckLocks(j.ID, targets)
+				if err != nil {
+					errCh <- fmt.Errorf("unable to check locks: %w", err)
 					targetsCh <- nil
+					return
+				}
+				if len(notLocked) > 0 {
+					errCh <- fmt.Errorf("could not lock %d targets out of %d are not locked: %v", len(notLocked), len(targets), notLocked)
+					targetsCh <- nil
+					return
 				}
 				errCh <- nil
 				targetsCh <- targets

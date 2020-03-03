@@ -18,10 +18,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
-// Name is the name used to look this plugin up.
-var Name = "InMemory"
-
-var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
+var log = logging.GetLogger("teststeps/" + strings.ToLower((*Factory).UniqueImplementationName(nil)))
 
 type request struct {
 	targets []*target.Target
@@ -132,7 +129,9 @@ func broker(lockRequests, unlockRequests, checkLocksRequests <-chan request, don
 	}
 }
 
-// InMemory is the no-op target locker. It does nothing.
+// InMemory is an in-memory target locker. It is supposed to
+// be used only if you don _not_ run multiple ConTest instances
+// to access the same target hosts.
 type InMemory struct {
 	lockRequests, unlockRequests, checkLocksRequests chan request
 	done                                             chan struct{}
@@ -146,7 +145,7 @@ func newReq(targets []*target.Target) request {
 	}
 }
 
-// Lock locks the specified targets by doing nothing.
+// Lock locks the specified targets.
 func (tl *InMemory) Lock(jobID types.JobID, targets []*target.Target) error {
 	log.Infof("Trying to lock %d targets", len(targets))
 	req := newReq(targets)
@@ -155,7 +154,7 @@ func (tl *InMemory) Lock(jobID types.JobID, targets []*target.Target) error {
 	return <-req.err
 }
 
-// Unlock unlocks the specified targets by doing nothing.
+// Unlock unlocks the specified targets.
 func (tl *InMemory) Unlock(jobID types.JobID, targets []*target.Target) error {
 	log.Infof("Trying to unlock %d targets", len(targets))
 	req := newReq(targets)
@@ -177,7 +176,7 @@ func (tl *InMemory) RefreshLocks(jobID types.JobID, targets []*target.Target) er
 
 // CheckLocks tells whether all the targets are locked. They all are, always. It
 // also returns the ones that are not locked.
-func (tl *InMemory) CheckLocks(jobID types.JobID, targets []*target.Target) (bool, []*target.Target, []*target.Target) {
+func (tl *InMemory) CheckLocks(jobID types.JobID, targets []*target.Target) ([]*target.Target, []*target.Target, error) {
 	log.Infof("Checking if %d target(s) are locked by job ID %d", len(targets), jobID)
 	req := newReq(targets)
 	tl.checkLocksRequests <- req
@@ -188,11 +187,17 @@ func (tl *InMemory) CheckLocks(jobID types.JobID, targets []*target.Target) (boo
 		// Just log an error for now.
 		log.Warningf("Error when trying to unlock targets: %v", err)
 	}
-	return len(req.notLocked) != len(targets), req.locked, req.notLocked
+	return req.locked, req.notLocked, nil
 }
 
-// New initializes and returns a new ExampleTestStep.
-func New(timeout time.Duration) target.Locker {
+// Factory is the implementation of target.LockerFactory based
+// on InMemory.
+type Factory struct{}
+
+// New initializes and returns a new in-memory targets locker.
+//
+// See also InMemory above.
+func (f *Factory) New(timeout time.Duration, _ string) (target.Locker, error) {
 	lockRequests := make(chan request)
 	unlockRequests := make(chan request)
 	checkLocksRequests := make(chan request)
@@ -204,5 +209,10 @@ func New(timeout time.Duration) target.Locker {
 		checkLocksRequests: checkLocksRequests,
 		done:               done,
 		timeout:            timeout,
-	}
+	}, nil
+}
+
+// UniqueImplementationName returns the unique name of the implementation
+func (f *Factory) UniqueImplementationName() string {
+	return "InMemory"
 }
