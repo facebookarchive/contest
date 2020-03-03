@@ -15,11 +15,12 @@ import (
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/types"
 )
 
 func assembleQuery(baseQuery bytes.Buffer, selectClauses []string) (string, error) {
 	if len(selectClauses) == 0 {
-		return "", fmt.Errorf("no select clauses available ")
+		return "", fmt.Errorf("no select clauses available, the query should specify at least one clause")
 	}
 	initialClause := true
 	for _, clause := range selectClauses {
@@ -88,6 +89,12 @@ func buildFrameworkEventQuery(baseQuery bytes.Buffer, frameworkEventQuery *frame
 func buildTestEventQuery(baseQuery bytes.Buffer, testEventQuery *testevent.Query) (string, []interface{}, error) {
 
 	selectClauses, fields := buildEventQuery(baseQuery, &testEventQuery.Query)
+
+	if testEventQuery != nil && testEventQuery.RunID != types.RunID(0) {
+		selectClauses = append(selectClauses, "run_id=?")
+		fields = append(fields, testEventQuery.RunID)
+	}
+
 	if testEventQuery != nil && testEventQuery.TestName != "" {
 		selectClauses = append(selectClauses, "test_name=?")
 		fields = append(fields, testEventQuery.TestName)
@@ -107,7 +114,7 @@ func buildTestEventQuery(baseQuery bytes.Buffer, testEventQuery *testevent.Query
 // TestEventField is a function type which retrieves information from a TestEvent object.
 type TestEventField func(ev testevent.Event) interface{}
 
-// TestEventJobID returns the JobID from a events.TestEvent object
+// TestEventJobID returns the JobID from an events.TestEvent object
 func TestEventJobID(ev testevent.Event) interface{} {
 	if ev.Header == nil {
 		return nil
@@ -115,7 +122,15 @@ func TestEventJobID(ev testevent.Event) interface{} {
 	return ev.Header.JobID
 }
 
-// TestEventTestName returns the test name from a events.TestEvent object
+// TestEventRunID returns the RunID from a
+func TestEventRunID(ev testevent.Event) interface{} {
+	if ev.Header == nil {
+		return nil
+	}
+	return ev.Header.RunID
+}
+
+// TestEventTestName returns the test name from an events.TestEvent object
 func TestEventTestName(ev testevent.Event) interface{} {
 	if ev.Header == nil {
 		return nil
@@ -123,7 +138,7 @@ func TestEventTestName(ev testevent.Event) interface{} {
 	return ev.Header.TestName
 }
 
-// TestEventTestStepLabel returns the test step label from a events.TestEvent object
+// TestEventTestStepLabel returns the test step label from an events.TestEvent object
 func TestEventTestStepLabel(ev testevent.Event) interface{} {
 	if ev.Header == nil {
 		return nil
@@ -131,15 +146,7 @@ func TestEventTestStepLabel(ev testevent.Event) interface{} {
 	return ev.Header.TestStepLabel
 }
 
-// TestEventTestStepIndex returns the test step index from a events.TestEvent object
-func TestEventTestStepIndex(ev testevent.Event) interface{} {
-	if ev.Data == nil {
-		return nil
-	}
-	return ev.Data.TestStepIndex
-}
-
-// TestEventName returns the event name from a events.TestEvent object
+// TestEventName returns the event name from an events.TestEvent object
 func TestEventName(ev testevent.Event) interface{} {
 	if ev.Data == nil {
 		return nil
@@ -147,7 +154,7 @@ func TestEventName(ev testevent.Event) interface{} {
 	return ev.Data.EventName
 }
 
-// TestEventTargetName returns the target name from a events.TestEvent object
+// TestEventTargetName returns the target name from an events.TestEvent object
 func TestEventTargetName(ev testevent.Event) interface{} {
 	if ev.Data == nil || ev.Data.Target == nil {
 		return nil
@@ -155,7 +162,7 @@ func TestEventTargetName(ev testevent.Event) interface{} {
 	return ev.Data.Target.Name
 }
 
-// TestEventTargetID returns the target id from a events.TestEvent object
+// TestEventTargetID returns the target id from an events.TestEvent object
 func TestEventTargetID(ev testevent.Event) interface{} {
 	if ev.Data == nil || ev.Data.Target == nil {
 		return nil
@@ -163,7 +170,7 @@ func TestEventTargetID(ev testevent.Event) interface{} {
 	return ev.Data.Target.ID
 }
 
-// TestEventPayload returns the payload from a events.TestEvent object
+// TestEventPayload returns the payload from an events.TestEvent object
 func TestEventPayload(ev testevent.Event) interface{} {
 	if ev.Data == nil {
 		return nil
@@ -171,7 +178,7 @@ func TestEventPayload(ev testevent.Event) interface{} {
 	return ev.Data.Payload
 }
 
-// TestEventEmitTime returns the emission timestamp from a events.TestEvent object
+// TestEventEmitTime returns the emission timestamp from an events.TestEvent object
 func TestEventEmitTime(ev testevent.Event) interface{} {
 	return ev.EmitTime
 }
@@ -207,14 +214,14 @@ func (r *RDBMS) FlushTestEvents() error {
 		return nil
 	}
 
-	insertStatement := "insert into test_events (job_id, test_name, test_step_label, test_step_index, event_name, target_name, target_id, payload, emit_time) values (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	insertStatement := "insert into test_events (job_id, run_id, test_name, test_step_label, event_name, target_name, target_id, payload, emit_time) values (?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	for _, event := range r.buffTestEvents {
 		_, err := r.db.Exec(
 			insertStatement,
 			TestEventJobID(event),
+			TestEventRunID(event),
 			TestEventTestName(event),
 			TestEventTestStepLabel(event),
-			TestEventTestStepIndex(event),
 			TestEventName(event),
 			TestEventTargetName(event),
 			TestEventTargetID(event),
@@ -245,7 +252,7 @@ func (r *RDBMS) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, e
 	defer r.testEventsLock.Unlock()
 
 	baseQuery := bytes.Buffer{}
-	baseQuery.WriteString("select event_id, job_id, test_name, test_step_label, event_name, target_name, target_id, payload, emit_time from test_events")
+	baseQuery.WriteString("select event_id, job_id, run_id, test_name, test_step_label, event_name, target_name, target_id, payload, emit_time from test_events")
 	query, fields, err := buildTestEventQuery(baseQuery, eventQuery)
 	if err != nil {
 		return nil, fmt.Errorf("could not execute select query for test events: %v", err)
@@ -280,6 +287,7 @@ func (r *RDBMS) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, e
 		err := rows.Scan(
 			&eventID,
 			&header.JobID,
+			&header.RunID,
 			&header.TestName,
 			&header.TestStepLabel,
 			&data.EventName,

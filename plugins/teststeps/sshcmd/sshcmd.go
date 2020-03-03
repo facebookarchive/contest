@@ -185,10 +185,12 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 		}()
 
 		// TODO should stdout/stderr go to events?
-		log.Infof("Stdout of command '%s' is '%s'", cmd, stdout.Bytes())
 		select {
 		case err := <-errCh:
-			log.Warningf("Stderr of command '%s' is '%s'", cmd, stderr.Bytes())
+			log.Infof("Stdout of command '%s' is '%s'", cmd, stdout.Bytes())
+			if err != nil {
+				log.Warningf("Stderr of command '%s' is '%s'", cmd, stderr.Bytes())
+			}
 			return err
 		case <-cancel:
 			return session.Signal(ssh.SIGKILL)

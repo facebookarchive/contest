@@ -97,7 +97,7 @@ type completionCh struct {
 // TestRunner is the main runner of TestSteps in ConTest. `results` collects
 // the results of the run. It is not safe to access `results` concurrently.
 type TestRunner struct {
-	state    *RunnerState
+	state    *State
 	timeouts TestRunnerTimeouts
 }
 
@@ -191,7 +191,7 @@ func (tr *TestRunner) Route(terminateRoute <-chan struct{}, bundle test.TestStep
 				}
 				break
 			}
-			targetInEv := testevent.Data{EventName: target.EventTargetIn, TestStepIndex: bundle.TestStepIndex, Target: injectionResult.target}
+			targetInEv := testevent.Data{EventName: target.EventTargetIn, Target: injectionResult.target}
 			if err := ev.Emit(targetInEv); err != nil {
 				log.Warningf("Could not emit %v event for Target: %v", targetInEv, *injectionResult.target)
 			}
@@ -227,7 +227,7 @@ func (tr *TestRunner) Route(terminateRoute <-chan struct{}, bundle test.TestStep
 					break
 				}
 				// Emit an event signaling that the target has lef the TestStep
-				targetOutEv := testevent.Data{EventName: target.EventTargetOut, TestStepIndex: bundle.TestStepIndex, Target: t}
+				targetOutEv := testevent.Data{EventName: target.EventTargetOut, Target: t}
 				if err := ev.Emit(targetOutEv); err != nil {
 					log.Warningf("Could not emit %v event for Target: %v", targetOutEv, *t)
 				}
@@ -246,8 +246,15 @@ func (tr *TestRunner) Route(terminateRoute <-chan struct{}, bundle test.TestStep
 					break
 				}
 				// Emit an event signaling that the target has lef the TestStep with an error
-				payload := json.RawMessage(fmt.Sprintf(`{"error": "%s"}`, targetError.Err))
-				targetErrEv := testevent.Data{EventName: target.EventTargetErr, Target: targetError.Target, TestStepIndex: bundle.TestStepIndex, Payload: &payload}
+				targetErrPayload := target.ErrPayload{Error: targetError.Err.Error()}
+				payloadEncoded, err := json.Marshal(targetErrPayload)
+				if err != nil {
+					log.Warningf("could not encode target error ('%s'): %v", targetErrPayload, err)
+				}
+
+				rawPayload := json.RawMessage(payloadEncoded)
+
+				targetErrEv := testevent.Data{EventName: target.EventTargetErr, Target: targetError.Target, Payload: &rawPayload}
 				if err := ev.Emit(targetErrEv); err != nil {
 					log.Warningf("Could not emit %v event for Target: %v", targetErrEv, *targetError.Target)
 				}
@@ -563,7 +570,7 @@ func (tr *TestRunner) WaitPipelineCompletion(terminate <-chan struct{}, ch compl
 	// in a "domino" sequence, so seeing the last channel closed indicates that the
 	// sequence of close operations has completed). If `ch.out` is still open,
 	// there are still TestSteps that might have not returned. Wait for all
-	// TestSteps to complete or `StepShutdownTimeout` to occurr.
+	// TestSteps to complete or `StepShutdownTimeout` to occur.
 	log.Printf("Waiting for all TestSteps to complete")
 	err = tr.WaitTestStep(ch, bundles)
 	return err
@@ -571,10 +578,10 @@ func (tr *TestRunner) WaitPipelineCompletion(terminate <-chan struct{}, ch compl
 
 // Run implements the main logic of the TestRunner, i.e. the instantiation and
 // connection of the TestSteps, routing blocks and pipeline runner.
-func (tr *TestRunner) Run(cancel, pause <-chan struct{}, t *test.Test, targets []*target.Target, jobID types.JobID) (*test.TestResult, error) {
+func (tr *TestRunner) Run(cancel, pause <-chan struct{}, t *test.Test, targets []*target.Target, jobID types.JobID, runID types.RunID) error {
 	testStepBundles := t.TestStepsBundles
 	if len(testStepBundles) == 0 {
-		return nil, fmt.Errorf("no steps to run for test")
+		return fmt.Errorf("no steps to run for test")
 	}
 
 	var (
@@ -636,6 +643,7 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, t *test.Test, targets [
 		// Build the Header that the the TestStep will be using for emitting events
 		Header := testevent.Header{
 			JobID:         jobID,
+			RunID:         runID,
 			TestName:      t.Name,
 			TestStepLabel: testStepBundle.TestStepLabel,
 		}
@@ -725,14 +733,10 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, t *test.Test, targets [
 	}
 
 	if completionError != nil {
-		return nil, completionError
+		return completionError
 	}
 
-	testResult := test.NewTestResult(jobID)
-	for k, v := range tr.state.CompletedTargets() {
-		testResult.SetTarget(k, v)
-	}
-	return &testResult, terminationError
+	return terminationError
 }
 
 // NewTestRunner initializes and returns a new TestRunner object. This test
@@ -745,12 +749,72 @@ func NewTestRunner() TestRunner {
 			ShutdownTimeout:     config.TestRunnerShutdownTimeout,
 			StepShutdownTimeout: config.TestRunnerStepShutdownTimeout,
 		},
-		state: NewRunnerState(),
+		state: NewState(),
 	}
 }
 
 // NewTestRunnerWithTimeouts initializes and returns a new TestRunner object with
 // custom timeouts
 func NewTestRunnerWithTimeouts(timeouts TestRunnerTimeouts) TestRunner {
-	return TestRunner{timeouts: timeouts, state: NewRunnerState()}
+	return TestRunner{timeouts: timeouts, state: NewState()}
+}
+
+// State is a structure that models the current state of the test runner
+type State struct {
+	completedSteps   map[string]error
+	completedRouting map[string]error
+	completedTargets map[*target.Target]error
+}
+
+// NewState initializes a State object.
+func NewState() *State {
+	r := State{}
+	r.completedSteps = make(map[string]error)
+	r.completedRouting = make(map[string]error)
+	r.completedTargets = make(map[*target.Target]error)
+	return &r
+}
+
+// CompletedTargets returns a map that associates each target with its returning error.
+// If the target succeeded, the error will be nil
+func (r *State) CompletedTargets() map[*target.Target]error {
+	return r.completedTargets
+}
+
+// CompletedRouting returns a map that associates each routing block with its returning error.
+// If the routing block succeeded, the error will be nil
+func (r *State) CompletedRouting() map[string]error {
+	return r.completedRouting
+}
+
+// CompletedSteps returns a map that associates each step with its returning error.
+// If the step succeeded, the error will be nil
+func (r *State) CompletedSteps() map[string]error {
+	return r.completedSteps
+}
+
+// SetRouting sets the error associated with a routing block
+func (r *State) SetRouting(testStepLabel string, err error) {
+	r.completedRouting[testStepLabel] = err
+}
+
+// SetTarget sets the error associated with a target
+func (r *State) SetTarget(target *target.Target, err error) {
+	r.completedTargets[target] = err
+}
+
+// SetStep sets the error associated with a step
+func (r *State) SetStep(testStepLabel string, err error) {
+	r.completedSteps[testStepLabel] = err
+}
+
+// IncompleteSteps returns a slice of step names for which the result hasn't been set yet
+func (r *State) IncompleteSteps(bundles []test.TestStepBundle) []string {
+	var incompleteSteps []string
+	for _, bundle := range bundles {
+		if _, ok := r.completedSteps[bundle.TestStepLabel]; !ok {
+			incompleteSteps = append(incompleteSteps, bundle.TestStepLabel)
+		}
+	}
+	return incompleteSteps
 }

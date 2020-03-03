@@ -21,16 +21,16 @@ import (
 // by the TestStep
 type Header struct {
 	JobID         types.JobID
+	RunID         types.RunID
 	TestName      string
 	TestStepLabel string
 }
 
 // Data models the data of a test event. It is populated by the TestStep
 type Data struct {
-	EventName     event.Name
-	TestStepIndex uint
-	Target        *target.Target
-	Payload       *json.RawMessage
+	EventName event.Name
+	Target    *target.Target
+	Payload   *json.RawMessage
 }
 
 // Event models an event object that can be emitted by a TestStep
@@ -49,6 +49,7 @@ func New(header *Header, data *Data) Event {
 // test events, on top of the common EventQuery fields
 type Query struct {
 	event.Query
+	RunID         types.RunID
 	TestName      string
 	TestStepLabel string
 }
@@ -127,6 +128,13 @@ func QueryTestStepLabel(testStepLabel string) QueryField {
 }
 func (value queryFieldTestStepLabel) queryFieldPointer(query *Query) interface{} {
 	return &query.TestStepLabel
+}
+
+// QueryRunID sets the RunID field of the Query object
+func QueryRunID(runID types.RunID) QueryField {
+	return func(eq *Query) {
+		eq.RunID = runID
+	}
 }
 
 // Emitter defines the interface that emitter objects must implement

@@ -7,3 +7,6 @@ package types
 
 // JobID represents a unique job identifier
 type JobID uint64
+
+// RunID represents the id of a run within the Job
+type RunID uint64
