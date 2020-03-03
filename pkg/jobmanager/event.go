@@ -9,11 +9,6 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 )
 
-// errorPayload represents the payload carried by a failure event (e.g. JobStateFailed, JobStateCancelled, etc.)
-type errorPayload struct {
-	Err string
-}
-
 // EventJobStarted indicates that a Job is beginning execution
 var EventJobStarted = event.Name("JobStateStarted")
 
@@ -32,3 +27,21 @@ var EventJobCancelled = event.Name("JobStateCancelled")
 
 // EventJobCancellationFailed indicates that the cancellation was not completed correctly
 var EventJobCancellationFailed = event.Name("JobStateCancelled")
+
+// JobCompletionEvents gather all event that mark the end of a job
+var JobCompletionEvents = []event.Name{
+	EventJobCompleted,
+	EventJobFailed,
+	EventJobCancelled,
+	EventJobCancellationFailed,
+}
+
+// JobStateEvents gather all event names which track the state of a job
+var JobStateEvents = []event.Name{
+	EventJobStarted,
+	EventJobCompleted,
+	EventJobFailed,
+	EventJobCancelling,
+	EventJobCancelled,
+	EventJobCancellationFailed,
+}

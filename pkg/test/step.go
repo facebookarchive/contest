@@ -80,7 +80,6 @@ type TestStepDescriptor struct {
 type TestStepBundle struct {
 	TestStep      TestStep
 	TestStepLabel string
-	TestStepIndex uint
 	Parameters    TestStepParameters
 	AllowedEvents map[event.Name]bool
 }

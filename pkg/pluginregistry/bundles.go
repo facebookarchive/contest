@@ -29,7 +29,6 @@ func (r *PluginRegistry) NewTestStepBundle(testStepDescriptor test.TestStepDescr
 	}
 	testStepBundle := test.TestStepBundle{
 		TestStep:      testStep,
-		TestStepIndex: stepIndex,
 		TestStepLabel: label,
 		Parameters:    testStepDescriptor.Parameters,
 		AllowedEvents: allowedEvents,

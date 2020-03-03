@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/facebookincubator/contest/pkg/config"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/jobmanager"
 	"github.com/facebookincubator/contest/pkg/logging"
@@ -23,6 +24,7 @@ import (
 	"github.com/facebookincubator/contest/plugins/reporters/noop"
 	"github.com/facebookincubator/contest/plugins/reporters/targetsuccess"
 	"github.com/facebookincubator/contest/plugins/storage/rdbms"
+	"github.com/facebookincubator/contest/plugins/targetlocker/inmemory"
 	"github.com/facebookincubator/contest/plugins/targetmanagers/csvtargetmanager"
 	"github.com/facebookincubator/contest/plugins/targetmanagers/targetlist"
 	"github.com/facebookincubator/contest/plugins/testfetchers/literal"
@@ -119,6 +121,9 @@ func main() {
 	// storage initialization
 	log.Infof("Using database URI: %s", *flagDBURI)
 	storage.SetStorage(rdbms.New(*flagDBURI))
+
+	// set Locker engine
+	target.SetLocker(inmemory.New(config.LockTimeout))
 
 	// user-defined function registration
 	for name, fn := range userFunctions {
