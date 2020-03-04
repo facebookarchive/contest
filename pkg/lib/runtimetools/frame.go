@@ -9,6 +9,9 @@ import (
 	"runtime"
 )
 
+// Frame returns information about a frame at depth "skipFrames"
+// of the call stack. It could be handy for logs (to see what
+// line of the source code caused the message).
 func Frame(skipFrames uint) runtime.Frame {
 	// exclude runtime.Callers() and Frame() from the result:
 	skipFrames += 2

@@ -37,6 +37,8 @@ func (s Targets) Sort() {
 
 // Search performs sort.Search on Targets in attempt to
 // find the index of the target with ID closest to the `targetID`.
+//
+// Warning! Targets should be sorted first! See method Targets.Sort().
 func (s Targets) Search(targetID string) int {
 	return sort.Search(s.Len(), func(i int) bool {
 		return s[i].ID >= targetID
