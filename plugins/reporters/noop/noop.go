@@ -50,12 +50,14 @@ func (n *Noop) FinalReport(cancel <-chan struct{}, parameters interface{}, runSt
 	}, nil
 }
 
-// New builds a new TargetSuccessReporter
-func New() job.Reporter {
+type Factory struct{}
+
+// New builds a new Noop
+func (f *Factory) New() job.Reporter {
 	return &Noop{}
 }
 
-// Load returns the name and factory which are needed to register the Reporter
-func Load() (string, job.ReporterFactory) {
-	return Name, New
+// UniqueImplementationName returns the unique name of the implementation
+func (f *Factory) UniqueImplementationName() string {
+	return Name
 }

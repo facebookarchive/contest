@@ -5,15 +5,38 @@
 
 package target
 
-import "github.com/facebookincubator/contest/pkg/types"
+import (
+	"github.com/facebookincubator/contest/pkg/abstract"
+	"github.com/facebookincubator/contest/pkg/types"
+)
 
-// TargetManagerFactory is a type representing a function which builds
+// TargetManagerFactory is a type representing a factory which builds
 // a TargetManager.
-type TargetManagerFactory func() TargetManager
+type TargetManagerFactory interface {
+	abstract.Factory
 
-// TargetManagerLoader is a type representing a function which returns all the
-// needed things to be able to load a TestStep.
-type TargetManagerLoader func() (string, TargetManagerFactory)
+	// New constructs and returns a TargetManager
+	New() TargetManager
+}
+
+// TargetManagerFactories is a helper type to operate over multiple TargetManagerFactory-es
+type TargetManagerFactories []TargetManagerFactory
+
+// ToAbstract returns the factories as abstract.Factories
+//
+// Go has no contracts (yet) / traits / whatever, and Go does not allow
+// to convert slice of interfaces to slice of another interfaces
+// without a loop, so we have to implement this method for each
+// non-abstract-factories slice
+//
+// TODO: try remove it when this will be implemented:
+//       https://github.com/golang/proposal/blob/master/design/go2draft-contracts.md
+func (targetManagerFactories TargetManagerFactories) ToAbstract() (result abstract.Factories) {
+	for _, factory := range targetManagerFactories {
+		result = append(result, factory)
+	}
+	return
+}
 
 // TargetManager is an interface used to acquire and release the targets to
 // run tests on.

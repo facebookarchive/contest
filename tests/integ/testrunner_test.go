@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
-	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/runner"
@@ -28,6 +27,10 @@ import (
 	"github.com/facebookincubator/contest/plugins/teststeps/cmd"
 	"github.com/facebookincubator/contest/plugins/teststeps/echo"
 	"github.com/facebookincubator/contest/plugins/teststeps/example"
+	"github.com/facebookincubator/contest/plugins/teststeps/randecho"
+	"github.com/facebookincubator/contest/plugins/teststeps/slowecho"
+	"github.com/facebookincubator/contest/plugins/teststeps/sshcmd"
+	"github.com/facebookincubator/contest/plugins/teststeps/terminalexpect"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/channels"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/hanging"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/noreturn"
@@ -42,41 +45,36 @@ var (
 	successTimeout = 5 * time.Second
 )
 
-var testSteps = map[string]test.TestStepFactory{
-	echo.Name:      echo.New,
-	example.Name:   example.New,
-	panicstep.Name: panicstep.New,
-	noreturn.Name:  noreturn.New,
-	hanging.Name:   hanging.New,
-	channels.Name:  channels.New,
-	cmd.Name:       cmd.New,
+var testStepFactories = test.TestStepFactories{
+	&echo.Factory{},
+	&slowecho.Factory{},
+	&example.Factory{},
+	&cmd.Factory{},
+	&sshcmd.Factory{},
+	&randecho.Factory{},
+	&terminalexpect.Factory{},
+	&panicstep.Factory{},
+	&noreturn.Factory{},
+	&hanging.Factory{},
+	&channels.Factory{},
 }
 
-var testStepsEvents = map[string][]event.Name{
-	echo.Name:      echo.Events,
-	example.Name:   example.Events,
-	panicstep.Name: panicstep.Events,
-	noreturn.Name:  noreturn.Events,
-	hanging.Name:   hanging.Events,
-	channels.Name:  channels.Events,
-	cmd.Name:       cmd.Events,
+func setupPluginRegistry() {
+	pluginRegistry = pluginregistry.NewPluginRegistry()
+	err := pluginRegistry.RegisterFactories(testStepFactories.ToAbstract())
+	if err != nil {
+		panic(err)
+	}
+}
+
+func init() {
+	setupPluginRegistry()
 }
 
 func TestMain(m *testing.M) {
 	log := logging.GetLogger("tests/integ")
 	log.Logger.Out = ioutil.Discard
 
-	pluginRegistry = pluginregistry.NewPluginRegistry()
-	// Setup the PluginRegistry by registering TestSteps
-	for name, tsfactory := range testSteps {
-		if _, ok := testStepsEvents[name]; !ok {
-			err := fmt.Errorf("TestStep %s does not define any associated event", name)
-			panic(err)
-		}
-		if err := pluginRegistry.RegisterTestStep(name, tsfactory, testStepsEvents[name]); err != nil {
-			panic(fmt.Sprintf("could not register TestStep: %+v", err))
-		}
-	}
 	// Setup test Targets and empty parameters
 	targets = []*target.Target{
 		&target.Target{Name: "host001", ID: "001", FQDN: "host001.facebook.com"},
@@ -96,12 +94,13 @@ func TestMain(m *testing.M) {
 func TestSuccessfulCompletion(t *testing.T) {
 
 	jobID := types.JobID(1)
+	runID := types.RunID(2)
 
-	ts1, err := pluginRegistry.NewTestStep("Example")
+	ts1, _, err := pluginRegistry.NewTestStep("Example")
 	require.NoError(t, err)
-	ts2, err := pluginRegistry.NewTestStep("Example")
+	ts2, _, err := pluginRegistry.NewTestStep("Example")
 	require.NoError(t, err)
-	ts3, err := pluginRegistry.NewTestStep("Example")
+	ts3, _, err := pluginRegistry.NewTestStep("Example")
 	require.NoError(t, err)
 
 	params := make(test.TestStepParameters)
@@ -117,7 +116,7 @@ func TestSuccessfulCompletion(t *testing.T) {
 
 	go func() {
 		tr := runner.NewTestRunner()
-		_, err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
@@ -131,10 +130,11 @@ func TestSuccessfulCompletion(t *testing.T) {
 func TestPanicStep(t *testing.T) {
 
 	jobID := types.JobID(1)
+	runID := types.RunID(2)
 
-	ts1, err := pluginRegistry.NewTestStep("Panic")
+	ts1, _, err := pluginRegistry.NewTestStep("Panic")
 	require.NoError(t, err)
-	ts2, err := pluginRegistry.NewTestStep("Example")
+	ts2, _, err := pluginRegistry.NewTestStep("Example")
 	require.NoError(t, err)
 
 	params := make(test.TestStepParameters)
@@ -149,7 +149,7 @@ func TestPanicStep(t *testing.T) {
 	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		_, err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
@@ -163,10 +163,11 @@ func TestPanicStep(t *testing.T) {
 func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 
 	jobID := types.JobID(1)
+	runID := types.RunID(2)
 
-	ts1, err := pluginRegistry.NewTestStep("NoReturn")
+	ts1, _, err := pluginRegistry.NewTestStep("NoReturn")
 	require.NoError(t, err)
-	ts2, err := pluginRegistry.NewTestStep("Example")
+	ts2, _, err := pluginRegistry.NewTestStep("Example")
 	require.NoError(t, err)
 
 	params := make(test.TestStepParameters)
@@ -187,7 +188,7 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 	}
 	go func() {
 		tr := runner.NewTestRunnerWithTimeouts(timeouts)
-		_, err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
@@ -206,10 +207,11 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 
 	jobID := types.JobID(1)
+	runID := types.RunID(2)
 
-	ts1, err := pluginRegistry.NewTestStep("Hanging")
+	ts1, _, err := pluginRegistry.NewTestStep("Hanging")
 	require.NoError(t, err)
-	ts2, err := pluginRegistry.NewTestStep("Example")
+	ts2, _, err := pluginRegistry.NewTestStep("Example")
 	require.NoError(t, err)
 
 	params := make(test.TestStepParameters)
@@ -238,7 +240,7 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 
 	go func() {
 		tr := runner.NewTestRunnerWithTimeouts(timeouts)
-		_, err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
@@ -269,10 +271,11 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 func TestStepClosesChannels(t *testing.T) {
 
 	jobID := types.JobID(1)
+	runID := types.RunID(2)
 
-	ts1, err := pluginRegistry.NewTestStep("Channels")
+	ts1, _, err := pluginRegistry.NewTestStep("Channels")
 	require.NoError(t, err)
-	ts2, err := pluginRegistry.NewTestStep("Example")
+	ts2, _, err := pluginRegistry.NewTestStep("Example")
 	require.NoError(t, err)
 
 	params := make(test.TestStepParameters)
@@ -287,7 +290,7 @@ func TestStepClosesChannels(t *testing.T) {
 	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		_, err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
@@ -306,8 +309,9 @@ func TestStepClosesChannels(t *testing.T) {
 func TestCmdPlugin(t *testing.T) {
 
 	jobID := types.JobID(1)
+	runID := types.RunID(2)
 
-	ts1, err := pluginRegistry.NewTestStep("cmd")
+	ts1, _, err := pluginRegistry.NewTestStep("cmd")
 	require.NoError(t, err)
 
 	params := make(test.TestStepParameters)
@@ -328,7 +332,7 @@ func TestCmdPlugin(t *testing.T) {
 	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		_, err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 

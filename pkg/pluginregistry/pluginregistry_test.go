@@ -7,11 +7,17 @@ package pluginregistry
 
 import (
 	"testing"
+	"time"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
+	"github.com/facebookincubator/contest/pkg/job"
+	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	reporterNoop "github.com/facebookincubator/contest/plugins/reporters/noop"
+	targetLockerNoop "github.com/facebookincubator/contest/plugins/targetlocker/noop"
+	"golang.org/x/xerrors"
 
 	"github.com/stretchr/testify/require"
 )
@@ -51,14 +57,77 @@ func (e AStep) Resume(cancel, pause <-chan struct{}, _ test.TestStepChannels, _ 
 	return &cerrors.ErrResumeNotSupported{StepName: "AStep"}
 }
 
-func TestRegisterTestStep(t *testing.T) {
-	pr := NewPluginRegistry()
-	err := pr.RegisterTestStep("AStep", NewAStep, []event.Name{event.Name("AStepEvetName")})
-	require.NoError(t, err)
+type testStepFactoryGood struct{}
+
+func (f *testStepFactoryGood) New() test.TestStep               { return nil }
+func (f *testStepFactoryGood) Events() []event.Name             { return []event.Name{"validEventName"} }
+func (f *testStepFactoryGood) UniqueImplementationName() string { return "unit-test-positive" }
+
+type testStepFactoryBadEventName struct{}
+
+func (f *testStepFactoryBadEventName) New() test.TestStep   { return nil }
+func (f *testStepFactoryBadEventName) Events() []event.Name { return []event.Name{"invalid event name"} }
+func (f *testStepFactoryBadEventName) UniqueImplementationName() string {
+	return "unit-test-neg-invalid-event-name"
 }
 
-func TestRegisterTestStepDoesNotValidate(t *testing.T) {
+func TestRegisterTestStepEvents(t *testing.T) {
 	pr := NewPluginRegistry()
-	err := pr.RegisterTestStep("AStep", NewAStep, []event.Name{event.Name("Event which does not validate")})
-	require.Error(t, err)
+	t.Run("positive", func(t *testing.T) {
+		err := pr.RegisterFactory(&testStepFactoryGood{})
+		require.NoError(t, err)
+	})
+	t.Run("negative", func(t *testing.T) {
+		t.Run("invalid_event_name", func(t *testing.T) {
+			err := pr.RegisterFactory(&testStepFactoryBadEventName{})
+			require.Error(t, err)
+			require.True(t, xerrors.As(err, &event.ErrInvalidEventName{}))
+		})
+	})
+}
+
+func TestPluginRegistry_RegisterFactoriesAsType(t *testing.T) {
+	pr := NewPluginRegistry()
+	t.Run("positive", func(t *testing.T) {
+		err := pr.RegisterFactoriesAsType((*target.LockerFactory)(nil), target.LockerFactories{&targetLockerNoop.Factory{}}.ToAbstract())
+		require.NoError(t, err)
+		targetLocker, err := pr.NewTargetLocker("noop", time.Second, "")
+		require.NoError(t, err)
+		require.NotNil(t, targetLocker)
+	})
+	t.Run("negative", func(t *testing.T) {
+		t.Run("WrongFactoryType", func(t *testing.T) {
+			err := pr.RegisterFactoriesAsType((*target.LockerFactory)(nil), job.ReporterFactories{&reporterNoop.Factory{}}.ToAbstract())
+			require.True(t, xerrors.As(err, &ErrInvalidFactoryType{}))
+		})
+		t.Run("InvalidFactoryType", func(t *testing.T) {
+			err := pr.RegisterFactoriesAsType((target.LockerFactory)(nil), target.LockerFactories{&targetLockerNoop.Factory{}}.ToAbstract())
+			require.True(t, xerrors.As(err, &ErrInvalidFactoryType{}))
+		})
+		t.Run("NilFactory", func(t *testing.T) {
+			err := pr.RegisterFactoriesAsType((*target.LockerFactory)(nil), target.LockerFactories{nil}.ToAbstract())
+			require.True(t, xerrors.As(err, &ErrNilFactory{}))
+		})
+	})
+}
+
+type fakeFactory struct{}
+
+func (f *fakeFactory) UniqueImplementationName() string { return "unit-test" }
+
+func TestNewPluginRegistry_RegisterFactory(t *testing.T) {
+	pr := NewPluginRegistry()
+	t.Run("positive", func(t *testing.T) {
+		err := pr.RegisterFactories(target.LockerFactories{&targetLockerNoop.Factory{}}.ToAbstract())
+		require.NoError(t, err)
+		targetLocker, err := pr.NewTargetLocker("noop", time.Second, "")
+		require.NoError(t, err)
+		require.NotNil(t, targetLocker)
+	})
+	t.Run("negative", func(t *testing.T) {
+		t.Run("UnknownFactoryType", func(t *testing.T) {
+			err := pr.RegisterFactory(&fakeFactory{})
+			require.True(t, xerrors.As(err, &ErrUnknownFactoryType{}))
+		})
+	})
 }

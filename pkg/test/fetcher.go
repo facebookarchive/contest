@@ -5,13 +5,37 @@
 
 package test
 
-// TestFetcherFactory is a type representing a function which builds
-// a TestFetcher
-type TestFetcherFactory func() TestFetcher
+import (
+	"github.com/facebookincubator/contest/pkg/abstract"
+)
 
-// TestFetcherLoader is a type representing a function which returns all the
-// needed things to be able to load a TestFetcher
-type TestFetcherLoader func() (string, TestFetcherFactory)
+// TestFetcherFactory is a type representing a factory which builds
+// a TestFetcher.
+type TestFetcherFactory interface {
+	abstract.Factory
+
+	// New constructs and returns a TestFetcher
+	New() TestFetcher
+}
+
+// TestFetcherFactories is a helper type to operate over multiple TestFetcherFactory-es
+type TestFetcherFactories []TestFetcherFactory
+
+// ToAbstract returns the factories as abstract.Factories
+//
+// Go has no contracts (yet) / traits / whatever, and Go does not allow
+// to convert slice of interfaces to slice of another interfaces
+// without a loop, so we have to implement this method for each
+// non-abstract-factories slice
+//
+// TODO: try remove it when this will be implemented:
+//       https://github.com/golang/proposal/blob/master/design/go2draft-contracts.md
+func (testFetcherFactories TestFetcherFactories) ToAbstract() (result abstract.Factories) {
+	for _, factory := range testFetcherFactories {
+		result = append(result, factory)
+	}
+	return
+}
 
 // TestFetcher is an interface used to get the test to run on the selected
 // hosts.

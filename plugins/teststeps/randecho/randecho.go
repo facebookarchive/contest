@@ -23,22 +23,8 @@ var Name = "RandEcho"
 
 var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
-// Events defines the events that a TestStep is allow to emit
-var Events = []event.Name{}
-
 // Step implements an echo-style printing plugin.
 type Step struct{}
-
-// New initializes and returns a new RandEcho. It implements the TestStepFactory
-// interface.
-func New() test.TestStep {
-	return &Step{}
-}
-
-// Load returns the name, factory and events which are needed to register the step.
-func Load() (string, test.TestStepFactory, []event.Name) {
-	return Name, New, Events
-}
 
 // ValidateParameters validates the parameters that will be passed to the Run
 // and Resume methods of the test step.
@@ -100,4 +86,22 @@ func (e Step) CanResume() bool {
 // resume.
 func (e Step) Resume(cancel, pause <-chan struct{}, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
+}
+
+// Factory implements test.TestStepFactory
+type Factory struct{}
+
+// New initializes and returns a new randecho test step.
+func (f *Factory) New() test.TestStep {
+	return &Step{}
+}
+
+// Events returns the events the TestStep is allow to emit
+func (f *Factory) Events() []event.Name {
+	return nil
+}
+
+// UniqueImplementationName returns the unique name of the implementation
+func (f *Factory) UniqueImplementationName() string {
+	return Step{}.Name()
 }

@@ -15,9 +15,6 @@ import (
 // Name is the name used to look this plugin up.
 var Name = "Noop"
 
-// Events defines the events that a TestStep is allow to emit
-var Events = []event.Name{}
-
 type noop struct {
 }
 
@@ -59,7 +56,20 @@ func (ts *noop) CanResume() bool {
 	return false
 }
 
+// Factory implements test.TestStepFactory
+type Factory struct{}
+
 // New creates a new noop step
-func New() test.TestStep {
+func (f *Factory) New() test.TestStep {
 	return &noop{}
+}
+
+// Events defines the events that a TestStep is allow to emit
+func (f *Factory) Events() []event.Name {
+	return nil
+}
+
+// UniqueImplementationName returns the unique name of the implementation
+func (f *Factory) UniqueImplementationName() string {
+	return Name
 }

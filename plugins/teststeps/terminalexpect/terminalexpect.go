@@ -27,9 +27,6 @@ var Name = "TerminalExpect"
 
 var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
-// Events defines the events that a TestStep is allow to emit
-var Events = []event.Name{}
-
 // TerminalExpect reads from a terminal and returns when the given Match string
 // is found on an output line.
 type TerminalExpect struct {
@@ -131,12 +128,20 @@ func (ts *TerminalExpect) CanResume() bool {
 	return false
 }
 
+// Factory implements test.TestStepFactory
+type Factory struct{}
+
 // New initializes and returns a new TerminalExpect test step.
-func New() test.TestStep {
+func (f *Factory) New() test.TestStep {
 	return &TerminalExpect{}
 }
 
-// Load returns the name, factory and events which are needed to register the step.
-func Load() (string, test.TestStepFactory, []event.Name) {
-	return Name, New, Events
+// Events defines the events that a TestStep is allow to emit
+func (f *Factory) Events() []event.Name {
+	return nil
+}
+
+// UniqueImplementationName returns the unique name of the implementation
+func (f *Factory) UniqueImplementationName() string {
+	return TerminalExpect{}.Name()
 }

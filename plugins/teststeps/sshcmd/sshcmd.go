@@ -41,11 +41,6 @@ var Name = "SSHCmd"
 
 var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
-// Events is used by the framework to determine which events this plugin will
-// emit. Any emitted event that is not registered here will cause the plugin to
-// fail.
-var Events = []event.Name{}
-
 const defaultSSHPort = 22
 
 // SSHCmd is used to run arbitrary commands as test steps.
@@ -257,12 +252,22 @@ func (ts *SSHCmd) CanResume() bool {
 	return false
 }
 
+// Factory implements test.TestStepFactory
+type Factory struct{}
+
 // New initializes and returns a new SSHCmd test step.
-func New() test.TestStep {
+func (f *Factory) New() test.TestStep {
 	return &SSHCmd{}
 }
 
-// Load returns the name, factory and events which are needed to register the step.
-func Load() (string, test.TestStepFactory, []event.Name) {
-	return Name, New, Events
+// Events is used by the framework to determine which events this plugin will
+// emit. Any emitted event that is not registered here will cause the plugin to
+// fail.
+func (f *Factory) Events() []event.Name {
+	return nil
+}
+
+// UniqueImplementationName returns the unique name of the implementation
+func (f *Factory) UniqueImplementationName() string {
+	return SSHCmd{}.Name()
 }

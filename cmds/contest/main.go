@@ -64,9 +64,9 @@ func setupFlags() {
 
 var log = logging.GetLogger("contest")
 
-var targetManagers = []target.TargetManagerLoader{
-	csvtargetmanager.Load,
-	targetlist.Load,
+var targetManagers = target.TargetManagerFactories{
+	&csvtargetmanager.Factory{},
+	&targetlist.Factory{},
 }
 
 var targetLockerFactories = target.LockerFactories{
@@ -75,24 +75,24 @@ var targetLockerFactories = target.LockerFactories{
 	&targetLockerNoop.Factory{},
 }
 
-var testFetchers = []test.TestFetcherLoader{
-	uri.Load,
-	literal.Load,
+var testFetchers = test.TestFetcherFactories{
+	&uri.Factory{},
+	&literal.Factory{},
 }
 
-var testSteps = []test.TestStepLoader{
-	echo.Load,
-	slowecho.Load,
-	example.Load,
-	cmd.Load,
-	sshcmd.Load,
-	randecho.Load,
-	terminalexpect.Load,
+var testStepFactories = test.TestStepFactories{
+	&echo.Factory{},
+	&slowecho.Factory{},
+	&example.Factory{},
+	&cmd.Factory{},
+	&sshcmd.Factory{},
+	&randecho.Factory{},
+	&terminalexpect.Factory{},
 }
 
-var reporters = []job.ReporterLoader{
-	targetsuccess.Load,
-	reportersNoop.Load,
+var reporterFactories = job.ReporterFactories{
+	&targetsuccess.Factory{},
+	&reportersNoop.Factory{},
 }
 
 // user-defined functions that will be made available to plugins for advanced
@@ -107,6 +107,7 @@ var userFunctions = map[string]interface{}{
 	},
 }
 
+// expandArgument expands macros like '%dbURI%' to values using flag.CommandLine
 func expandArgument(arg string) string {
 	// it does not support correct expanding into depth more one.
 	flag.CommandLine.VisitAll(func(f *flag.Flag) {
@@ -116,7 +117,7 @@ func expandArgument(arg string) string {
 }
 
 func parseFactoryInfo(
-	factories abstract.Factories,
+	factoryType interface{},
 	flagValue string,
 ) (factory abstract.Factory, factoryImplName, factoryArgument string) {
 	factoryInfo := strings.SplitN(flagValue, `:`, 2)
@@ -126,12 +127,40 @@ func parseFactoryInfo(
 		factoryArgument = expandArgument(factoryInfo[1])
 	}
 
-	factory = factories.Find(factoryImplName)
-	if factory == nil {
+	var err error
+	factory, err = pluginRegistry.Factory(factoryType, factoryImplName)
+	if factory == nil || err != nil {
+		factories, _ := pluginRegistry.Factories(factoryType)
 		log.Fatalf("Implementation '%s' is not found (possible values: %s)",
 			factoryImplName, factories)
 	}
 	return
+}
+
+var pluginRegistry *pluginregistry.PluginRegistry
+
+// setupPluginRegistry initializes pluginRegistry
+func setupPluginRegistry() error {
+
+	// Register plugins
+
+	pluginRegistry = pluginregistry.NewPluginRegistry()
+
+	for factoryType, factories := range []abstract.Factories{
+		targetManagers.ToAbstract(),
+		targetLockerFactories.ToAbstract(),
+		testStepFactories.ToAbstract(),
+		testFetchers.ToAbstract(),
+		reporterFactories.ToAbstract(),
+	} {
+		if err := pluginRegistry.RegisterFactories(factories); err != nil {
+			return fmt.Errorf("unable to register factories %T: %w", factoryType, err)
+		}
+	}
+
+	// Finish
+
+	return nil
 }
 
 func main() {
@@ -140,34 +169,9 @@ func main() {
 	logrus.SetLevel(logrus.DebugLevel)
 	log.Level = logrus.DebugLevel
 
-	pluginRegistry := pluginregistry.NewPluginRegistry()
-
-	// Register TargetManager plugins
-	for _, tmloader := range targetManagers {
-		if err := pluginRegistry.RegisterTargetManager(tmloader()); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	// Register TestFetcher plugins
-	for _, tfloader := range testFetchers {
-		if err := pluginRegistry.RegisterTestFetcher(tfloader()); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	// Register TestStep plugins
-	for _, tsloader := range testSteps {
-		if err := pluginRegistry.RegisterTestStep(tsloader()); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	// Register Reporter plugins
-	for _, rfloader := range reporters {
-		if err := pluginRegistry.RegisterReporter(rfloader()); err != nil {
-			log.Fatal(err)
-		}
+	err := setupPluginRegistry()
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	// storage initialization
@@ -176,7 +180,7 @@ func main() {
 
 	// set Locker engine
 	targetLockerFactory, targetLockerImplName, targetLockerArgument :=
-		parseFactoryInfo(targetLockerFactories.ToAbstract(), *flagTargetLocker)
+		parseFactoryInfo((*target.LockerFactory)(nil), *flagTargetLocker)
 
 	log.Infof("Using target locker '%s' with argument: '%s'", targetLockerImplName, targetLockerArgument)
 	targetLocker, err := targetLockerFactory.(target.LockerFactory).New(config.LockTimeout, targetLockerArgument)

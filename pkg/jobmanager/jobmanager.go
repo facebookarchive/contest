@@ -141,13 +141,9 @@ func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, 
 		var stepBundles []test.TestStepBundle
 		labels := make(map[string]bool)
 		for idx, testStepDesc := range testStepDescs {
-			tse, err := pr.NewTestStepEvents(testStepDesc.Name)
-			if err != nil {
-				return nil, err
-			}
 			// test step index is incremented by 1 so we can use 0 to signal an
 			// anomaly.
-			tsb, err := pr.NewTestStepBundle(*testStepDesc, uint(idx)+1, tse)
+			tsb, err := pr.NewTestStepBundle(*testStepDesc, uint(idx)+1)
 			if err != nil {
 				return nil, fmt.Errorf("NewTestStepBundle for test step '%s' with index %d failed: %v", testStepDesc.Name, idx, err)
 			}

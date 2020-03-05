@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/facebookincubator/contest/pkg/abstract"
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
@@ -59,13 +60,33 @@ func (t TestStepParameters) GetInt(k string) (int64, error) {
 // can persist into storage to support resuming the test.
 type TestStepStatus string
 
-// TestStepFactory is a type representing a function which builds a TestStep.
-// TestStep factories are registered in the plugin registry.
-type TestStepFactory func() TestStep
+// TestStepFactory is a type representing a factory which builds
+// a TestStep.
+type TestStepFactory interface {
+	abstract.FactoryWithEvents
 
-// TestStepLoader is a type representing a function which returns all the
-// needed things to be able to load a TestStep.
-type TestStepLoader func() (string, TestStepFactory, []event.Name)
+	// New constructs and returns a TestStep
+	New() TestStep
+}
+
+// TestStepFactories is a helper type to operate over multiple TestStepFactory-es
+type TestStepFactories []TestStepFactory
+
+// ToAbstract returns the factories as abstract.Factories
+//
+// Go has no contracts (yet) / traits / whatever, and Go does not allow
+// to convert slice of interfaces to slice of another interfaces
+// without a loop, so we have to implement this method for each
+// non-abstract-factories slice
+//
+// TODO: try remove it when this will be implemented:
+//       https://github.com/golang/proposal/blob/master/design/go2draft-contracts.md
+func (testStepFactories TestStepFactories) ToAbstract() (result abstract.Factories) {
+	for _, factory := range testStepFactories {
+		result = append(result, factory)
+	}
+	return
+}
 
 // TestStepDescriptor is the definition of a test step matching a test step
 // configuration.
@@ -81,7 +102,7 @@ type TestStepBundle struct {
 	TestStep      TestStep
 	TestStepLabel string
 	Parameters    TestStepParameters
-	AllowedEvents map[event.Name]bool
+	AllowedEvents map[event.Name]struct{}
 }
 
 // TestStepChannels represents the input and output  channels used by a TestStep

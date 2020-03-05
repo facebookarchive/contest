@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/facebookincubator/contest/pkg/abstract"
 	"github.com/facebookincubator/contest/pkg/api"
 	"github.com/facebookincubator/contest/pkg/config"
 	"github.com/facebookincubator/contest/pkg/event"
@@ -198,14 +199,16 @@ func (suite *TestJobManagerSuite) SetupTest() {
 	logging.Disable()
 
 	pluginRegistry := pluginregistry.NewPluginRegistry()
-	pluginRegistry.RegisterTargetManager(targetlist.Name, targetlist.New)
-	pluginRegistry.RegisterTestFetcher(literal.Name, literal.New)
-	pluginRegistry.RegisterReporter(targetsuccess.Name, targetsuccess.New)
-	pluginRegistry.RegisterTestStep(noop.Name, noop.New, noop.Events)
-	pluginRegistry.RegisterTestStep(fail.Name, fail.New, fail.Events)
-	pluginRegistry.RegisterTestStep(crash.Name, crash.New, crash.Events)
-	pluginRegistry.RegisterTestStep(noreturn.Name, noreturn.New, noreturn.Events)
-	pluginRegistry.RegisterTestStep(slowecho.Name, slowecho.New, slowecho.Events)
+	require.NoError(suite.T(), pluginRegistry.RegisterFactories(abstract.Factories{
+		&targetlist.Factory{},
+		&literal.Factory{},
+		&targetsuccess.Factory{},
+		&noop.Factory{},
+		&fail.Factory{},
+		&crash.Factory{},
+		&noreturn.Factory{},
+		&slowecho.Factory{},
+	}))
 
 	jm, err := jobmanager.New(&testListener, pluginRegistry)
 	require.NoError(suite.T(), err)

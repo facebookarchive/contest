@@ -28,9 +28,6 @@ var Name = "Cmd"
 
 var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
-// Events defines the events that a TestStep is allow to emit
-var Events = []event.Name{event.Name("CmdStart"), event.Name("CmdEnd")}
-
 // Cmd is used to run arbitrary commands as test steps.
 type Cmd struct {
 	executable string
@@ -117,12 +114,20 @@ func (ts *Cmd) CanResume() bool {
 	return false
 }
 
+// Factory implements test.TestStepFactory
+type Factory struct{}
+
 // New initializes and returns a new Cmd test step.
-func New() test.TestStep {
+func (f *Factory) New() test.TestStep {
 	return &Cmd{}
 }
 
-// Load returns the name, factory and events which are needed to register the step.
-func Load() (string, test.TestStepFactory, []event.Name) {
-	return Name, New, Events
+// Events returns the events the TestStep is allow to emit
+func (f *Factory) Events() []event.Name {
+	return []event.Name{"CmdStart", "CmdEnd"}
+}
+
+// UniqueImplementationName returns the unique name of the implementation
+func (f *Factory) UniqueImplementationName() string {
+	return Cmd{}.Name()
 }

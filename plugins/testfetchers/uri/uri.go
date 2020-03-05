@@ -125,13 +125,15 @@ func (tf *URI) Fetch(params interface{}) (string, []*test.TestStepDescriptor, er
 	return fetchParams.TestName, d.Steps, nil
 }
 
+// Factory implements test.TestFetcherFactory
+type Factory struct{}
+
 // New initializes the TestFetcher object
-func New() test.TestFetcher {
+func (f *Factory) New() test.TestFetcher {
 	return &URI{}
 }
 
-// Load returns the name and factory which are needed to register the
-// TestFetcher.
-func Load() (string, test.TestFetcherFactory) {
-	return Name, New
+// UniqueImplementationName returns the unique name of the implementation
+func (f *Factory) UniqueImplementationName() string {
+	return Name
 }

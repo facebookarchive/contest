@@ -60,13 +60,15 @@ func (tf *Literal) Fetch(params interface{}) (string, []*test.TestStepDescriptor
 	return fetchParams.TestName, fetchParams.Steps, nil
 }
 
+// Factory implements test.TestFetcherFactory
+type Factory struct{}
+
 // New initializes the TestFetcher object
-func New() test.TestFetcher {
+func (f *Factory) New() test.TestFetcher {
 	return &Literal{}
 }
 
-// Load returns the name and factory which are needed to register the
-// TestFetcher.
-func Load() (string, test.TestFetcherFactory) {
-	return Name, New
+// UniqueImplementationName returns the unique name of the implementation
+func (f *Factory) UniqueImplementationName() string {
+	return Name
 }

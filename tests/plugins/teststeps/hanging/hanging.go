@@ -15,9 +15,6 @@ import (
 // Name is the name used to look this plugin up.
 var Name = "Hanging"
 
-// Events defines the events that a TestStep is allow to emit
-var Events = []event.Name{}
-
 type hanging struct {
 }
 
@@ -49,7 +46,20 @@ func (ts *hanging) CanResume() bool {
 	return false
 }
 
-// New creates a new hanging step
-func New() test.TestStep {
+// Factory implements test.TestStepFactory
+type Factory struct{}
+
+// New constructs and returns a "hanging" implementation of test.TestStep
+func (f *Factory) New() test.TestStep {
 	return &hanging{}
+}
+
+// Events defines the events that a TestStep is allow to emit
+func (f *Factory) Events() []event.Name {
+	return nil
+}
+
+// UniqueImplementationName returns the unique name of the implementation
+func (f *Factory) UniqueImplementationName() string {
+	return Name
 }

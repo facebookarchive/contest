@@ -6,24 +6,12 @@
 package main
 
 import (
-	"strings"
 	"testing"
-
-	"github.com/facebookincubator/contest/pkg/abstract"
 )
 
 func TestValidateFactories(t *testing.T) {
-	for _, factories := range []abstract.Factories{
-		targetLockerFactories.ToAbstract(),
-	} {
-		// Check name uniqueness
-		m := map[string]struct{}{}
-		for _, uniqueNameRaw := range factories.UniqueImplementationNames() {
-			uniqueName := strings.ToLower(uniqueNameRaw)
-			if _, alreadyExists := m[uniqueName]; alreadyExists {
-				t.Errorf("factory %s is defined multiple times", uniqueNameRaw)
-			}
-			m[uniqueName] = struct{}{}
-		}
+	err := setupPluginRegistry()
+	if err != nil {
+		log.Fatal(err)
 	}
 }

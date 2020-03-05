@@ -31,10 +31,6 @@ const (
 	FailedEvent   = event.Name("ExampleFailedEvent")
 )
 
-// Events defines the events that a TestStep is allow to emit. Emitting an event
-// that is not registered here will cause the plugin to terminate with an error.
-var Events = []event.Name{StartedEvent, FinishedEvent, FailedEvent}
-
 // Step is an example implementation of a TestStep which simply
 // consumes Targets in input and pipes them to the output channel with intermediate
 // buffering. It randomly decides if a Target has failed and forwards it on
@@ -109,12 +105,21 @@ func (ts *Step) CanResume() bool {
 	return false
 }
 
-// New initializes and returns a new ExampleTestStep.
-func New() test.TestStep {
+// Factory implements test.TestStepFactory
+type Factory struct{}
+
+// New initializes and returns a new example test step.
+func (f *Factory) New() test.TestStep {
 	return &Step{}
 }
 
-// Load returns the name, factory and events which are needed to register the step.
-func Load() (string, test.TestStepFactory, []event.Name) {
-	return Name, New, Events
+// Events defines the events that a TestStep is allow to emit. Emitting an event
+// that is not registered here will cause the plugin to terminate with an error.
+func (f *Factory) Events() []event.Name {
+	return []event.Name{StartedEvent, FinishedEvent, FailedEvent}
+}
+
+// UniqueImplementationName returns the unique name of the implementation
+func (f *Factory) UniqueImplementationName() string {
+	return Step{}.Name()
 }

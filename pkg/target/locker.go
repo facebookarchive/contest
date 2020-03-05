@@ -15,7 +15,7 @@ import (
 // locker defines the locking engine used by ConTest.
 var locker Locker
 
-// LockerFactory is a type representing a function which builds
+// LockerFactory is a type representing a factory which builds
 // a Locker.
 type LockerFactory interface {
 	abstract.Factory

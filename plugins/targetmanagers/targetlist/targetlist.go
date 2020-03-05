@@ -107,13 +107,15 @@ func (t *TargetList) Release(jobID types.JobID, cancel <-chan struct{}, params i
 	return nil
 }
 
-// New builds a new TargetList object.
-func New() target.TargetManager {
+// Factory implements target.TargetManagerFactory
+type Factory struct{}
+
+// New builds a TargetList
+func (f *Factory) New() target.TargetManager {
 	return &TargetList{}
 }
 
-// Load returns the name and factory which are needed to register the
-// TargetManager.
-func Load() (string, target.TargetManagerFactory) {
-	return Name, New
+// UniqueImplementationName returns the unique name of the implementation
+func (f *Factory) UniqueImplementationName() string {
+	return Name
 }

@@ -159,13 +159,15 @@ func (tf *CSVFileTargetManager) Release(jobID types.JobID, cancel <-chan struct{
 	return nil
 }
 
+// Factory implements target.TargetManagerFactory
+type Factory struct{}
+
 // New builds a CSVFileTargetManager
-func New() target.TargetManager {
+func (f *Factory) New() target.TargetManager {
 	return &CSVFileTargetManager{}
 }
 
-// Load returns the name and factory which are needed to register the
-// TargetManager.
-func Load() (string, target.TargetManagerFactory) {
-	return Name, New
+// UniqueImplementationName returns the unique name of the implementation
+func (f *Factory) UniqueImplementationName() string {
+	return Name
 }

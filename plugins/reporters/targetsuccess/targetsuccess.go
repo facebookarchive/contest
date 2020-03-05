@@ -128,12 +128,14 @@ func (ts *TargetSuccessReporter) FinalReport(cancel <-chan struct{}, parameters 
 	return false, nil, fmt.Errorf("final reporting not implemented yet in %s", Name)
 }
 
+type Factory struct{}
+
 // New builds a new TargetSuccessReporter
-func New() job.Reporter {
+func (f *Factory) New() job.Reporter {
 	return &TargetSuccessReporter{}
 }
 
-// Load returns the name and factory which are needed to register the Reporter
-func Load() (string, job.ReporterFactory) {
-	return Name, New
+// UniqueImplementationName returns the unique name of the implementation
+func (f *Factory) UniqueImplementationName() string {
+	return Name
 }

@@ -6,7 +6,6 @@
 package event
 
 import (
-	"fmt"
 	"regexp"
 )
 
@@ -23,7 +22,29 @@ var StateEventName = Name("TestState")
 func (e Name) Validate() error {
 	matched := AllowedEventFormat.MatchString(string(e))
 	if !matched {
-		return fmt.Errorf("event name %s does not comply with events api (does not match %s)", AllowedEventFormat.String(), string(e))
+		return ErrInvalidEventName{EventName: e}
 	}
 	return nil
+}
+
+// Names is a helper-slice for multiple `Name`-s.
+type Names []Name
+
+// Validate performs method Validate for each Name.
+func (s Names) Validate() error {
+	for _, name := range s {
+		if err := name.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ToMap returns a map of existing names to empty structs.
+func (s Names) ToMap() map[Name]struct{} {
+	result := make(map[Name]struct{}, len(s))
+	for _, name := range s {
+		result[name] = struct{}{}
+	}
+	return result
 }
