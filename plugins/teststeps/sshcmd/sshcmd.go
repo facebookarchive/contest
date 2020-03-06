@@ -22,6 +22,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -57,6 +58,7 @@ type SSHCmd struct {
 	Password       *test.Param
 	Executable     *test.Param
 	Args           []test.Param
+	Expect         *test.Param
 }
 
 // Name returns the plugin name.
@@ -184,11 +186,24 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 			errCh <- innerErr
 		}()
 
-		// TODO should stdout/stderr go to events?
 		select {
 		case err := <-errCh:
 			log.Infof("Stdout of command '%s' is '%s'", cmd, stdout.Bytes())
-			if err != nil {
+			if err == nil {
+				// Execute expectations
+				expect := ts.Expect.Raw()
+				if expect == "" {
+					log.Warningf("no expectations specified")
+				} else {
+					re := regexp.MustCompile(expect)
+					matches := re.FindAll(stdout.Bytes(), -1)
+					if len(matches) > 0 {
+						log.Infof("match for regex \"%s\" found", expect)
+					} else {
+						return fmt.Errorf("match for %s not found for target %v", expect, target)
+					}
+				}
+			} else {
 				log.Warningf("Stderr of command '%s' is '%s'", cmd, stderr.Bytes())
 			}
 			return err
@@ -237,6 +252,7 @@ func (ts *SSHCmd) validateAndPopulate(params test.TestStepParameters) error {
 		return errors.New("invalid or missing 'executable' parameter, must be exactly one string")
 	}
 	ts.Args = params.Get("args")
+	ts.Expect = params.GetOne("expect")
 	return nil
 }
 
