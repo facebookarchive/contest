@@ -58,7 +58,7 @@ After successfully running this command, the ConTest framework will be available
 
 You can also have a look at the sample `contest` program:
 ```
-go get -u github.com/facebookincubator/ConTest/cmds/contest
+go get -u github.com/facebookincubator/contest/cmds/contest
 ```
 
 This will download and build the `contest` sample program, and will add it to your Go binary path.
