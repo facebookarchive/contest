@@ -2,21 +2,21 @@
     "steps": [
         {
             "name": "echo",
-	    "label": "thefirstrandecho",
+            "label": "thefirstrandecho",
             "parameters": {
                 "text": ["some very random text"]
             }
         },
         {
             "name": "randecho",
-	    "label": "thesecondrandecho",
+            "label": "thesecondrandecho",
             "parameters": {
                 "text": ["some very random text"]
             }
         },
         {
             "name": "echo",
-	    "label": "thethirdrandecho",
+            "label": "thethirdrandecho",
             "parameters": {
                 "text": ["some very random text"]
             }

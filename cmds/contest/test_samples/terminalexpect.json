@@ -2,6 +2,7 @@
     "steps": [
         {
             "name": "terminalexpect",
+            "label": "wait for starting",
             "parameters": {
                 "port": ["/dev/ttyUSB0"],
                 "speed": ["115200"],
@@ -11,6 +12,7 @@
         },
         {
             "name": "terminalexpect",
+            "label": "wait for trying boot configuration",
             "parameters": {
                 "port": ["/dev/ttyUSB0"],
                 "speed": ["115200"],
@@ -20,6 +22,7 @@
         },
         {
             "name": "terminalexpect",
+            "label": "wait for login",
             "parameters": {
                 "port": ["/dev/ttyUSB0"],
                 "speed": ["115200"],

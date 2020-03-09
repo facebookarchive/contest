@@ -71,6 +71,7 @@ var jobDescriptorNoop = descriptorMust(`
         "Steps": [
             {
                 "name": "noop",
+                "label": "noop_label",
                 "parameters": {}
             }
         ],
@@ -82,6 +83,7 @@ var jobDescriptorSlowecho = descriptorMust(`
        "Steps": [
            {
                "name": "slowecho",
+               "label": "slowecho_label",
                "parameters": {
                  "sleep": ["5"],
                  "text": ["Hello world"]
@@ -96,6 +98,7 @@ var jobDescriptorFailure = descriptorMust(`
        "Steps": [
            {
                "name": "fail",
+               "label": "fail_label",
                "parameters": {}
            }
        ],
@@ -107,6 +110,7 @@ var jobDescriptorCrash = descriptorMust(`
        "Steps": [
            {
                "name": "crash",
+               "label": "crash_label",
                "parameters": {}
            }
        ],
@@ -118,8 +122,38 @@ var jobDescriptorHang = descriptorMust(`
        "Steps": [
            {
                "name": "noreturn",
+               "label": "noreturn_label",
                "parameters": {}
            }
        ],
        "TestName": "IntegrationTest: noreturn"
+   }`)
+
+
+var jobDescriptorNoLabel = descriptorMust(`
+   "TestFetcherFetchParameters": {
+       "Steps": [
+           {
+               "name": "noop",
+               "parameters": {}
+           }
+       ],
+       "TestName": "IntegrationTest: no_label"
+   }`)
+
+var jobDescriptorLabelDuplication = descriptorMust(`
+   "TestFetcherFetchParameters": {
+       "Steps": [
+           {
+               "name": "noop",
+               "label": "some_label_here",
+               "parameters": {}
+           },
+           {
+               "name": "noreturn",
+               "label": "some_label_here",
+               "parameters": {}
+           }
+       ],
+       "TestName": "IntegrationTest: label_duplication"
    }`)

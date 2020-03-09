@@ -53,7 +53,7 @@ func (e AStep) Resume(cancel, pause <-chan struct{}, _ test.TestStepChannels, _ 
 
 func TestRegisterTestStep(t *testing.T) {
 	pr := NewPluginRegistry()
-	err := pr.RegisterTestStep("AStep", NewAStep, []event.Name{event.Name("AStepEvetName")})
+	err := pr.RegisterTestStep("AStep", NewAStep, []event.Name{event.Name("AStepEventName")})
 	require.NoError(t, err)
 }
 
