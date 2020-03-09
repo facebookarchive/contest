@@ -17,9 +17,9 @@ func (r *RDBMS) StoreJobRequest(request *job.Request) (types.JobID, error) {
 
 	var jobID types.JobID
 
-	if err := r.init(); err != nil {
-		return jobID, fmt.Errorf("could not initialize database: %v", err)
-	}
+	r.lockTx()
+	defer r.unlockTx()
+
 	insertStatement := "insert into jobs (name, descriptor, requestor, request_time) values (?, ?, ?, ?)"
 	result, err := r.db.Exec(insertStatement, request.JobName, request.JobDescriptor, request.Requestor, request.RequestTime)
 	if err != nil {
@@ -36,9 +36,8 @@ func (r *RDBMS) StoreJobRequest(request *job.Request) (types.JobID, error) {
 // GetJobRequest retrieves a JobRequest from the database
 func (r *RDBMS) GetJobRequest(jobID types.JobID) (*job.Request, error) {
 
-	if err := r.init(); err != nil {
-		return nil, fmt.Errorf("could not initialize database: %v", err)
-	}
+	r.lockTx()
+	defer r.unlockTx()
 
 	selectStatement := "select job_id, name, requestor, request_time, descriptor from jobs where job_id = ?"
 	log.Debugf("Executing query: %s", selectStatement)
@@ -46,13 +45,12 @@ func (r *RDBMS) GetJobRequest(jobID types.JobID) (*job.Request, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not get job request with id %v: %v", jobID, err)
 	}
+	var req *job.Request
 	defer func() {
 		if err := rows.Close(); err != nil {
-			log.Warningf("failed to close rows from query statement: %v", err)
+			log.Warningf("could not close rows for job request: %v", err)
 		}
 	}()
-
-	var req *job.Request
 	for rows.Next() {
 		if req != nil {
 			// We have already found a matching request. If we find more than one,

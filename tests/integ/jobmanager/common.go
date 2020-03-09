@@ -19,6 +19,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/jobmanager"
+
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/storage"
@@ -27,6 +28,7 @@ import (
 	"github.com/facebookincubator/contest/plugins/targetmanagers/targetlist"
 	"github.com/facebookincubator/contest/plugins/testfetchers/literal"
 	"github.com/facebookincubator/contest/plugins/teststeps/slowecho"
+	"github.com/facebookincubator/contest/tests/integ/common"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/crash"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/fail"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/noop"
@@ -121,7 +123,15 @@ func pollForEvent(eventManager frameworkevent.EmitterFetcher, ev event.Name, job
 type TestJobManagerSuite struct {
 	suite.Suite
 
+	// storage is the storage engine initially configured by the upper level TestSuite,
+	// which either configures a memory or a rdbms storage backend.
 	storage storage.Storage
+
+	// txStorage storage is initialized from storage at the beginning of each test. If
+	// the backend supports transactions, txStorage runs within a transaction. At the end
+	// of the job txStorage is finalized: it's either committed or rolled back, depending
+	// what the backend supports
+	txStorage storage.Storage
 
 	jm *jobmanager.JobManager
 
@@ -212,6 +222,9 @@ func (suite *TestJobManagerSuite) SetupTest() {
 	suite.jm = jm
 	sigs := make(chan os.Signal)
 	suite.sigs = sigs
+
+	suite.txStorage = common.InitStorage(suite.storage)
+	storage.SetStorage(suite.txStorage)
 }
 
 func (suite *TestJobManagerSuite) TearDownTest() {
@@ -232,8 +245,8 @@ func (suite *TestJobManagerSuite) TearDownTest() {
 	case <-time.After(2 * time.Second):
 		suite.T().Errorf("JobManager should return within the timeout")
 	}
-
-	suite.storage.Reset()
+	common.FinalizeStorage(suite.txStorage)
+	storage.SetStorage(suite.storage)
 }
 
 func (suite *TestJobManagerSuite) TestJobManagerJobStartSingle() {
@@ -245,27 +258,38 @@ func (suite *TestJobManagerSuite) TestJobManagerJobStartSingle() {
 
 	jobID, err := suite.startJob(jobDescriptorNoop)
 	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), types.JobID(1), jobID)
 
 	_, err = suite.jobRequestManager.Fetch(types.JobID(jobID))
 	require.NoError(suite.T(), err)
 
-	r, err := suite.jobRequestManager.Fetch(types.JobID(jobID + 1))
-	require.Error(suite.T(), err)
-	require.NotEqual(suite.T(), nil, r)
-
 	// JobManager will emit an EventJobStarted when the Job is started
-	ev, err := pollForEvent(suite.eventManager, jobmanager.EventJobStarted, types.JobID(1))
+	ev, err := pollForEvent(suite.eventManager, jobmanager.EventJobStarted, types.JobID(jobID))
+	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
+
+	// JobManager will emit an EventJobCompleted when the Job completes
+	ev, err = pollForEvent(suite.eventManager, jobmanager.EventJobCompleted, types.JobID(jobID))
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), 1, len(ev))
+
+}
+
+func (suite *TestJobManagerSuite) TestJobManagerJobReport() {
+	go func() {
+		suite.jm.Start(suite.sigs)
+		close(suite.jobManagerCh)
+	}()
+
+	jobID, err := suite.startJob(jobDescriptorNoop)
 	require.NoError(suite.T(), err)
 
 	// JobManager will emit an EventJobCompleted when the Job completes
-	ev, err = pollForEvent(suite.eventManager, jobmanager.EventJobCompleted, types.JobID(1))
+	ev, err := pollForEvent(suite.eventManager, jobmanager.EventJobCompleted, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
 	// A Report must be persisted for the Job
-	jobReport, err := suite.jobReportManager.Fetch(types.JobID(1))
+	jobReport, err := suite.jobReportManager.Fetch(types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(jobReport.RunReports))
 	require.Equal(suite.T(), 0, len(jobReport.FinalReports))
@@ -275,7 +299,6 @@ func (suite *TestJobManagerSuite) TestJobManagerJobStartSingle() {
 	jobReport, err = suite.jobReportManager.Fetch(types.JobID(2))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), &job.JobReport{JobID: 2}, jobReport)
-
 }
 
 func (suite *TestJobManagerSuite) TestJobManagerJobCancellation() {
@@ -287,7 +310,6 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCancellation() {
 
 	jobID, err := suite.startJob(jobDescriptorSlowecho)
 	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), types.JobID(1), jobID)
 
 	// Wait EventJobStarted event. This is necessary so that we can later issue a
 	// Stop command for a Job that we know is already running.
@@ -323,7 +345,6 @@ func (suite *TestJobManagerSuite) TestJobManagerJobNotSuccessful() {
 
 	jobID, err := suite.startJob(jobDescriptorFailure)
 	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), types.JobID(1), jobID)
 
 	// If the Job completes, but the result of the reporting phase indicates a failure,
 	// an EventJobCompleted is emitted and the Report will indicate that the Job was unsuccessful
@@ -331,7 +352,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobNotSuccessful() {
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
-	jobReport, err := suite.jobReportManager.Fetch(types.JobID(1))
+	jobReport, err := suite.jobReportManager.Fetch(types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(jobReport.RunReports))
 	require.Equal(suite.T(), 0, len(jobReport.FinalReports))
@@ -346,7 +367,6 @@ func (suite *TestJobManagerSuite) TestJobManagerJobFailure() {
 
 	jobID, err := suite.startJob(jobDescriptorFailure)
 	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), types.JobID(1), jobID)
 
 	// If the Job completes, but the result of the reporting phase indicates a failure,
 	// an EventJobCompleted is emitted and the Report will indicate that the Job was unsuccessful
@@ -354,7 +374,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobFailure() {
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
-	jobReport, err := suite.jobReportManager.Fetch(types.JobID(1))
+	jobReport, err := suite.jobReportManager.Fetch(types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(jobReport.RunReports))
 	require.Equal(suite.T(), 0, len(jobReport.FinalReports))
@@ -366,11 +386,8 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCrash() {
 		suite.jm.Start(suite.sigs)
 		close(suite.jobManagerCh)
 	}()
-
 	jobID, err := suite.startJob(jobDescriptorCrash)
 	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), types.JobID(1), jobID)
-
 	// If the Job does not complete and returns an error instead, an EventJobFailed
 	// is emitted. The report will indicate that the job was unsuccessful, and
 	// the report calculate by the plugin will be nil
@@ -378,8 +395,8 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCrash() {
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 	require.Equal(suite.T(), string(*ev[0].Payload), "{\"Err\":\"TestStep crashed\"}")
+	jobReport, err := suite.jobReportManager.Fetch(types.JobID(jobID))
 
-	jobReport, err := suite.jobReportManager.Fetch(types.JobID(1))
 	require.NoError(suite.T(), err)
 	// no reports are expected if the job crashes
 	require.Equal(suite.T(), &job.JobReport{JobID: jobID}, jobReport)
@@ -397,7 +414,6 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCancellationFailure() {
 
 	jobID, err := suite.startJob(jobDescriptorHang)
 	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), types.JobID(1), jobID)
 
 	// Wait EventJobStarted event. This is necessary so that we can later issue a
 	// Stop command for a Job that we know is already running.

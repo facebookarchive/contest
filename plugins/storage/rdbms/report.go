@@ -16,9 +16,9 @@ import (
 
 // StoreJobReport persists the job report on the internal storage.
 func (r *RDBMS) StoreJobReport(jobReport *job.JobReport) error {
-	if err := r.init(); err != nil {
-		return fmt.Errorf("could not initialize database: %v", err)
-	}
+
+	r.lockTx()
+	defer r.unlockTx()
 
 	for runID, runReports := range jobReport.RunReports {
 		for _, report := range runReports {
@@ -52,15 +52,15 @@ func (r *RDBMS) StoreJobReport(jobReport *job.JobReport) error {
 
 // GetJobReport retrieves a JobReport from the database
 func (r *RDBMS) GetJobReport(jobID types.JobID) (*job.JobReport, error) {
-	if err := r.init(); err != nil {
-		return nil, fmt.Errorf("could not initialize database: %v", err)
-	}
 
 	var (
 		runReports        [][]*job.Report
 		currentRunReports []*job.Report
 		finalReports      []*job.Report
 	)
+
+	r.lockTx()
+	defer r.unlockTx()
 
 	// get run reports. Don't change the order by asc, because
 	// the code below assumes sorted results by ascending run number.

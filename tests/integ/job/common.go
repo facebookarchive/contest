@@ -13,6 +13,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/tests/integ/common"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -36,14 +37,25 @@ var jobDescriptorSecond = `
 
 type JobSuite struct {
 	suite.Suite
+
+	// storage is the storage engine initially configured by the upper level TestSuite,
+	// which either configures a memory or a rdbms storage backend.
 	storage storage.Storage
+
+	// txStorage storage is initialized from storage at the beginning of each test. If
+	// the backend supports transactions, txStorage runs within a transaction.
+	txStorage storage.Storage
+}
+
+func (suite *JobSuite) SetupTest() {
+	suite.txStorage = common.InitStorage(suite.storage)
 }
 
 func (suite *JobSuite) TearDownTest() {
-	suite.storage.Reset()
+	common.FinalizeStorage(suite.txStorage)
 }
 
-func populateJob(backend storage.Storage) error {
+func (suite *JobSuite) TestGetJobRequest() {
 
 	jobRequestFirst := job.Request{
 		JobName:       "AName",
@@ -51,10 +63,8 @@ func populateJob(backend storage.Storage) error {
 		RequestTime:   time.Now(),
 		JobDescriptor: jobDescriptorFirst,
 	}
-	_, err := backend.StoreJobRequest(&jobRequestFirst)
-	if err != nil {
-		return err
-	}
+	jobIDa, err := suite.txStorage.StoreJobRequest(&jobRequestFirst)
+	require.NoError(suite.T(), err)
 
 	jobRequestSecond := job.Request{
 		JobName:       "BName",
@@ -62,42 +72,13 @@ func populateJob(backend storage.Storage) error {
 		RequestTime:   time.Now(),
 		JobDescriptor: jobDescriptorSecond,
 	}
-	_, err = backend.StoreJobRequest(&jobRequestSecond)
-	return err
-}
-
-func (suite *JobSuite) TestPersistJobRequestReturnsCorrectID() {
-	jobDescriptor := "{'JobName': 'Test'}"
-	jobRequestFirst := job.Request{
-		JobName:       "AName",
-		Requestor:     "AIntegrationTest",
-		RequestTime:   time.Now(),
-		JobDescriptor: jobDescriptor,
-	}
-
-	jobID, err := suite.storage.StoreJobRequest(&jobRequestFirst)
+	jobIDb, err := suite.txStorage.StoreJobRequest(&jobRequestSecond)
 	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), types.JobID(1), jobID)
 
-	jobRequestSecond := job.Request{
-		JobName:       "BName",
-		Requestor:     "BIntegrationTest",
-		RequestTime:   time.Now(),
-		JobDescriptor: jobDescriptor,
-	}
+	request, err := suite.txStorage.GetJobRequest(types.JobID(jobIDa))
 
-	jobID, err = suite.storage.StoreJobRequest(&jobRequestSecond)
 	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), types.JobID(2), jobID)
-}
-
-func (suite *JobSuite) TestGetJobRequest() {
-
-	populateJob(suite.storage)
-
-	request, err := suite.storage.GetJobRequest(types.JobID(1))
-	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), types.JobID(1), request.JobID)
+	require.Equal(suite.T(), types.JobID(jobIDa), request.JobID)
 	require.Equal(suite.T(), request.Requestor, "AIntegrationTest")
 	require.Equal(suite.T(), request.JobDescriptor, jobDescriptorFirst)
 
@@ -107,13 +88,13 @@ func (suite *JobSuite) TestGetJobRequest() {
 	require.True(suite.T(), request.RequestTime.After(time.Now().Add(-2*time.Second)))
 	require.True(suite.T(), request.RequestTime.Before(time.Now().Add(2*time.Second)))
 
-	request, err = suite.storage.GetJobRequest(types.JobID(2))
+	request, err = suite.txStorage.GetJobRequest(types.JobID(jobIDb))
 
 	// Creation timestamp corresponds to the timestamp of the insertion into the
 	// database. Assert that the timestamp retrieved from the database is within
 	// and acceptable range
 	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), types.JobID(2), request.JobID)
+	require.Equal(suite.T(), types.JobID(jobIDb), request.JobID)
 	require.Equal(suite.T(), request.Requestor, "BIntegrationTest")
 	require.Equal(suite.T(), request.JobDescriptor, jobDescriptorSecond)
 

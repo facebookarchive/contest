@@ -8,6 +8,7 @@
 package test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -27,7 +28,10 @@ func TestJobManagerSuiteRdbmsStorage(t *testing.T) {
 		rdbms.TestEventsFlushSize(1),
 		rdbms.TestEventsFlushInterval(10 * time.Second),
 	}
-	storageLayer := common.NewStorage(opts...)
+	storageLayer, err := common.NewStorage(opts...)
+	if err != nil {
+		panic(fmt.Sprintf("could not initialize rdbms storage layer: %v", err))
+	}
 	storage.SetStorage(storageLayer)
 	testSuite.storage = storageLayer
 
