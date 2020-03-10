@@ -2,12 +2,14 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
+
 package storage
 
 import (
 	"fmt"
 
 	"github.com/facebookincubator/contest/pkg/job"
+	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
@@ -27,22 +29,22 @@ type JobRequestEmitterFetcher struct {
 }
 
 // Emit persists a new job request into storage
-func (rc JobRequestEmitter) Emit(request *job.Request) (types.JobID, error) {
+func (rc JobRequestEmitter) Emit(request *job.Request, testDescriptors [][]*test.TestStepDescriptor) (types.JobID, error) {
 	var jobID types.JobID
-	jobID, err := storage.StoreJobRequest(request)
+	jobID, err := storage.StoreJobRequest(request, testDescriptors)
 	if err != nil {
-		return jobID, fmt.Errorf("could not store job request: %v", err)
+		return jobID, fmt.Errorf("could not store job request: %w", err)
 	}
 	return jobID, nil
 }
 
 // Fetch fetches a Job request from storage based on job id
-func (rf JobRequestFetcher) Fetch(jobID types.JobID) (*job.Request, error) {
-	request, err := storage.GetJobRequest(jobID)
+func (rf JobRequestFetcher) Fetch(jobID types.JobID) (*job.Request, [][]*test.TestStepDescriptor, error) {
+	request, testDescriptors, err := storage.GetJobRequest(jobID)
 	if err != nil {
-		return nil, fmt.Errorf("could not fetch job request: %v", err)
+		return nil, nil, fmt.Errorf("could not fetch job request: %w", err)
 	}
-	return request, nil
+	return request, testDescriptors, nil
 }
 
 // NewJobRequestEmitter creates a JobRequestEmitter object

@@ -62,104 +62,108 @@ type JobManager struct {
 	pluginRegistry *pluginregistry.PluginRegistry
 }
 
-// NewJob creates a new Job object
-func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, error) {
+// NewJob returns a new Job object and the fetched test descriptors
+func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, [][]*test.TestStepDescriptor, error) {
 
 	var jd *job.JobDescriptor
 	if err := json.Unmarshal([]byte(jobDescriptor), &jd); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if jd == nil {
-		return nil, errors.New("JobDescriptor cannot be nil")
+		return nil, nil, errors.New("JobDescriptor cannot be nil")
 	}
 	if len(jd.TestDescriptors) == 0 {
-		return nil, errors.New("need at least one TestDescriptor in the JobDescriptor")
+		return nil, nil, errors.New("need at least one TestDescriptor in the JobDescriptor")
 	}
 	if jd.JobName == "" {
-		return nil, errors.New("job name cannot be empty")
+		return nil, nil, errors.New("job name cannot be empty")
 	}
 	if jd.RunInterval < 0 {
-		return nil, errors.New("run interval must be non-negative")
+		return nil, nil, errors.New("run interval must be non-negative")
 	}
 
 	if len(jd.Reporting.RunReporters) == 0 && len(jd.Reporting.FinalReporters) == 0 {
-		return nil, errors.New("at least one run reporter or one final reporter must be specified in a job")
+		return nil, nil, errors.New("at least one run reporter or one final reporter must be specified in a job")
 	}
 	for _, reporter := range jd.Reporting.RunReporters {
 		if strings.TrimSpace(reporter.Name) == "" {
-			return nil, errors.New("run reporters cannot have empty or all-whitespace names")
+			return nil, nil, errors.New("run reporters cannot have empty or all-whitespace names")
 		}
 	}
 
 	var runReporterBundles []*job.ReporterBundle
 	for _, reporter := range jd.Reporting.RunReporters {
 		if strings.TrimSpace(reporter.Name) == "" {
-			return nil, errors.New("invalid empty or all-whitespace run reporter name")
+			return nil, nil, errors.New("invalid empty or all-whitespace run reporter name")
 		}
 		bundle, err := pr.NewRunReporterBundle(reporter.Name, reporter.Parameters)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create bundle for run reporter '%s': %v", reporter.Name, err)
+			return nil, nil, fmt.Errorf("failed to create bundle for run reporter '%s': %v", reporter.Name, err)
 		}
 		runReporterBundles = append(runReporterBundles, bundle)
 	}
 	var finalReporterBundles []*job.ReporterBundle
 	for _, reporter := range jd.Reporting.FinalReporters {
 		if strings.TrimSpace(reporter.Name) == "" {
-			return nil, errors.New("invalid empty or all-whitespace final reporter name")
+			return nil, nil, errors.New("invalid empty or all-whitespace final reporter name")
 		}
 		bundle, err := pr.NewFinalReporterBundle(reporter.Name, reporter.Parameters)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create bundle for final reporter '%s': %v", reporter.Name, err)
+			return nil, nil, fmt.Errorf("failed to create bundle for final reporter '%s': %v", reporter.Name, err)
 		}
 		finalReporterBundles = append(finalReporterBundles, bundle)
 	}
 
 	tests := make([]*test.Test, 0, len(jd.TestDescriptors))
+	testDescriptors := make([][]*test.TestStepDescriptor, 0, len(jd.TestDescriptors))
 	for _, td := range jd.TestDescriptors {
 		if td.TargetManagerName == "" {
-			return nil, errors.New("target manager name cannot be empty")
+			return nil, nil, errors.New("target manager name cannot be empty")
 		}
 		if td.TestFetcherName == "" {
-			return nil, errors.New("test fetcher name cannot be empty")
+			return nil, nil, errors.New("test fetcher name cannot be empty")
 		}
 		// get an instance of the TargetManager and validate its parameters.
 		tmb, err := pr.NewTargetManagerBundle(td)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		// get an instance of the TestFetcher and validate its parameters
 		tfb, err := pr.NewTestFetcherBundle(td)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		name, testStepDescs, err := tfb.TestFetcher.Fetch(tfb.FetchParameters)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		// the fetched descriptors will be returned so they can be persisted to the storage layer.
+		testDescriptors = append(testDescriptors, testStepDescs)
+
 		// look up test step plugins in the plugin registry
 		var stepBundles []test.TestStepBundle
 		labels := make(map[string]bool)
 		for idx, testStepDesc := range testStepDescs {
 			tse, err := pr.NewTestStepEvents(testStepDesc.Name)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			// test step index is incremented by 1 so we can use 0 to signal an
 			// anomaly.
 			tsb, err := pr.NewTestStepBundle(*testStepDesc, uint(idx)+1, tse)
 			if err != nil {
-				return nil, fmt.Errorf("NewTestStepBundle for test step '%s' with index %d failed: %w", testStepDesc.Name, idx, err)
+				return nil, nil, fmt.Errorf("NewTestStepBundle for test step '%s' with index %d failed: %w", testStepDesc.Name, idx, err)
 			}
 			if _, ok := labels[tsb.TestStepLabel]; ok {
 				// validate that the label associated to the test step does not clash
 				// with any other label within the test
-				return nil, fmt.Errorf("found duplicated labels in test %s: %s ", name, tsb.TestStepLabel)
+				return nil, nil, fmt.Errorf("found duplicated labels in test %s: %s ", name, tsb.TestStepLabel)
 			}
 			labels[tsb.TestStepLabel] = true
 
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			stepBundles = append(stepBundles, *tsb)
 		}
@@ -190,7 +194,7 @@ func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, 
 	job.CancelCh = make(chan struct{})
 	job.PauseCh = make(chan struct{})
 
-	return &job, nil
+	return &job, testDescriptors, nil
 }
 
 // New initializes and returns a new JobManager with the given API listener.

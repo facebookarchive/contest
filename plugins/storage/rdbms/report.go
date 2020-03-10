@@ -91,6 +91,7 @@ func (r *RDBMS) GetJobReport(jobID types.JobID) (*job.JobReport, error) {
 			&currentRunID,
 			&data,
 		)
+		// Fetch fetches a Job request from storage based on job id
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan row while fetching run report for job %d: %v", jobID, err)
 		}

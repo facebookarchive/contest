@@ -51,14 +51,14 @@ const defaultSSHPort = 22
 
 // SSHCmd is used to run arbitrary commands as test steps.
 type SSHCmd struct {
-	Host           *test.Param
-	Port           *test.Param
-	User           *test.Param
-	PrivateKeyFile *test.Param
-	Password       *test.Param
-	Executable     *test.Param
+	Host           test.Param
+	Port           test.Param
+	User           test.Param
+	PrivateKeyFile test.Param
+	Password       test.Param
+	Executable     test.Param
 	Args           []test.Param
-	Expect         *test.Param
+	Expect         test.Param
 }
 
 // Name returns the plugin name.
@@ -191,7 +191,7 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 			log.Infof("Stdout of command '%s' is '%s'", cmd, stdout.Bytes())
 			if err == nil {
 				// Execute expectations
-				expect := ts.Expect.Raw()
+				expect := string(ts.Expect)
 				if expect == "" {
 					log.Warningf("no expectations specified")
 				} else {
@@ -223,7 +223,7 @@ func (ts *SSHCmd) validateAndPopulate(params test.TestStepParameters) error {
 		return errors.New("invalid or missing 'host' parameter, must be exactly one string")
 	}
 	if params.GetOne("port").IsEmpty() {
-		ts.Port = test.NewParam(strconv.Itoa(defaultSSHPort))
+		ts.Port = test.Param(strconv.Itoa(defaultSSHPort))
 	} else {
 		var port int64
 		port, err = params.GetInt("port")

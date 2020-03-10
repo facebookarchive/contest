@@ -14,32 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParameter(t *testing.T) {
-	validStrings := []string{
-		"\"blah\"",
-		"\"123\"",
-	}
-	for _, s := range validStrings {
-		p := Param{}
-		require.NoError(t, p.UnmarshalJSON([]byte(s)))
-	}
-}
-
-func TestParameterInvalid(t *testing.T) {
-	invalidStrings := []string{
-		"",
-		"\"",
-		"blah\"",
-		"blah",
-		"123\"",
-		"123",
-	}
-	for _, s := range invalidStrings {
-		p := Param{}
-		require.Error(t, p.UnmarshalJSON([]byte(s)), s)
-	}
-}
-
 func TestParameterExpand(t *testing.T) {
 	validExprs := [][4]string{
 		// expression, target name, target ID, expected result
@@ -49,7 +23,7 @@ func TestParameterExpand(t *testing.T) {
 		[4]string{"name={{ .Name }}, id={{ .ID }}", "blah", "12345", "name=blah, id=12345"},
 	}
 	for _, x := range validExprs {
-		p := NewParam(x[0])
+		p := Param(x[0])
 		res, err := p.Expand(&target.Target{Name: x[1], ID: x[2]})
 		require.NoError(t, err, x[0])
 		require.Equal(t, x[3], res, x[0])
@@ -71,7 +45,7 @@ func TestParameterExpandUserFunctions(t *testing.T) {
 		[4]string{"{{ Title .ID }}", "slackware.it", "a1234a", "A1234a"},
 	}
 	for _, x := range validExprs {
-		p := NewParam(x[0])
+		p := Param(x[0])
 		res, err := p.Expand(&target.Target{Name: x[1], ID: x[2]})
 		require.NoError(t, err, x[0])
 		require.Equal(t, x[3], res, x[0])

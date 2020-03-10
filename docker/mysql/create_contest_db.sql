@@ -53,6 +53,7 @@ CREATE TABLE jobs (
 	requestor VARCHAR(32) NOT NULL,
 	request_time TIMESTAMP NOT NULL,
 	descriptor TEXT NOT NULL,
+	teststeps TEXT,
 	PRIMARY KEY (job_id)
 );
 

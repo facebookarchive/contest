@@ -16,7 +16,7 @@ import (
 
 func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 	msg := ev.Msg.(api.EventStartMsg)
-	j, err := NewJob(jm.pluginRegistry, msg.JobDescriptor)
+	j, testDescriptors, err := NewJob(jm.pluginRegistry, msg.JobDescriptor)
 	if err != nil {
 		return &api.EventResponse{Err: err}
 	}
@@ -28,7 +28,7 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 		RequestTime:   time.Now(),
 		JobDescriptor: msg.JobDescriptor,
 	}
-	jobID, err := jm.jobRequestManager.Emit(&request)
+	jobID, err := jm.jobRequestManager.Emit(&request, testDescriptors)
 	if err != nil {
 		return &api.EventResponse{
 			Requestor: ev.Msg.Requestor(),
