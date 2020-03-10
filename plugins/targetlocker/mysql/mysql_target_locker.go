@@ -25,20 +25,30 @@ import (
 	"github.com/facebookincubator/contest/plugins/targetlocker"
 )
 
+// enableDebug control if it's required to enable DEBUG logging level for
+// this plugin.
 var enableDebug = false
 
-// TargetLocker is the no-op target locker. It does nothing.
+// TargetLocker is the MySQL-based target locker.
 type TargetLocker struct {
 	log     *logrus.Entry
 	mySQL   *sql.DB
 	querier mysqlLocksQuerier
 }
 
+// mysqlLocksQuerier implements MySQL-specific related logic.
+//
+// TargetLocker itself contains only logic related to generic SQL DBMS, and
+// all MySQL-specific stuff is offloaded to mysqlLocksQuerier.
+// It allows to easily implement support of another SQL DBMS in future
+// (if required) and allows to read, write and check the logic separately
+// ("how the locking is done" and "how is the querying to MySQL is done").
 type mysqlLocksQuerier struct {
 	log     *logrus.Entry
 	lockTTL time.Duration
 }
 
+// backendQuerier is an abstraction over `*sql.Tx` and `*sql.DB`.
 type backendQuerier interface {
 	Query(query string, args ...interface{}) (*sql.Rows, error)
 	Exec(query string, args ...interface{}) (sql.Result, error)
@@ -48,6 +58,7 @@ func (q mysqlLocksQuerier) tableName() string {
 	return `locks`
 }
 
+// query is a wrapper around backendQuerier.Query to provide logs
 func (q mysqlLocksQuerier) query(mysql backendQuerier, query string, args ...interface{}) (*sql.Rows, error) {
 	startedAt := time.Now()
 	rows, err := mysql.Query(query, args...)
@@ -55,6 +66,7 @@ func (q mysqlLocksQuerier) query(mysql backendQuerier, query string, args ...int
 	return rows, err
 }
 
+// exec is a wrapper around backendQuerier.Exec to provide logs.
 func (q mysqlLocksQuerier) exec(mysql backendQuerier, query string, args ...interface{}) (sql.Result, error) {
 	startedAt := time.Now()
 	result, err := mysql.Exec(query, args...)
@@ -68,17 +80,23 @@ func (q mysqlLocksQuerier) exec(mysql backendQuerier, query string, args ...inte
 	return result, err
 }
 
-func (q mysqlLocksQuerier) checkAccess(mysql backendQuerier) (*sql.Rows, error) {
-	return q.query(mysql, "SELECT * FROM `"+q.tableName()+"` LIMIT 1") // #nosec G202
+// checkAccess performs a test query to check if we have access to the data.
+func (q mysqlLocksQuerier) checkAccess(mysql backendQuerier) error {
+	rows, err := q.query(mysql, "SELECT * FROM `"+q.tableName()+"` LIMIT 1") // #nosec G202
+	if err == nil {
+		_ = rows.Close()
+	}
+	return err
 }
 
+// do performs a Lock, Unlock or RefreshLock (depending on value of `action`).
 func (q mysqlLocksQuerier) do(
 	action targetlocker.Action,
 	mysql backendQuerier,
 	jobID types.JobID,
 	targetID string,
-) (sql.Result, error) {
-	var fn func(backendQuerier, types.JobID, string) (sql.Result, error)
+) error {
+	var fn func(backendQuerier, types.JobID, string) error
 	switch action {
 	case targetlocker.ActionLock:
 		fn = q.actionLock
@@ -87,31 +105,64 @@ func (q mysqlLocksQuerier) do(
 	case targetlocker.ActionRefreshLock:
 		fn = q.actionRefreshLock
 	default:
-		return nil, targetlocker.ErrInvalidAction{Action: action}
+		return targetlocker.ErrInvalidAction{Action: action}
 	}
 	return fn(mysql, jobID, targetID)
 }
 
+// actionClearExpiredLock removes expired locks for a selected target
 func (q mysqlLocksQuerier) actionClearExpiredLock(
 	mysql backendQuerier,
 	targetID string,
-) (sql.Result, error) {
-	return q.exec(mysql,
+) error {
+	_, err := q.exec(mysql,
 		"DELETE FROM `"+q.tableName()+"` WHERE target_id=? AND NOW() >= expires_at",
 		targetID) // #nosec G202
+	return err
 }
 
 type mysqlErrorType int
 
 const (
 	mysqlErrorTypeUndefined = mysqlErrorType(iota)
+	mysqlErrorTypeNoError
 	mysqlErrorTypeUnknown
 	mysqlErrorTypeOther
+	mysqlErrorTypeNoRowsAffected
 	mysqlErrorTypeDuplicateKey
 )
 
+func (errType mysqlErrorType) String() string {
+	switch errType {
+	case mysqlErrorTypeUndefined:
+		return "undefined"
+	case mysqlErrorTypeNoError:
+		return "no_error"
+	case mysqlErrorTypeUnknown:
+		return "unknown"
+	case mysqlErrorTypeOther:
+		return "other"
+	case mysqlErrorTypeNoRowsAffected:
+		return "no_rows"
+	case mysqlErrorTypeDuplicateKey:
+		return "duplicate_key"
+	}
+	return "invalid"
+}
+
+// errorType detects the kind of a MySQL error.
+//
+// So far it used only to detect if the error is a "Duplicate Key" error.
 func (q mysqlLocksQuerier) errorType(err error) mysqlErrorType {
 	_ = mysqlErrorTypeUndefined // just to bypass linter error: `mysqlErrorTypeUndefined` is unused (deadcode)
+
+	if err == nil {
+		return mysqlErrorTypeNoError
+	}
+
+	if xerrors.Is(err, sql.ErrNoRows) {
+		return mysqlErrorTypeNoRowsAffected
+	}
 
 	var mysqlError *mysql.MySQLError
 	if !xerrors.As(err, &mysqlError) {
@@ -124,14 +175,16 @@ func (q mysqlLocksQuerier) errorType(err error) mysqlErrorType {
 	return mysqlErrorTypeOther
 }
 
+// actionLock inserts a lock for a target (and removes an expired lock
+// if there's any).
 func (q mysqlLocksQuerier) actionLock(
 	mysql backendQuerier,
 	jobID types.JobID,
 	targetID string,
-) (result sql.Result, err error) {
+) error {
 	// Remove expired an lock (if exists)
 
-	_, _ = q.actionClearExpiredLock(mysql, targetID)
+	_ = q.actionClearExpiredLock(mysql, targetID)
 
 	// Add the lock
 
@@ -156,38 +209,53 @@ func (q mysqlLocksQuerier) actionLock(
 	}
 
 	for _, errItem := range errs {
-		if q.errorType(errItem) == mysqlErrorTypeDuplicateKey {
-			err = targetlocker.ErrAlreadyLocked{
+		switch q.errorType(errItem) {
+		case mysqlErrorTypeNoError, mysqlErrorTypeNoRowsAffected:
+			continue
+		case mysqlErrorTypeUndefined, mysqlErrorTypeUnknown:
+			return fmt.Errorf("actionLock(): unexpected error: %w", errItem)
+		case mysqlErrorTypeDuplicateKey:
+			return targetlocker.ErrAlreadyLocked{
 				TargetID:        targetID,
 				UnderlyingError: errItem,
 			}
 		}
 	}
 
-	return
+	return nil
 }
 
+// actionUnlock removes a lock for a target (if it is owned by job `JobID`).
 func (q mysqlLocksQuerier) actionUnlock(
 	mysql backendQuerier,
 	jobID types.JobID,
 	targetID string,
-) (sql.Result, error) {
-	return q.exec(mysql,
+) error {
+	_, err := q.exec(mysql,
 		"DELETE FROM `"+q.tableName()+"` "+
 			"WHERE target_id=? AND job_id=?", targetID, jobID) // #nosec G202
+	return err
 }
 
+// actionRefreshLock updates `expires_at` of a lock for a target (if it owned by job `JobID`).
 func (q mysqlLocksQuerier) actionRefreshLock(
 	mysql backendQuerier,
 	jobID types.JobID,
 	targetID string,
-) (sql.Result, error) {
-	return q.exec(mysql,
+) error {
+	_, err := q.exec(mysql,
 		"UPDATE `"+q.tableName()+"` "+
 			`SET expires_at = NOW() + INTERVAL ? SECOND WHERE target_id=? AND job_id=?`,
 		int64(q.lockTTL.Seconds()), targetID, jobID) // #nosec G202
+	return err
 }
 
+// placeholder returns a strings of placeholders to fit the argument `arg`
+// for further use by `backendQuerier.Query`/`backendQuerier.Exec`.
+//
+// For example slice ["a", "b", "c"] will get a placeholder "(?, ?, ?)".
+//
+// See also `arguments` below.
 func (q mysqlLocksQuerier) placeholder(arg interface{}) string {
 	switch arg := arg.(type) {
 	case []string:
@@ -201,6 +269,12 @@ func (q mysqlLocksQuerier) placeholder(arg interface{}) string {
 	}
 }
 
+// arguments returns argument `arg` as arguments for
+// `backendQuerier.Query`/`backendQuerier.Exec`
+//
+// For example slice []string{"a", "b", "c"} will be converted to []interface{}{"a", "b", "c"}.
+//
+// See also `placeholder` above.
 func (q mysqlLocksQuerier) arguments(arg interface{}) (result []interface{}) {
 	switch arg := arg.(type) {
 	case []string:
@@ -213,6 +287,10 @@ func (q mysqlLocksQuerier) arguments(arg interface{}) (result []interface{}) {
 	return
 }
 
+// getLocks returns `*sql.Row` which contains target_id-s (string) of
+// all targets from list `targetIDs` which are still locked by job `jobID`.
+//
+// See an usage example in `CheckLocks`.
 func (q mysqlLocksQuerier) getLocks(
 	mysql backendQuerier,
 	jobID types.JobID,
@@ -222,18 +300,28 @@ func (q mysqlLocksQuerier) getLocks(
 	arguments = append(arguments, q.arguments(targetIDs)...)
 	return q.query(mysql,
 		"SELECT `target_id` FROM `"+q.tableName()+"` "+
-			"WHERE job_id=? AND target_id IN "+q.placeholder(targetIDs),
+			"WHERE NOW() < expires_at AND job_id=? AND target_id IN "+q.placeholder(targetIDs),
 		arguments...) // #nosec G202
 }
 
+// reportIfError reports the error `err` only if `err != nil`.
 func (tl *TargetLocker) reportIfError(err error) {
 	if err == nil {
 		return
 	}
+
+	// We extract the frame because we want to report about the line of the code
+	// which called this method (`reportIfError`). We don't want for errors
+	// reported from different places of the code be indistinctible
+	// from each other.
 	frame := runtimetools.Frame(1)
 	tl.log.Errorf("%v:%v:%v: %v", frame.File, frame.Line, frame.Function, err)
 }
 
+// tx is a wrapper to perform a transaction.
+//
+// if `fn` returns an error then the transaction will be rolled-back,
+// if `fn` returns nil then the transaction will be committed.
 func (tl *TargetLocker) tx(description string, fn func(tx *sql.Tx) error) (err error) {
 	tx, err := tl.mySQL.Begin()
 	if err != nil {
@@ -262,32 +350,22 @@ func (tl *TargetLocker) tx(description string, fn func(tx *sql.Tx) error) (err e
 	return fn(tx)
 }
 
+// performActionOnTargets performs action `action` for all targets of `targets`
+// as a single transaction. The transaction will be rolled-back if at least
+// one error has occurred.
 func (tl *TargetLocker) performActionOnTargets(
 	action targetlocker.Action,
 	jobID types.JobID,
-	targets []*target.Target,
+	targets target.Targets,
 ) error {
 	tl.log.Debugf("'%s' on targets: %v", action, targets)
 	return tl.tx(action.String(), func(tx *sql.Tx) (err error) {
 		for _, targetItem := range targets {
-			result, err := tl.querier.do(action, tx, jobID, targetItem.ID)
+			err := tl.querier.do(action, tx, jobID, targetItem.ID)
 			if err != nil {
 				return targetlocker.ErrUnableToPerformAction{
 					Action: action, JobID: jobID, Target: targetItem,
 					Err: fmt.Errorf("got an error from Exec(): %w", err),
-				}
-			}
-
-			rowsAffectedAmount, rowsAffectedErr := result.RowsAffected()
-			if rowsAffectedErr != nil {
-				return targetlocker.ErrUnableToPerformAction{
-					Action: action, JobID: jobID, Target: targetItem,
-					Err: fmt.Errorf("got an error from RowsAffected(): %w", rowsAffectedErr)}
-			}
-			if rowsAffectedAmount == 0 {
-				return targetlocker.ErrUnableToPerformAction{
-					Action: action, JobID: jobID, Target: targetItem,
-					Err: fmt.Errorf("this should never happen this way, but: %w", sql.ErrNoRows),
 				}
 			}
 		}
@@ -375,15 +453,15 @@ func (tl *TargetLocker) RefreshLocks(jobID types.JobID, targets []*target.Target
 	return tl.performActionOnTargets(targetlocker.ActionRefreshLock, jobID, targets)
 }
 
+// checkAccess returns an error if detected a problem with access to the data.
 func (tl *TargetLocker) checkAccess() error {
-	rows, err := tl.querier.checkAccess(tl.mySQL)
-	switch {
-	case err == nil:
-		tl.reportIfError(rows.Close())
-	case err != sql.ErrNoRows:
+	err := tl.querier.checkAccess(tl.mySQL)
+	switch tl.querier.errorType(err) {
+	case mysqlErrorTypeNoError, mysqlErrorTypeNoRowsAffected:
+		return nil
+	default:
 		return fmt.Errorf(`unable to select from table '%s': %w`, tl.querier.tableName(), err)
 	}
-	return nil
 }
 
 // Factory is the implementation of target.LockerFactory based
@@ -417,8 +495,9 @@ func (f *Factory) New(timeout time.Duration, dsn string) (target.Locker, error) 
 	return locker, err
 }
 
+// new is the part of New which is useful for unit-tests.
 func (f *Factory) new(timeout time.Duration, mysqlClient *sql.DB) (*TargetLocker, error) {
-	loggerID := "teststeps/" + strings.ToLower(f.UniqueImplementationName())
+	loggerID := "targetlocker/" + strings.ToLower(f.UniqueImplementationName())
 	tl := &TargetLocker{
 		mySQL: mysqlClient,
 		log:   logging.GetLogger(loggerID),

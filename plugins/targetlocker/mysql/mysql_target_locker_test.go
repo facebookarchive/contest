@@ -7,6 +7,7 @@ package mysql
 
 import (
 	"database/sql"
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/go-sql-driver/mysql"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/xerrors"
 
@@ -151,7 +153,7 @@ func TestMySQLTargetLocker_CheckLocks_positive(t *testing.T) {
 		mockNotLockedTargetIDs = append(mockNotLockedTargetIDs, targetItem.ID)
 	}
 
-	qRegExp := "SELECT `target_id` FROM `locks` WHERE job_id=. AND target_id IN \\((\\?(,\\?)*)?\\)"
+	qRegExp := "SELECT `target_id` FROM `locks` WHERE NOW.. < expires_at AND job_id=. AND target_id IN \\((\\?(,\\?)*)?\\)"
 	mock.ExpectQuery(qRegExp).
 		WithArgs(1, "a", "b", "c", "d").WillReturnRows(returnRows)
 
@@ -170,4 +172,22 @@ func TestMySQLTargetLocker_CheckLocks_positive(t *testing.T) {
 		require.Equal(t, notLockedTargetID, notLocked[idx].ID)
 	}
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestErrorType(t *testing.T) {
+	q := &mysqlLocksQuerier{}
+	for err, result := range map[error]mysqlErrorType{
+		nil: mysqlErrorTypeNoError,
+
+		fmt.Errorf("unit-test"): mysqlErrorTypeUnknown,
+
+		fmt.Errorf("unit-test: %w", sql.ErrNoRows):                   mysqlErrorTypeNoRowsAffected,
+		fmt.Errorf("unit-test: %w", &mysql.MySQLError{}):             mysqlErrorTypeOther,
+		fmt.Errorf("unit-test: %w", &mysql.MySQLError{Number: 1062}): mysqlErrorTypeDuplicateKey,
+	} {
+		t.Run(fmt.Sprintf("%s->%s", err, result), func(t *testing.T) {
+			cmpResult := q.errorType(err)
+			assert.Equal(t, result, cmpResult, fmt.Sprintf("%s<-%s", cmpResult, err))
+		})
+	}
 }
