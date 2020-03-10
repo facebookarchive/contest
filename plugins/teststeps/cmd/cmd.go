@@ -55,7 +55,7 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 		for _, arg := range ts.args {
 			expArg, err := arg.Expand(target)
 			if err != nil {
-				return fmt.Errorf("failed to expand argument '%s': %v", arg.Raw(), err)
+				return fmt.Errorf("failed to expand argument '%s': %v", arg, err)
 			}
 			args = append(args, expArg)
 		}
@@ -82,16 +82,17 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 }
 
 func (ts *Cmd) validateAndPopulate(params test.TestStepParameters) error {
-	ex := params.GetOne("executable")
-	if ex.IsEmpty() {
+	param := params.GetOne("executable")
+	if param.IsEmpty() {
 		return errors.New("invalid or missing 'executable' parameter, must be exactly one string")
 	}
-	if filepath.IsAbs(ex.Raw()) {
-		ts.executable = ex.Raw()
+	ex := string(param)
+	if filepath.IsAbs(ex) {
+		ts.executable = ex
 	} else {
-		p, err := exec.LookPath(ex.Raw())
+		p, err := exec.LookPath(ex)
 		if err != nil {
-			return fmt.Errorf("cannot find '%s' executable in PATH: %v", ex.Raw(), err)
+			return fmt.Errorf("cannot find '%s' executable in PATH: %v", ex, err)
 		}
 		// the call could still fail later if the file is removed, is not
 		// executable, etc, but at least we do basic checks here.

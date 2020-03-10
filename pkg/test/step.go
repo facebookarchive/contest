@@ -33,24 +33,24 @@ func (t TestStepParameters) Get(k string) []Param {
 
 // GetOne returns the first value of the requested parameter. If the parameter
 // is missing, an empty string is returned.
-func (t TestStepParameters) GetOne(k string) *Param {
+func (t TestStepParameters) GetOne(k string) Param {
 	v, ok := t[k]
 	if !ok || len(v) == 0 {
-		return NewParam("")
+		return Param("")
 	}
-	return &v[0]
+	return v[0]
 }
 
 // GetInt works like GetOne, but also tries to convert the string to an int64,
 // and returns an error if this fails.
 func (t TestStepParameters) GetInt(k string) (int64, error) {
 	v := t.GetOne(k)
-	if v.Raw() == "" {
+	if v == "" {
 		return 0, errors.New("expected an integer string, got an empty string")
 	}
-	n, err := strconv.ParseInt(v.Raw(), 10, 64)
+	n, err := strconv.ParseInt(string(v), 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("cannot convert '%s' to int: %v", v.Raw(), err)
+		return 0, fmt.Errorf("cannot convert '%s' to int: %v", v, err)
 	}
 	return n, nil
 }

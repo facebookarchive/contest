@@ -12,6 +12,7 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/storage"
+	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/tests/integ/common"
 
@@ -34,6 +35,23 @@ var jobDescriptorSecond = `
     "RunInterval": "5s",
   }
 `
+var testStepsFirst = [][]*test.TestStepDescriptor{
+	[]*test.TestStepDescriptor{
+		&test.TestStepDescriptor{
+			Name:  "step",
+			Label: "A step1",
+		},
+	},
+}
+
+var testStepsSecond = [][]*test.TestStepDescriptor{
+	[]*test.TestStepDescriptor{
+		&test.TestStepDescriptor{
+			Name:  "step",
+			Label: "B step1",
+		},
+	},
+}
 
 type JobSuite struct {
 	suite.Suite
@@ -63,7 +81,7 @@ func (suite *JobSuite) TestGetJobRequest() {
 		RequestTime:   time.Now(),
 		JobDescriptor: jobDescriptorFirst,
 	}
-	jobIDa, err := suite.txStorage.StoreJobRequest(&jobRequestFirst)
+	jobIDa, err := suite.txStorage.StoreJobRequest(&jobRequestFirst, testStepsFirst)
 	require.NoError(suite.T(), err)
 
 	jobRequestSecond := job.Request{
@@ -72,15 +90,15 @@ func (suite *JobSuite) TestGetJobRequest() {
 		RequestTime:   time.Now(),
 		JobDescriptor: jobDescriptorSecond,
 	}
-	jobIDb, err := suite.txStorage.StoreJobRequest(&jobRequestSecond)
+	jobIDb, err := suite.txStorage.StoreJobRequest(&jobRequestSecond, testStepsSecond)
 	require.NoError(suite.T(), err)
 
-	request, err := suite.txStorage.GetJobRequest(types.JobID(jobIDa))
-
+	request, stepsFirst, err := suite.txStorage.GetJobRequest(types.JobID(1))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), types.JobID(jobIDa), request.JobID)
 	require.Equal(suite.T(), request.Requestor, "AIntegrationTest")
 	require.Equal(suite.T(), request.JobDescriptor, jobDescriptorFirst)
+	require.Equal(suite.T(), stepsFirst, testStepsFirst)
 
 	// Creation timestamp corresponds to the timestamp of the insertion into the
 	// database. Assert that the timestamp retrieved from the database is within
@@ -88,7 +106,7 @@ func (suite *JobSuite) TestGetJobRequest() {
 	require.True(suite.T(), request.RequestTime.After(time.Now().Add(-2*time.Second)))
 	require.True(suite.T(), request.RequestTime.Before(time.Now().Add(2*time.Second)))
 
-	request, err = suite.txStorage.GetJobRequest(types.JobID(jobIDb))
+	request, stepsSecond, err := suite.txStorage.GetJobRequest(types.JobID(2))
 
 	// Creation timestamp corresponds to the timestamp of the insertion into the
 	// database. Assert that the timestamp retrieved from the database is within
@@ -97,6 +115,7 @@ func (suite *JobSuite) TestGetJobRequest() {
 	require.Equal(suite.T(), types.JobID(jobIDb), request.JobID)
 	require.Equal(suite.T(), request.Requestor, "BIntegrationTest")
 	require.Equal(suite.T(), request.JobDescriptor, jobDescriptorSecond)
+	require.Equal(suite.T(), stepsSecond, testStepsSecond)
 
 	require.True(suite.T(), request.RequestTime.After(time.Now().Add(-2*time.Second)))
 	require.True(suite.T(), request.RequestTime.Before(time.Now().Add(2*time.Second)))
