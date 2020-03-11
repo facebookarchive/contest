@@ -117,7 +117,7 @@ func expandArgument(arg string) string {
 }
 
 func parseFactoryInfo(
-	factoryType interface{},
+	factoryType pluginregistry.FactoryType,
 	flagValue string,
 ) (factory abstract.Factory, factoryImplName, factoryArgument string) {
 	factoryInfo := strings.SplitN(flagValue, `:`, 2)
@@ -139,26 +139,26 @@ func parseFactoryInfo(
 
 var pluginRegistry *pluginregistry.PluginRegistry
 
-// setupPluginRegistry initializes pluginRegistry
-func setupPluginRegistry() error {
-
-	// Register plugins
-
-	pluginRegistry = pluginregistry.NewPluginRegistry()
-
-	for factoryType, factories := range []abstract.Factories{
+func allFactories() (result abstract.Factories) {
+	for _, factories := range []abstract.Factories{
 		targetManagers.ToAbstract(),
 		targetLockerFactories.ToAbstract(),
 		testStepFactories.ToAbstract(),
 		testFetchers.ToAbstract(),
 		reporterFactories.ToAbstract(),
 	} {
-		if err := pluginRegistry.RegisterFactories(factories); err != nil {
-			return fmt.Errorf("unable to register factories %T: %w", factoryType, err)
-		}
+		result = append(result, factories...)
 	}
+	return
+}
 
-	// Finish
+// setupPluginRegistry initializes pluginRegistry
+func setupPluginRegistry() error {
+	pluginRegistry = pluginregistry.NewPluginRegistry()
+
+	if err := pluginRegistry.RegisterFactories(allFactories()); err != nil {
+		return fmt.Errorf("unable to register factories: %w", err)
+	}
 
 	return nil
 }
@@ -180,7 +180,7 @@ func main() {
 
 	// set Locker engine
 	targetLockerFactory, targetLockerImplName, targetLockerArgument :=
-		parseFactoryInfo((*target.LockerFactory)(nil), *flagTargetLocker)
+		parseFactoryInfo(pluginregistry.FactoryTypeTargetLocker, *flagTargetLocker)
 
 	log.Infof("Using target locker '%s' with argument: '%s'", targetLockerImplName, targetLockerArgument)
 	targetLocker, err := targetLockerFactory.(target.LockerFactory).New(config.LockTimeout, targetLockerArgument)

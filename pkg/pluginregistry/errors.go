@@ -1,23 +1,16 @@
+// Copyright (c) Facebook, Inc. and its affiliates.
+//
+// This source code is licensed under the MIT license found in the
+// LICENSE file in the root directory of this source tree.
+
 package pluginregistry
 
 import (
 	"fmt"
-	"reflect"
 	"strings"
 
 	"github.com/facebookincubator/contest/pkg/abstract"
 )
-
-// ErrInvalidFactoryType means the first argument to RegisterFactoryAsType or
-// RegisterFactoriesAsType was invalid.
-type ErrInvalidFactoryType struct {
-	FactoryType reflect.Type
-	Description string
-}
-
-func (err ErrInvalidFactoryType) Error() string {
-	return fmt.Sprintf("invalid factory type: %v (%s)", err.FactoryType.Name(), err.Description)
-}
 
 // ErrDuplicateFactoryName means it were found at least two factories with the same
 // type and name.
@@ -32,7 +25,7 @@ func (err ErrDuplicateFactoryName) Error() string {
 // ErrFactoryTypeNotFound means there was no factories requested of the selected
 // type (were never registered).
 type ErrFactoryTypeNotFound struct {
-	FactoryType reflect.Type
+	FactoryType FactoryType
 }
 
 func (err ErrFactoryTypeNotFound) Error() string {
@@ -42,18 +35,13 @@ func (err ErrFactoryTypeNotFound) Error() string {
 // ErrFactoryNotFoundByName means there the factory with selected type and name
 // was not found (was never registered).
 type ErrFactoryNotFoundByName struct {
-	ProductType reflect.Type
+	ProductType FactoryType
 	FactoryName string
 }
 
 func (err ErrFactoryNotFoundByName) Error() string {
 	return fmt.Sprintf("unable to find factory with name '%s' for product type '%v'", err.FactoryName, err.ProductType)
 }
-
-// ErrNilFactory means at least one of the passed factories has a nil-value.
-type ErrNilFactory struct{}
-
-func (err ErrNilFactory) Error() string { return "a nil-value factory" }
 
 // ErrUnknownFactoryType means there was passed a factory of unknown type.
 // Most likely there was added a new type of factories recently and it
