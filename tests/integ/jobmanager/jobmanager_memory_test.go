@@ -27,7 +27,7 @@ func TestJobManagerSuiteMemoryStorage(t *testing.T) {
 	testSuite.storage = storagelayer
 	storage.SetStorage(storagelayer)
 
-	targetLocker, err := (&inmemory.Factory{}).New(10 * time.Second, "")
+	targetLocker, err := inmemory.New(10 * time.Second, "")
 	if err != nil {
 		t.Fatal(err)
 	}

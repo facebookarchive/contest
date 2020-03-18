@@ -8,7 +8,6 @@ package target
 import (
 	"time"
 
-	"github.com/facebookincubator/contest/pkg/abstract"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
@@ -16,32 +15,17 @@ import (
 var locker Locker
 
 // LockerFactory is a type representing a function which builds
-// a Locker.
-type LockerFactory interface {
-	abstract.Factory
-
-	// New returns an implementation of interface Locker.
-	New(timeout time.Duration, implSpecificArgument string) (Locker, error)
-}
-
-// LockerFactories is a helper type to operate over multiple LockerFactory-es
-type LockerFactories []LockerFactory
-
-// ToAbstract returns the factories as abstract.Factories
+// a TargetLocker.
 //
-// Go has no contracts (yet) / traits / whatever, and Go does not allow
-// to convert slice of interfaces to slice of another interfaces
-// without a loop, so we have to implement this method for each
-// non-abstract-factories slice
-//
-// TODO: try remove it when this will be implemented:
-//       https://github.com/golang/proposal/blob/master/design/go2draft-contracts.md
-func (lockerFactories LockerFactories) ToAbstract() (result abstract.Factories) {
-	for _, factory := range lockerFactories {
-		result = append(result, factory)
-	}
-	return
-}
+// `lockTTL` is how long a locked target remains to be locked if the lock
+// is not renewed/refreshed.
+// `storageDSN` is a designation of where those locks are stored. For 'MySQL'
+// see description https://github.com/Go-SQL-Driver/MySQL/#dsn-data-source-name
+type LockerFactory func(lockTTL time.Duration, storageDSN string) (Locker, error)
+
+// LockerLoader is a type representing a function which returns all the
+// needed things to be able to load a TestStep.
+type LockerLoader func() (string, LockerFactory)
 
 // Locker defines an interface to lock and unlock targets. It is passed
 // to TargetManager's Acquire and Release methods, and the target manager

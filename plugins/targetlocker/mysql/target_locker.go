@@ -17,13 +17,15 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/xerrors"
 
-	"github.com/facebookincubator/contest/pkg/lib/runtimetools"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
 
 	"github.com/facebookincubator/contest/plugins/targetlocker"
 )
+
+// Name is the name used to look this plugin up.
+const Name = "MySQL"
 
 // enableDebug control if it's required to enable DEBUG logging level for
 // this plugin.
@@ -288,7 +290,7 @@ func (q mysqlLocksQuerier) arguments(arg interface{}) (result []interface{}) {
 }
 
 // getLocks returns `*sql.Row` which contains target_id-s (string) of
-// all targets from list `targetIDs` which are still locked by job `jobID`.
+// all targets from list `targetsIDs` which are still locked by job `jobID`.
 //
 // See an usage example in `CheckLocks`.
 func (q mysqlLocksQuerier) getLocks(
@@ -304,20 +306,6 @@ func (q mysqlLocksQuerier) getLocks(
 		arguments...) // #nosec G202
 }
 
-// reportIfError reports the error `err` only if `err != nil`.
-func (tl *TargetLocker) reportIfError(err error) {
-	if err == nil {
-		return
-	}
-
-	// We extract the frame because we want to report about the line of the code
-	// which called this method (`reportIfError`). We don't want for errors
-	// reported from different places of the code be indistinctible
-	// from each other.
-	frame := runtimetools.Frame(1)
-	tl.log.Errorf("%v:%v:%v: %v", frame.File, frame.Line, frame.Function, err)
-}
-
 // tx is a wrapper to perform a transaction.
 //
 // if `fn` returns an error then the transaction will be rolled-back,
@@ -328,26 +316,36 @@ func (tl *TargetLocker) tx(description string, fn func(tx *sql.Tx) error) (err e
 		return fmt.Errorf("unable to '%s': unable to start transaction: %w", description, err)
 	}
 
-	tl.log.Debugf("Start transaction -> %p", tx)
-
 	defer func() {
-		if err != nil {
-			tl.log.Debugf("Rollback %p due to error %v", tx, err)
-			rollbackErr := tx.Rollback()
-			if rollbackErr != nil {
-				tl.log.Errorf("unable to rollback '%s' transaction %p: %v", description, tx, rollbackErr)
-			}
-			return
-		}
+		// And we don't want to have a lot of incomplete transactions collected
+		// from possible recovered panics. So we cleanup the transaction
+		// if required.
 
-		tl.log.Debugf("Commit <- %p", tx)
-		err = tx.Commit()
-		if err != nil {
-			err = fmt.Errorf("unable to '%s': unable to commit transaction %p: %w", description, tx, err)
+		if tx != nil {
+			tl.log.Errorf("the execution was interrupted, rolling back the transaction")
+			_ = tx.Rollback()
 		}
 	}()
 
-	return fn(tx)
+	tl.log.Debugf("Start transaction -> %p", tx)
+
+	err = fn(tx)
+
+	if err != nil {
+		tl.log.Debugf("Rollback %p due to error %v", tx, err)
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			tl.log.Errorf("unable to rollback '%s' transaction %p: %v", description, tx, rollbackErr)
+		}
+		tx = nil // see `defer` above
+		return
+	}
+
+	tl.log.Debugf("Commit <- %p", tx)
+	if err = tx.Commit(); err != nil {
+		err = fmt.Errorf("unable to '%s': unable to commit transaction %p: %w", description, tx, err)
+	}
+	tx = nil // see `defer` above
+	return
 }
 
 // performActionOnTargets performs action `action` for all targets of `targets`
@@ -356,7 +354,7 @@ func (tl *TargetLocker) tx(description string, fn func(tx *sql.Tx) error) (err e
 func (tl *TargetLocker) performActionOnTargets(
 	action targetlocker.Action,
 	jobID types.JobID,
-	targets target.Targets,
+	targets []*target.Target,
 ) error {
 	tl.log.Debugf("'%s' on targets: %v", action, targets)
 	return tl.tx(action.String(), func(tx *sql.Tx) (err error) {
@@ -365,7 +363,7 @@ func (tl *TargetLocker) performActionOnTargets(
 			if err != nil {
 				return targetlocker.ErrUnableToPerformAction{
 					Action: action, JobID: jobID, Target: targetItem,
-					Err: fmt.Errorf("got an error from Exec(): %w", err),
+					Err: err,
 				}
 			}
 		}
@@ -395,20 +393,24 @@ func (tl *TargetLocker) Unlock(jobID types.JobID, targets []*target.Target) erro
 // an array of locked targets, and an array of not-locked targets.
 func (tl *TargetLocker) CheckLocks(
 	jobID types.JobID,
-	targets []*target.Target,
+	allTargets []*target.Target,
 ) (locked []*target.Target, notLocked []*target.Target, err error) {
-	tl.log.Debugf("Check locks on targets: %v", targets)
+	tl.log.Debugf("Check locks on allTargets: %v", allTargets)
 	defer func() { tl.log.Debugf("Check locks -> %v %v %v", locked, notLocked, err) }()
-	allTargets := target.Targets(targets)
-	allTargets.Sort()
+	targetsSort(allTargets)
 
-	// Get information about active locks (owned by JobID and relevant to selected targets)
+	// Get information about active locks (owned by JobID and relevant to selected allTargets)
 
-	validLocksRows, err := tl.querier.getLocks(tl.mySQL, jobID, allTargets.IDs())
+	validLocksRows, err := tl.querier.getLocks(tl.mySQL, jobID, targetsIDs(allTargets))
 	if err != nil {
 		return nil, nil, targetlocker.ErrUnableToGetLocksInfo{Err: fmt.Errorf("unable to SELECT: %w", err)}
 	}
-	defer func() { tl.reportIfError(validLocksRows.Close()) }()
+	defer func() {
+		err := validLocksRows.Close()
+		if err != nil {
+			tl.log.Error(err)
+		}
+	}()
 
 	// Fill "locked"
 
@@ -418,7 +420,7 @@ func (tl *TargetLocker) CheckLocks(
 		if err != nil {
 			return nil, nil, targetlocker.ErrUnableToGetLocksInfo{Err: fmt.Errorf("unable to parse: %w", err)}
 		}
-		validTarget := allTargets.Find(targetID)
+		validTarget := targetsFind(allTargets, targetID)
 		if validTarget == nil {
 			return nil, nil, fmt.Errorf("internal error, target %s not found in %v", targetID, allTargets)
 		}
@@ -464,31 +466,20 @@ func (tl *TargetLocker) checkAccess() error {
 	}
 }
 
-// Factory is the implementation of target.LockerFactory based
-// on TargetLocker of this package.
-type Factory struct{}
-
 // New initializes and returns a new target locker based DBMS storage.
 //
 // "dsn" is the "Data Source Name", see: https://github.com/go-sql-driver/mysql/
-func (f *Factory) New(timeout time.Duration, dsn string) (target.Locker, error) {
+func New(timeout time.Duration, dsn string) (target.Locker, error) {
 	if timeout < time.Second {
 		return nil, targetlocker.ErrNonPositiveTimeout{Timeout: timeout}
 	}
-
-	mysqlCfg, err := mysql.ParseDSN(dsn)
-	if err != nil {
-		return nil, targetlocker.ErrInvalidDSN{Err: err}
-	}
-	mysqlCfg.MultiStatements = true
-	dsn = mysqlCfg.FormatDSN()
 
 	mysqlClient, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("unable to initialize backend client to '%s': %w", dsn, err)
 	}
 
-	locker, err := f.new(timeout, mysqlClient)
+	locker, err := new(timeout, mysqlClient)
 	if err == nil {
 		locker.log.Debugf("initialized mysqlClient client with DSN '%s'", dsn)
 	}
@@ -496,8 +487,8 @@ func (f *Factory) New(timeout time.Duration, dsn string) (target.Locker, error) 
 }
 
 // new is the part of New which is useful for unit-tests.
-func (f *Factory) new(timeout time.Duration, mysqlClient *sql.DB) (*TargetLocker, error) {
-	loggerID := "targetlocker/" + strings.ToLower(f.UniqueImplementationName())
+func new(timeout time.Duration, mysqlClient *sql.DB) (*TargetLocker, error) {
+	loggerID := "targetlocker/" + strings.ToLower(Name)
 	tl := &TargetLocker{
 		mySQL: mysqlClient,
 		log:   logging.GetLogger(loggerID),
@@ -521,7 +512,7 @@ func (f *Factory) new(timeout time.Duration, mysqlClient *sql.DB) (*TargetLocker
 	return tl, nil
 }
 
-// UniqueImplementationName returns the unique name of the implementation
-func (f *Factory) UniqueImplementationName() string {
-	return "MySQL"
+// Load returns the name and factory  which are needed to register the locker.
+func Load() (string, target.LockerFactory) {
+	return Name, New
 }

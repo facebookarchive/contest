@@ -14,7 +14,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/facebookincubator/contest/pkg/abstract"
 	"github.com/facebookincubator/contest/pkg/config"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/jobmanager"
@@ -53,26 +52,47 @@ var (
 	flagDBURI, flagTargetLocker *string
 )
 
+// targetLockerNames returns a slice of registered implementation names of target.Locker
+func targetLockerNames() (result []string) {
+	for _, targetLocker := range targetLockers {
+		name, _ := targetLocker()
+		result = append(result, name)
+	}
+	return
+}
+
+// setupFlags handles everything related to package `flag`.
 func setupFlags() {
+	flag.Usage = func() {
+		flag.PrintDefaults()
+		_, _ = fmt.Fprintf(flag.CommandLine.Output(), "\nOptions supports macroses. "+
+			"For example, to insert the value of flag 'dbURI' anywhere just use macros '%%dbURI%%'. "+
+			"But recursive macroses are not supported.\n")
+	}
+
 	flagDBURI = flag.String("dbURI", defaultDBURI, "MySQL DSN")
+
 	flagTargetLocker = flag.String("targetLocker", defaultTargetLocker,
-		fmt.Sprintf("The engine to lock targets. Possible engines (the part before the first colon): %s",
-			targetLockerFactories.ToAbstract(),
+		fmt.Sprintf("The engine to lock targets. Possible engines (the part before the first colon): %s. "+
+			"After the colon a DSN (where to store the locks) is expected. "+
+			"An example of the total value: 'MySQL:myuser:mypass@tcp(localhost:3306)/mydb?parseTime=true'. See also https://github.com/Go-SQL-Driver/MySQL/#dsn-data-source-name",
+			strings.Join(targetLockerNames(), ", "),
 		))
 	flag.Parse()
 }
 
 var log = logging.GetLogger("contest")
+var pluginRegistry *pluginregistry.PluginRegistry
 
 var targetManagers = []target.TargetManagerLoader{
 	csvtargetmanager.Load,
 	targetlist.Load,
 }
 
-var targetLockerFactories = target.LockerFactories{
-	&mysql.Factory{},
-	&inmemory.Factory{},
-	&targetLockerNoop.Factory{},
+var targetLockers = []target.LockerLoader{
+	mysql.Load,
+	inmemory.Load,
+	targetLockerNoop.Load,
 }
 
 var testFetchers = []test.TestFetcherLoader{
@@ -107,31 +127,37 @@ var userFunctions = map[string]interface{}{
 	},
 }
 
+// expandArgument expands macroses like '%dbURI%' to values of flags with such names.
 func expandArgument(arg string) string {
-	// it does not support correct expanding into depth more one.
+	// it does not support recursive expanding
 	flag.CommandLine.VisitAll(func(f *flag.Flag) {
 		arg = strings.Replace(arg, `%`+f.Name+`%`, f.Value.String(), -1)
 	})
 	return arg
 }
 
-func parseFactoryInfo(
-	factories abstract.Factories,
+// newTargetLockerFromFlag parses flag `-targetLocker` and constructs the requested
+// target.Locker. If an error occurs then the execution of the program will
+// be terminated (via `log.Fatal*`).
+//
+// Returned values are the target.Locker, the name of the implementation, and
+// the "storageDSN" (see `setupFlags`, `target.LockerFactory`).
+func newTargetLockerFromFlag(
 	flagValue string,
-) (factory abstract.Factory, factoryImplName, factoryArgument string) {
-	factoryInfo := strings.SplitN(flagValue, `:`, 2)
-	factoryImplName = factoryInfo[0]
+) (targetLocker target.Locker, implName string, storageDSN string) {
+	targetLockerInfo := strings.SplitN(flagValue, `:`, 2)
+	implName = targetLockerInfo[0]
 
-	if len(factoryInfo) > 1 {
-		factoryArgument = expandArgument(factoryInfo[1])
+	if len(targetLockerInfo) > 1 {
+		storageDSN = expandArgument(targetLockerInfo[1])
 	}
 
-	factory = factories.Find(factoryImplName)
-	if factory == nil {
-		log.Fatalf("Implementation '%s' is not found (possible values: %s)",
-			factoryImplName, factories)
+	var err error
+	targetLocker, err = pluginRegistry.NewTargetLocker(implName, config.LockTimeout, storageDSN)
+	if err != nil {
+		log.Fatalf("unable to initialize target locker '%s' (with DSN: '%s'): %v", implName, storageDSN, err)
 	}
-	return
+	return targetLocker, implName, storageDSN
 }
 
 func main() {
@@ -140,11 +166,18 @@ func main() {
 	logrus.SetLevel(logrus.DebugLevel)
 	log.Level = logrus.DebugLevel
 
-	pluginRegistry := pluginregistry.NewPluginRegistry()
+	pluginRegistry = pluginregistry.NewPluginRegistry()
 
 	// Register TargetManager plugins
 	for _, tmloader := range targetManagers {
 		if err := pluginRegistry.RegisterTargetManager(tmloader()); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	// Register TargetLocker plugins
+	for _, tlloader := range targetLockers {
+		if err := pluginRegistry.RegisterTargetLocker(tlloader()); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -175,14 +208,8 @@ func main() {
 	storage.SetStorage(rdbms.New(*flagDBURI))
 
 	// set Locker engine
-	targetLockerFactory, targetLockerImplName, targetLockerArgument :=
-		parseFactoryInfo(targetLockerFactories.ToAbstract(), *flagTargetLocker)
-
-	log.Infof("Using target locker '%s' with argument: '%s'", targetLockerImplName, targetLockerArgument)
-	targetLocker, err := targetLockerFactory.(target.LockerFactory).New(config.LockTimeout, targetLockerArgument)
-	if err != nil {
-		log.Fatalf("Unable to initialize target locker: %v", err)
-	}
+	targetLocker, targetLockerName, targetLockerStorageDSN := newTargetLockerFromFlag(*flagTargetLocker)
+	log.Infof("Using target locker '%s' with DSN: '%s'", targetLockerName, targetLockerStorageDSN)
 	target.SetLocker(targetLocker)
 
 	// user-defined function registration

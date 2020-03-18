@@ -35,7 +35,7 @@ func mockInstance(t *testing.T) (target.Locker, *sql.DB, sqlmock.Sqlmock) {
 	returnRows.AddRow("z", -1, time.Now(), time.Now())
 	mock.ExpectQuery("SELECT . FROM `locks` LIMIT 1").WillReturnRows(returnRows).RowsWillBeClosed()
 
-	tl, err := (&Factory{}).new(time.Hour, db)
+	tl, err := new(time.Hour, db)
 	require.NoError(t, err)
 	require.NotNil(t, tl)
 	require.IsType(t, &TargetLocker{}, tl)

@@ -18,7 +18,7 @@ import (
 // Name is the name used to look this plugin up.
 const Name = "Noop"
 
-var log = logging.GetLogger("teststeps/" + strings.ToLower((*Factory).UniqueImplementationName(nil)))
+var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
 // Noop is the no-op target locker. It does nothing.
 type Noop struct {
@@ -50,16 +50,14 @@ func (tl Noop) RefreshLocks(jobID types.JobID, targets []*target.Target) error {
 	return nil
 }
 
-// Factory is the implementation of target.LockerFactory based
-// on Noop.
-type Factory struct{}
-
-// New initializes and returns a new ExampleTestStep.
-func (f *Factory) New(timeout time.Duration, _ string) (target.Locker, error) {
+// New initializes and returns a new noop target locker, which
+// is just dummy implementation of the target.Locker interface,
+// but does nothing in real.
+func New(timeout time.Duration, _ string) (target.Locker, error) {
 	return &Noop{}, nil
 }
 
-// UniqueImplementationName returns the unique name of the implementation
-func (f *Factory) UniqueImplementationName() string {
-	return "Noop"
+// Load returns the name and factory  which are needed to register the locker.
+func Load() (string, target.LockerFactory) {
+	return Name, New
 }

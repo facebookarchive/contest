@@ -18,7 +18,10 @@ import (
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
-var log = logging.GetLogger("teststeps/" + strings.ToLower((*Factory).UniqueImplementationName(nil)))
+// Name is the name used to look this plugin up.
+const Name = "InMemory"
+
+var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
 type request struct {
 	targets []*target.Target
@@ -190,14 +193,10 @@ func (tl *InMemory) CheckLocks(jobID types.JobID, targets []*target.Target) ([]*
 	return req.locked, req.notLocked, nil
 }
 
-// Factory is the implementation of target.LockerFactory based
-// on InMemory.
-type Factory struct{}
-
 // New initializes and returns a new in-memory targets locker.
 //
 // See also InMemory above.
-func (f *Factory) New(timeout time.Duration, _ string) (target.Locker, error) {
+func New(timeout time.Duration, _ string) (target.Locker, error) {
 	lockRequests := make(chan request)
 	unlockRequests := make(chan request)
 	checkLocksRequests := make(chan request)
@@ -212,7 +211,7 @@ func (f *Factory) New(timeout time.Duration, _ string) (target.Locker, error) {
 	}, nil
 }
 
-// UniqueImplementationName returns the unique name of the implementation
-func (f *Factory) UniqueImplementationName() string {
-	return "InMemory"
+// Load returns the name and factory  which are needed to register the locker.
+func Load() (string, target.LockerFactory) {
+	return Name, New
 }

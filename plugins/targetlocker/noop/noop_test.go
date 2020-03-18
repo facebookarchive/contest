@@ -15,14 +15,14 @@ import (
 )
 
 func TestNoopNew(t *testing.T) {
-	tl, err := (&Factory{}).New(time.Second, "")
+	tl, err := New(time.Second, "")
 	require.NoError(t, err)
 	require.NotNil(t, tl)
 	require.IsType(t, &Noop{}, tl)
 }
 
 func TestNoopLock(t *testing.T) {
-	tl, err := (&Factory{}).New(time.Second, "")
+	tl, err := New(time.Second, "")
 	require.NoError(t, err)
 	// we don't enforce that at least one target is passed, as checking on
 	// non-zero targets is the framework's responsibility, not the plugin.
@@ -40,7 +40,7 @@ func TestNoopLock(t *testing.T) {
 }
 
 func TestNoopUnlock(t *testing.T) {
-	tl, err := (&Factory{}).New(time.Second, "")
+	tl, err := New(time.Second, "")
 	require.NoError(t, err)
 	// we don't enforce that at least one target is passed, as checking on
 	// non-zero targets is the framework's responsibility, not the plugin.
@@ -58,7 +58,7 @@ func TestNoopUnlock(t *testing.T) {
 }
 
 func TestNoopCheckLocks(t *testing.T) {
-	tl, err := (&Factory{}).New(time.Second, "")
+	tl, err := New(time.Second, "")
 	require.NoError(t, err)
 	// we don't enforce that at least one target is passed, as checking on
 	// non-zero targets is the framework's responsibility, not the plugin.

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/job"
@@ -28,6 +29,9 @@ type PluginRegistry struct {
 	// TargetManagers collects a mapping of Plugin Name <-> TargetManager constructor
 	TargetManagers map[string]target.TargetManagerFactory
 
+	// TargetLockers collects a mapping of Plugin Name <-> TargetLocker constructor
+	TargetLockers map[string]target.LockerFactory
+
 	// TestFetchers collects a mapping of Plugin Name <-> TestFetchers constructor
 	TestFetchers map[string]test.TestFetcherFactory
 
@@ -46,6 +50,7 @@ type PluginRegistry struct {
 func NewPluginRegistry() *PluginRegistry {
 	pr := PluginRegistry{}
 	pr.TargetManagers = make(map[string]target.TargetManagerFactory)
+	pr.TargetLockers = make(map[string]target.LockerFactory)
 	pr.TestFetchers = make(map[string]test.TestFetcherFactory)
 	pr.TestSteps = make(map[string]test.TestStepFactory)
 	pr.TestStepsEvents = make(map[string]map[event.Name]bool)
@@ -63,6 +68,19 @@ func (r *PluginRegistry) RegisterTargetManager(pluginName string, tmf target.Tar
 		return fmt.Errorf("TargetManager %s already registered", pluginName)
 	}
 	r.TargetManagers[pluginName] = tmf
+	return nil
+}
+
+// RegisterTargetLocker register a factory for TargetLocker plugins
+func (r *PluginRegistry) RegisterTargetLocker(pluginName string, tlf target.LockerFactory) error {
+	pluginName = strings.ToLower(pluginName)
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	log.Infof("Registering target locker %s", pluginName)
+	if _, found := r.TargetLockers[pluginName]; found {
+		return fmt.Errorf("TargetLocker %s already registered", pluginName)
+	}
+	r.TargetLockers[pluginName] = tlf
 	return nil
 }
 
@@ -132,6 +150,27 @@ func (r *PluginRegistry) NewTargetManager(pluginName string) (target.TargetManag
 	}
 	targetManager := targetManagerFactory()
 	return targetManager, nil
+}
+
+// NewTargetLocker returns a new instance of TargetLocker from its
+// corresponding name
+func (r *PluginRegistry) NewTargetLocker(
+	pluginName string,
+	lockTTL time.Duration,
+	storageDSN string,
+) (target.Locker, error) {
+	pluginName = strings.ToLower(pluginName)
+	var (
+		targetLockerFactory target.LockerFactory
+		found               bool
+	)
+	r.lock.RLock()
+	targetLockerFactory, found = r.TargetLockers[pluginName]
+	r.lock.RUnlock()
+	if !found {
+		return nil, fmt.Errorf("TargetLocker %v is not registered", pluginName)
+	}
+	return targetLockerFactory(lockTTL, storageDSN)
 }
 
 // NewTestFetcher returns a new instance of TestFetcher from its

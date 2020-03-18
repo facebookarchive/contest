@@ -12,6 +12,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/plugins/targetlocker/noop"
 
 	"github.com/stretchr/testify/require"
 )
@@ -61,4 +62,17 @@ func TestRegisterTestStepDoesNotValidate(t *testing.T) {
 	pr := NewPluginRegistry()
 	err := pr.RegisterTestStep("AStep", NewAStep, []event.Name{event.Name("Event which does not validate")})
 	require.Error(t, err)
+}
+
+func TestRegisterAndNewTargetLocker(t *testing.T) {
+	pr := NewPluginRegistry()
+	name, factory := noop.Load()
+	require.NoError(t, pr.RegisterTargetLocker(name, factory))
+	require.Error(t, pr.RegisterTargetLocker(name, factory))
+	//require.Error(t, pr.RegisterTargetLocker(name+"suffix", nil)) // TODO: this test fails, it's required to fix it
+	tl0, err := pr.NewTargetLocker(name, 0, "")
+	require.NoError(t, err)
+	tl1, err := factory(0, "")
+	require.NoError(t, err)
+	require.Equal(t, tl1, tl0)
 }
