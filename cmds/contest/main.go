@@ -120,7 +120,11 @@ func main() {
 
 	// storage initialization
 	log.Infof("Using database URI: %s", *flagDBURI)
-	storage.SetStorage(rdbms.New(*flagDBURI))
+	s, err := rdbms.New(*flagDBURI)
+	if err != nil {
+		log.Fatalf("could not initialize database: %v", err)
+	}
+	storage.SetStorage(s)
 
 	// set Locker engine
 	target.SetLocker(inmemory.New(config.LockTimeout))

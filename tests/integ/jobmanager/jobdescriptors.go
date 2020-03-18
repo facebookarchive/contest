@@ -129,7 +129,6 @@ var jobDescriptorHang = descriptorMust(`
        "TestName": "IntegrationTest: noreturn"
    }`)
 
-
 var jobDescriptorNoLabel = descriptorMust(`
    "TestFetcherFetchParameters": {
        "Steps": [

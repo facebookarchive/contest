@@ -6,7 +6,6 @@
 package noop
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/event/testevent"
@@ -38,7 +37,7 @@ func (n *Noop) Name() string {
 
 // RunReport calculates the report to be associated with a job run.
 func (n *Noop) RunReport(cancel <-chan struct{}, parameters interface{}, runStatus *job.RunStatus, ev testevent.Fetcher) (bool, interface{}, error) {
-	return true, fmt.Sprintf("I did nothing"), nil
+	return true, "I did nothing", nil
 }
 
 // FinalReport calculates the final report to be associated to a job.

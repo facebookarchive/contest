@@ -88,7 +88,11 @@ func TestMain(m *testing.M) {
 
 	// Configure the storage layer to be in-memory for TestRunner integration tests.
 	// This layer persists across all tests.
-	storage.SetStorage(memory.New())
+	s, err := memory.New()
+	if err != nil {
+		panic(fmt.Sprintf("could not initialize in-memory storage layer: %v", err))
+	}
+	storage.SetStorage(s)
 
 	os.Exit(m.Run())
 }
@@ -96,6 +100,7 @@ func TestMain(m *testing.M) {
 func TestSuccessfulCompletion(t *testing.T) {
 
 	jobID := types.JobID(1)
+	runID := types.RunID(1)
 
 	ts1, err := pluginRegistry.NewTestStep("Example")
 	require.NoError(t, err)
@@ -117,7 +122,7 @@ func TestSuccessfulCompletion(t *testing.T) {
 
 	go func() {
 		tr := runner.NewTestRunner()
-		_, err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
@@ -131,6 +136,7 @@ func TestSuccessfulCompletion(t *testing.T) {
 func TestPanicStep(t *testing.T) {
 
 	jobID := types.JobID(1)
+	runID := types.RunID(1)
 
 	ts1, err := pluginRegistry.NewTestStep("Panic")
 	require.NoError(t, err)
@@ -149,7 +155,7 @@ func TestPanicStep(t *testing.T) {
 	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		_, err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
@@ -163,6 +169,7 @@ func TestPanicStep(t *testing.T) {
 func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 
 	jobID := types.JobID(1)
+	runID := types.RunID(1)
 
 	ts1, err := pluginRegistry.NewTestStep("NoReturn")
 	require.NoError(t, err)
@@ -187,7 +194,7 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 	}
 	go func() {
 		tr := runner.NewTestRunnerWithTimeouts(timeouts)
-		_, err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
@@ -206,6 +213,7 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 
 	jobID := types.JobID(1)
+	runID := types.RunID(1)
 
 	ts1, err := pluginRegistry.NewTestStep("Hanging")
 	require.NoError(t, err)
@@ -238,7 +246,7 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 
 	go func() {
 		tr := runner.NewTestRunnerWithTimeouts(timeouts)
-		_, err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
@@ -269,6 +277,7 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 func TestStepClosesChannels(t *testing.T) {
 
 	jobID := types.JobID(1)
+	runID := types.RunID(1)
 
 	ts1, err := pluginRegistry.NewTestStep("Channels")
 	require.NoError(t, err)
@@ -287,7 +296,7 @@ func TestStepClosesChannels(t *testing.T) {
 	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		_, err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
@@ -306,6 +315,7 @@ func TestStepClosesChannels(t *testing.T) {
 func TestCmdPlugin(t *testing.T) {
 
 	jobID := types.JobID(1)
+	runID := types.RunID(1)
 
 	ts1, err := pluginRegistry.NewTestStep("cmd")
 	require.NoError(t, err)
@@ -328,7 +338,7 @@ func TestCmdPlugin(t *testing.T) {
 	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		_, err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 

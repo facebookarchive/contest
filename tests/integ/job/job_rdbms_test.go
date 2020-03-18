@@ -8,10 +8,10 @@
 package test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
-	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/plugins/storage/rdbms"
 	"github.com/facebookincubator/contest/tests/integ/common"
 
@@ -25,9 +25,10 @@ func TestJobSuiteRdbmsStorage(t *testing.T) {
 		rdbms.TestEventsFlushSize(1),
 		rdbms.TestEventsFlushInterval(10 * time.Second),
 	}
-	storageLayer := common.NewStorage(opts...)
-	storage.SetStorage(storageLayer)
+	storageLayer, err := common.NewStorage(opts...)
+	if err != nil {
+		panic(fmt.Sprintf("could not initialize rdbms storage layer: %v", err))
+	}
 	testSuite.storage = storageLayer
-
 	suite.Run(t, &testSuite)
 }

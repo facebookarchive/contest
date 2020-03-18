@@ -8,6 +8,7 @@
 package test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -23,7 +24,11 @@ func TestJobManagerSuiteMemoryStorage(t *testing.T) {
 
 	testSuite := TestJobManagerSuite{}
 	// Run the TestSuite with memory storage layer
-	storagelayer := memory.New()
+	storagelayer, err := memory.New()
+	if err != nil {
+		panic(fmt.Sprintf("could not initialize in-memory storage layer: %v", err))
+
+	}
 	testSuite.storage = storagelayer
 	storage.SetStorage(storagelayer)
 

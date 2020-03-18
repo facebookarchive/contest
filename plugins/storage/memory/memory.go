@@ -49,18 +49,6 @@ func emptyTestEventQuery(eventQuery *testevent.Query) bool {
 	return emptyEventQuery(&eventQuery.Query) && eventQuery.TestName == "" && eventQuery.TestStepLabel == ""
 }
 
-// Reset resets the content of the in-memory storage.
-func (m *Memory) Reset() error {
-	m.lock.Lock()
-	defer m.lock.Unlock()
-	m.testEvents = []testevent.Event{}
-	m.frameworkEvents = []frameworkevent.Event{}
-	m.jobRequests = make(map[types.JobID]*job.Request)
-	m.jobReports = make(map[types.JobID]*job.JobReport)
-	m.jobIDCounter = 1
-	return nil
-}
-
 // StoreTestEvent stores a test event into the database
 func (m *Memory) StoreTestEvent(event testevent.Event) error {
 	m.lock.Lock()
@@ -135,6 +123,18 @@ func (m *Memory) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, 
 		}
 	}
 	return matchingTestEvents, nil
+}
+
+// Reset restores the original state of the memory storage layer
+func (m *Memory) Reset() error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	m.testEvents = []testevent.Event{}
+	m.frameworkEvents = []frameworkevent.Event{}
+	m.jobRequests = make(map[types.JobID]*job.Request)
+	m.jobReports = make(map[types.JobID]*job.JobReport)
+	m.jobIDCounter = 1
+	return nil
 }
 
 // StoreJobRequest stores a new job request
@@ -212,10 +212,10 @@ func (m *Memory) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]framewor
 }
 
 // New create a new Memory events storage backend
-func New() storage.Storage {
+func New() (storage.Storage, error) {
 	m := Memory{lock: &sync.Mutex{}}
 	m.jobRequests = make(map[types.JobID]*job.Request)
 	m.jobReports = make(map[types.JobID]*job.JobReport)
 	m.jobIDCounter = 1
-	return &m
+	return &m, nil
 }
