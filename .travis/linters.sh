@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -exu
 
-go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
+go get -u github.com/golangci/golangci-lint/cmd/golangci-lint@v1.23.3
 go install github.com/golangci/golangci-lint/cmd/golangci-lint
 cd "${TRAVIS_BUILD_DIR}"
 golangci-lint run --disable typecheck --enable deadcode --enable varcheck --enable staticcheck

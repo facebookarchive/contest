@@ -9,7 +9,6 @@ services:
                     - 8080:8080
                 depends_on:
                     - mysql
-
         mysql:
                 environment:
                     - MYSQL_RANDOM_ROOT_PASSWORD=true

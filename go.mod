@@ -8,9 +8,6 @@ require (
 	github.com/fatih/color v1.9.0 // indirect
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/gogo/protobuf v1.3.1 // indirect
-	github.com/golangci/gocyclo v0.0.0-20180528144436-0a533e8fa43d // indirect
-	github.com/golangci/golangci-lint v1.23.3 // indirect
-	github.com/golangci/revgrep v0.0.0-20180812185044-276a5c0a1039 // indirect
 	github.com/gostaticanalysis/analysisutil v0.0.3 // indirect
 	github.com/insomniacslk/termhook v0.0.0-20190716141402-454368e885ec
 	github.com/insomniacslk/xjson v0.0.0-20190510162823-f016a4991179
