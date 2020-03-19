@@ -38,12 +38,12 @@ func (e TestEventEmitter) Emit(data testevent.Data) error {
 }
 
 // Fetch retrieves events based on QueryFields that are used to build a Query object for TestEvents
-func (ev TestEventFetcher) Fetch(fields ...testevent.QueryField) ([]testevent.Event, error) {
-	eventQuery := testevent.Query{}
-	for _, field := range fields {
-		field(&eventQuery)
+func (ev TestEventFetcher) Fetch(queryFields ...testevent.QueryField) ([]testevent.Event, error) {
+	eventQuery, err := testevent.QueryFields(queryFields).BuildQuery()
+	if err != nil {
+		return nil, fmt.Errorf("unable to build a query: %w", err)
 	}
-	return storage.GetTestEvents(&eventQuery)
+	return storage.GetTestEvents(eventQuery)
 }
 
 // NewTestEventEmitter creates a new Emitter object associated with a Header
@@ -87,15 +87,15 @@ func (ev FrameworkEventEmitter) Emit(event frameworkevent.Event) error {
 }
 
 // Fetch retrieves events based on QueryFields that are used to build a Query object for FrameworkEvents
-func (ev FrameworkEventFetcher) Fetch(fields ...frameworkevent.QueryField) ([]frameworkevent.Event, error) {
-	eventQuery := frameworkevent.Query{}
-	for _, field := range fields {
-		field(&eventQuery)
+func (ev FrameworkEventFetcher) Fetch(queryFields ...frameworkevent.QueryField) ([]frameworkevent.Event, error) {
+	eventQuery, err := frameworkevent.QueryFields(queryFields).BuildQuery()
+	if err != nil {
+		return nil, fmt.Errorf("unable to build a query: %w", err)
 	}
-	return storage.GetFrameworkEvent(&eventQuery)
+	return storage.GetFrameworkEvent(eventQuery)
 }
 
-// NewFrameworkEventEmitter creates a new Emmitter object for framework events
+// NewFrameworkEventEmitter creates a new Emitter object for framework events
 func NewFrameworkEventEmitter() FrameworkEventEmitter {
 	return FrameworkEventEmitter{}
 }

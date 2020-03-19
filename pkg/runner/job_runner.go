@@ -81,7 +81,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 
 		// If we can't emit the run start event, we ignore the error. The framework will
 		// try to rebuild the status if it detects that an event might have gone missing
-		payload := runStartedPayload{RunID: types.RunID(run + 1)}
+		payload := RunStartedPayload{RunID: types.RunID(run + 1)}
 		err := jr.emitEvent(j.ID, EventRunStarted, payload)
 		if err != nil {
 			jobLog.Warningf("Could not emit event run (run %d) start for job %d: %v", run+1, j.ID, err)
@@ -323,7 +323,7 @@ func (jr *JobRunner) GetCurrentRun(jobID types.JobID) (types.RunID, error) {
 	}
 
 	lastEvent := runEvents[len(runEvents)-1]
-	payload := runStartedPayload{}
+	payload := RunStartedPayload{}
 	if err := json.Unmarshal([]byte(*lastEvent.Payload), &payload); err != nil {
 		return runID, fmt.Errorf("could not fetch last run id for job %d: %v", jobID, err)
 	}

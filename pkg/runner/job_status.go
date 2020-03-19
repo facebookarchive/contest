@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/facebookincubator/contest/pkg/event"
+	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -212,8 +213,31 @@ func (jr *JobRunner) BuildRunStatus(coordinates job.RunCoordinates, currentJob *
 // BuildRunStatuses builds the status of all runs belonging to the job
 func (jr *JobRunner) BuildRunStatuses(currentJob *job.Job) ([]job.RunStatus, error) {
 
-	runStatuses := make([]job.RunStatus, 0, currentJob.Runs)
-	for runID := uint(0); runID < currentJob.Runs; runID++ {
+	// Calculate the status only for the runs which effectively were executed
+	runStartEvents, err := jr.frameworkEventManager.Fetch(frameworkevent.QueryEventName(EventRunStarted))
+	if err != nil {
+		return nil, fmt.Errorf("could not determine how many runs were executed: %v", err)
+	}
+	numRuns := uint(0)
+	if len(runStartEvents) == 0 {
+		return make([]job.RunStatus, 0, currentJob.Runs), nil
+	}
+
+	payload, err := runStartEvents[len(runStartEvents)-1].Payload.MarshalJSON()
+	if err != nil {
+		return nil, fmt.Errorf("could not extract JSON payload from RunStart event: %v", err)
+	}
+
+	payloadUnmarshaled := RunStartedPayload{}
+
+	if err := json.Unmarshal(payload, &payloadUnmarshaled); err != nil {
+		return nil, fmt.Errorf("could not unmarshal RunStarted event payload")
+	}
+	numRuns = uint(payloadUnmarshaled.RunID)
+
+	runStatuses := make([]job.RunStatus, 0, numRuns)
+
+	for runID := uint(1); runID <= numRuns; runID++ {
 		runCoordinates := job.RunCoordinates{JobID: currentJob.ID, RunID: types.RunID(runID)}
 		runStatus, err := jr.BuildRunStatus(runCoordinates, currentJob)
 		if err != nil {

@@ -48,7 +48,7 @@ func buildEventQuery(baseQuery bytes.Buffer, eventQuery *event.Query) ([]string,
 		if len(eventQuery.EventNames) == 1 {
 			selectClauses = append(selectClauses, "event_name=?")
 		} else {
-			queryStr := fmt.Sprintf("event_name in")
+			queryStr := "event_name in"
 			for i := 0; i < len(eventQuery.EventNames); i++ {
 				if i == 0 {
 					queryStr = fmt.Sprintf("%s (?", queryStr)
@@ -64,7 +64,6 @@ func buildEventQuery(baseQuery bytes.Buffer, eventQuery *event.Query) ([]string,
 			fields = append(fields, eventQuery.EventNames[i])
 		}
 	}
-
 	if eventQuery != nil && !eventQuery.EmittedStartTime.IsZero() {
 		selectClauses = append(selectClauses, "emit_time>=?")
 		fields = append(fields, eventQuery.EmittedStartTime)
@@ -88,18 +87,21 @@ func buildFrameworkEventQuery(baseQuery bytes.Buffer, frameworkEventQuery *frame
 
 func buildTestEventQuery(baseQuery bytes.Buffer, testEventQuery *testevent.Query) (string, []interface{}, error) {
 
+	if testEventQuery == nil {
+		return "", nil, fmt.Errorf("cannot build empty testevent query")
+	}
 	selectClauses, fields := buildEventQuery(baseQuery, &testEventQuery.Query)
 
-	if testEventQuery != nil && testEventQuery.RunID != types.RunID(0) {
+	if testEventQuery.RunID != types.RunID(0) {
 		selectClauses = append(selectClauses, "run_id=?")
 		fields = append(fields, testEventQuery.RunID)
 	}
 
-	if testEventQuery != nil && testEventQuery.TestName != "" {
+	if testEventQuery.TestName != "" {
 		selectClauses = append(selectClauses, "test_name=?")
 		fields = append(fields, testEventQuery.TestName)
 	}
-	if testEventQuery != nil && testEventQuery.TestStepLabel != "" {
+	if testEventQuery.TestStepLabel != "" {
 		selectClauses = append(selectClauses, "test_step_label=?")
 		fields = append(fields, testEventQuery.TestStepLabel)
 	}
@@ -187,32 +189,22 @@ func TestEventEmitTime(ev testevent.Event) interface{} {
 // when the internal storage utilization goes beyond `testEventsFlushSize`
 func (r *RDBMS) StoreTestEvent(event testevent.Event) error {
 
-	if err := r.init(); err != nil {
-		return fmt.Errorf("could not initialize database: %v", err)
-	}
-
-	var doFlush bool
-
+	defer r.testEventsLock.Unlock()
 	r.testEventsLock.Lock()
+
 	r.buffTestEvents = append(r.buffTestEvents, event)
-	if len(r.buffTestEvents) == r.testEventsFlushSize {
-		doFlush = true
-	}
-	r.testEventsLock.Unlock()
-	if doFlush {
-		return r.FlushTestEvents()
+	if len(r.buffTestEvents) >= r.testEventsFlushSize {
+		return r.flushTestEvents()
 	}
 	return nil
 }
 
-// FlushTestEvents forces a flush of the pending test events to the database
-func (r *RDBMS) FlushTestEvents() error {
-	r.testEventsLock.Lock()
-	defer r.testEventsLock.Unlock()
+// flushTestEvents forces a flush of the pending test events to the database.
+// Requires that the caller has already locked the corresponding buffer.
+func (r *RDBMS) flushTestEvents() error {
 
-	if len(r.buffTestEvents) == 0 {
-		return nil
-	}
+	r.lockTx()
+	defer r.unlockTx()
 
 	insertStatement := "insert into test_events (job_id, run_id, test_name, test_step_label, event_name, target_name, target_id, payload, emit_time) values (?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	for _, event := range r.buffTestEvents {
@@ -232,24 +224,24 @@ func (r *RDBMS) FlushTestEvents() error {
 		}
 	}
 	r.buffTestEvents = nil
+
 	return nil
 }
 
 // GetTestEvents retrieves test events matching the query fields provided
 func (r *RDBMS) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, error) {
 
-	if err := r.init(); err != nil {
-		return nil, fmt.Errorf("could not initialize database: %v", err)
-	}
-
 	// Flush pending events before Get operations
-	err := r.FlushTestEvents()
+	r.testEventsLock.Lock()
+	err := r.flushTestEvents()
+	r.testEventsLock.Unlock()
+
 	if err != nil {
 		return nil, fmt.Errorf("could not flush events before reading events: %v", err)
 	}
 
-	r.testEventsLock.Lock()
-	defer r.testEventsLock.Unlock()
+	r.lockTx()
+	defer r.unlockTx()
 
 	baseQuery := bytes.Buffer{}
 	baseQuery.WriteString("select event_id, job_id, run_id, test_name, test_step_label, event_name, target_name, target_id, payload, emit_time from test_events")
@@ -259,17 +251,11 @@ func (r *RDBMS) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, e
 	}
 
 	results := []testevent.Event{}
-	log.Debugf("Executing query: %s", query)
+	log.Debugf("Executing query: %s, fields: %v", query, fields)
 	rows, err := r.db.Query(query, fields...)
 	if err != nil {
 		return nil, err
 	}
-
-	defer func() {
-		if err := rows.Close(); err != nil {
-			log.Warningf("Failed to close rows from Query statement: %v", err)
-		}
-	}()
 
 	// TargetName and TargetID might be null, so a type which supports null should be used with Scan
 	var (
@@ -278,6 +264,12 @@ func (r *RDBMS) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, e
 		payload    sql.NullString
 	)
 
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			log.Warningf("could not close rows for test events: %v", err)
+		}
+	}()
 	for rows.Next() {
 		data := testevent.Data{}
 		header := testevent.Header{}
@@ -342,32 +334,23 @@ func FrameworkEventEmitTime(ev frameworkevent.Event) interface{} {
 // when the internal storage utilization goes beyond `frameworkEventsFlushSize`
 func (r *RDBMS) StoreFrameworkEvent(event frameworkevent.Event) error {
 
-	if err := r.init(); err != nil {
-		return fmt.Errorf("could not initialize database: %v", err)
-	}
-
-	var doFlush bool
-
+	defer r.frameworkEventsLock.Unlock()
 	r.frameworkEventsLock.Lock()
+
 	r.buffFrameworkEvents = append(r.buffFrameworkEvents, event)
 	if len(r.buffFrameworkEvents) >= r.frameworkEventsFlushSize {
-		doFlush = true
+		return r.flushFrameworkEvents()
 	}
-	r.frameworkEventsLock.Unlock()
-	if doFlush {
-		return r.FlushFrameworkEvents()
-	}
+
 	return nil
 }
 
 // FlushFrameworkEvents forces a flush of the pending frameworks events to the database
-func (r *RDBMS) FlushFrameworkEvents() error {
-	r.frameworkEventsLock.Lock()
-	defer r.frameworkEventsLock.Unlock()
+// Requires that the caller has already locked the corresponding buffer
+func (r *RDBMS) flushFrameworkEvents() error {
 
-	if len(r.buffFrameworkEvents) == 0 {
-		return nil
-	}
+	r.lockTx()
+	defer r.unlockTx()
 
 	insertStatement := "insert into framework_events (job_id, event_name, payload, emit_time) values (?, ?, ?, ?)"
 	for _, event := range r.buffFrameworkEvents {
@@ -388,15 +371,17 @@ func (r *RDBMS) FlushFrameworkEvents() error {
 // GetFrameworkEvent retrieves framework events matching the query fields provided
 func (r *RDBMS) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]frameworkevent.Event, error) {
 
-	if err := r.init(); err != nil {
-		return nil, fmt.Errorf("could not initialize database: %v", err)
-	}
-
 	// Flush pending events before Get operations
-	err := r.FlushFrameworkEvents()
+	r.frameworkEventsLock.Lock()
+	err := r.flushFrameworkEvents()
+	r.frameworkEventsLock.Unlock()
+
 	if err != nil {
 		return nil, fmt.Errorf("could not flush events before reading events: %v", err)
 	}
+
+	r.lockTx()
+	defer r.unlockTx()
 
 	baseQuery := bytes.Buffer{}
 	baseQuery.WriteString(`select event_id, job_id, event_name, payload, emit_time from framework_events`)
@@ -404,12 +389,8 @@ func (r *RDBMS) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]framework
 	if err != nil {
 		return nil, fmt.Errorf("could not execute select query for test events: %v", err)
 	}
-
-	r.frameworkEventsLock.Lock()
-	defer r.frameworkEventsLock.Unlock()
-
 	results := []frameworkevent.Event{}
-	log.Debugf("Executing query: %s", query)
+	log.Debugf("Executing query: %s, fields: %v", query, fields)
 	rows, err := r.db.Query(query, fields...)
 	if err != nil {
 		return nil, err
@@ -417,7 +398,7 @@ func (r *RDBMS) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]framework
 
 	defer func() {
 		if err := rows.Close(); err != nil {
-			log.Warningf("Failed to close rows from Query statement: %v", err)
+			log.Warningf("could not close rows for framework events: %v", err)
 		}
 	}()
 

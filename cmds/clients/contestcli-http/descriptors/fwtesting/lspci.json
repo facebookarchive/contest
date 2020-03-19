@@ -1,16 +1,16 @@
 {
-    "JobName": "test job",
-    "Runs": 3,
+    "JobName": "lspci test job",
+    "Runs": 1,
     "RunInterval": "3s",
-    "Tags": ["test", "csv"],
+    "Tags": ["lscpi"],
     "TestDescriptors": [
         {
             "TargetManagerName": "TargetList",
             "TargetManagerAcquireParameters": {
                 "Targets": [
                     {
-                        "Name": "example.org",
-                        "ID": "1234"
+                        "Name": "dut1",
+                        "ID": "12345"
                     }
                 ]
             },
@@ -21,11 +21,13 @@
                 "TestName": "Literal test",
                 "Steps": [
                     {
-                        "name": "cmd",
-                        "label": "some label",
+                        "name": "sshcmd",
                         "parameters": {
-                            "executable": ["echo"],
-                            "args": ["Title={{ Title .Name }}, ToUpper={{ ToUpper .Name }}"]
+                                "user": ["sesame"],
+                                "host": ["{{ .Name }}"],
+                                "password": [""],
+                                "executable": ["lspci"],
+                                "expect": ["DDRIO Global Broadcast"]
                         }
                     }
                 ]
@@ -39,14 +41,6 @@
                 "Parameters": {
                     "SuccessExpression": ">80%"
                 }
-            },
-            {
-                "Name": "Noop"
-            }
-        ],
-        "FinalReporters": [
-            {
-                "Name": "noop"
             }
         ]
     }

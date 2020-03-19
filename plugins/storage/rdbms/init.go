@@ -22,8 +22,22 @@ import (
 
 var log = logging.GetLogger("plugin/events/rdbms")
 
-const defaultFlushSize int = 64
-const defaultFlushInterval time.Duration = 5 * time.Second
+// txbeginner defines an interface for a backend which supports beginning a transaction
+type txbeginner interface {
+	Begin() (*sql.Tx, error)
+}
+
+// db defines an interface for a backend that supports Query and Exec Operations
+type db interface {
+	Exec(query string, args ...interface{}) (sql.Result, error)
+	Query(query string, args ...interface{}) (*sql.Rows, error)
+}
+
+// tx defines an interface for a backend that supports transaction like operations
+type tx interface {
+	Commit() error
+	Rollback() error
+}
 
 // RDBMS implements a storage engine which stores ConTest information in a relational
 // database via the database/sql package. With the current implementation, only MySQL
@@ -33,18 +47,20 @@ const defaultFlushInterval time.Duration = 5 * time.Second
 // implementing database/sql support prepared statements, so the plugin cannot
 // depend on them.
 type RDBMS struct {
-	driverName          string
+	dbURI, driverName string
+
 	buffTestEvents      []testevent.Event
 	buffFrameworkEvents []frameworkevent.Event
-
-	initOnce *sync.Once
 
 	testEventsLock      *sync.Mutex
 	frameworkEventsLock *sync.Mutex
 
-	db *sql.DB
+	// sql.Tx is not safe for concurrent use. This means that both Query, Exec operations
+	// and rows scanning should be serialized. txLock is acquired and released by all
+	// methods of the public interface exposed by RDBMS.
+	txLock sync.Mutex
 
-	dbURI string
+	db db
 
 	// Events are buffered internally before being flushed to the database.
 	// Buffer size and flush interval are defined per-buffer, as there is
@@ -55,75 +71,94 @@ type RDBMS struct {
 	frameworkEventsFlushInterval time.Duration
 }
 
-// Reset restores a clean state in the database. It's meant to be used after
-// integration tests. As it's a potentially dangerous operation, it's not part
-// of the  EventsStorage interface.
-func (r *RDBMS) Reset() error {
+func (r *RDBMS) lockTx() {
+	if _, ok := r.db.(tx); !ok {
+		return
+	}
+	r.txLock.Lock()
+}
 
-	if err := r.init(); err != nil {
-		return fmt.Errorf("could not initialize database: %v", err)
+func (r *RDBMS) unlockTx() {
+	if _, ok := r.db.(tx); !ok {
+		return
 	}
-	_, err := r.db.Exec("truncate test_events")
+	r.txLock.Unlock()
+}
+
+// BeginTx returns a storage.TransactionalStorage object backed by a transactional db object
+func (r *RDBMS) BeginTx() (storage.TransactionalStorage, error) {
+
+	txdb, ok := r.db.(txbeginner)
+	if !ok {
+		return nil, fmt.Errorf("backend does not support initiating a transaction")
+	}
+
+	tx, err := txdb.Begin()
 	if err != nil {
-		return fmt.Errorf("could not truncate table events: %v", err)
+		return nil, err
 	}
-	_, err = r.db.Exec("truncate framework_events")
-	if err != nil {
-		return fmt.Errorf("could not truncate table framework_events: %v", err)
+	txRDBMS := RDBMS{testEventsLock: &sync.Mutex{}, frameworkEventsLock: &sync.Mutex{}, txLock: sync.Mutex{}, db: tx}
+	return &txRDBMS, nil
+}
+
+// Commit persists the current transaction, if there is one active
+func (r *RDBMS) Commit() error {
+	tx, ok := r.db.(tx)
+	if !ok {
+		return fmt.Errorf("no active transaction")
 	}
-	_, err = r.db.Exec("truncate jobs")
-	if err != nil {
-		return fmt.Errorf("could not truncate table jobs: %v", err)
+	return tx.Commit()
+}
+
+// Rollback rolls back the current transaction, if there is one active
+func (r *RDBMS) Rollback() error {
+	tx, ok := r.db.(tx)
+	if !ok {
+		return fmt.Errorf("no active transaction")
 	}
-	_, err = r.db.Exec("truncate run_reports")
-	if err != nil {
-		return fmt.Errorf("could not truncate table run_reports: %v", err)
-	}
-	_, err = r.db.Exec("truncate final_reports")
-	if err != nil {
-		return fmt.Errorf("could not truncate table final_reports: %v", err)
-	}
-	return nil
+	return tx.Rollback()
 }
 
 func (r *RDBMS) init() error {
-	initFunc := func() error {
-		driverName := "mysql"
-		if r.driverName != "" {
-			driverName = r.driverName
-		}
-		db, err := sql.Open(driverName, r.dbURI)
-		if err != nil {
-			return fmt.Errorf("could not initialize database for events: %v", err)
-		}
-		r.db = db
-		// Background goroutines for flushing pending events. The lifetime of the
-		// goroutines correspond to the lifetime of the framework.
+
+	driverName := "mysql"
+	if r.driverName != "" {
+		driverName = r.driverName
+	}
+	sqlDb, err := sql.Open(driverName, r.dbURI)
+	if err != nil {
+		return fmt.Errorf("could not initialize database: %v", err)
+	}
+	r.db = sqlDb
+
+	if r.testEventsFlushInterval > 0 {
 		go func() {
 			for {
 				time.Sleep(r.testEventsFlushInterval)
-				if err := r.FlushTestEvents(); err != nil {
+
+				r.testEventsLock.Lock()
+				if err := r.flushTestEvents(); err != nil {
 					log.Warningf("Failed to flush test events: %v", err)
 				}
+				r.testEventsLock.Unlock()
 			}
 		}()
+	}
 
+	if r.frameworkEventsFlushInterval > 0 {
 		go func() {
 			for {
 				time.Sleep(r.frameworkEventsFlushInterval)
-				if err := r.FlushFrameworkEvents(); err != nil {
+
+				r.frameworkEventsLock.Lock()
+				if err := r.flushFrameworkEvents(); err != nil {
 					log.Warningf("Failed to flush test events: %v", err)
 				}
+				r.frameworkEventsLock.Unlock()
 			}
 		}()
-		return err
 	}
-
-	var initErr error
-	r.initOnce.Do(func() {
-		initErr = initFunc()
-	})
-	return initErr
+	return nil
 }
 
 // Opt is a function type that sets parameters on the RDBMS object
@@ -170,19 +205,15 @@ func DriverName(name string) Opt {
 }
 
 // New creates a RDBMS events storage backend with default parameters
-func New(dbURI string, opts ...Opt) storage.Storage {
-	backend := RDBMS{
-		dbURI:                        dbURI,
-		testEventsLock:               &sync.Mutex{},
-		frameworkEventsLock:          &sync.Mutex{},
-		initOnce:                     &sync.Once{},
-		testEventsFlushSize:          defaultFlushSize,
-		testEventsFlushInterval:      defaultFlushInterval,
-		frameworkEventsFlushSize:     defaultFlushSize,
-		frameworkEventsFlushInterval: defaultFlushInterval,
-	}
+func New(dbURI string, opts ...Opt) (storage.Storage, error) {
+
+	// Default flushInterval and buffer sizes are zero (i.e., by default the backend is not buffered)
+	rdbms := RDBMS{testEventsLock: &sync.Mutex{}, frameworkEventsLock: &sync.Mutex{}, dbURI: dbURI}
 	for _, Opt := range opts {
-		Opt(&backend)
+		Opt(&rdbms)
 	}
-	return &backend
+	if err := rdbms.init(); err != nil {
+		return nil, err
+	}
+	return &rdbms, nil
 }

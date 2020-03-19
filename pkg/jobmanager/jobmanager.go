@@ -149,7 +149,7 @@ func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, 
 			// anomaly.
 			tsb, err := pr.NewTestStepBundle(*testStepDesc, uint(idx)+1, tse)
 			if err != nil {
-				return nil, fmt.Errorf("NewTestStepBundle for test step '%s' with index %d failed: %v", testStepDesc.Name, idx, err)
+				return nil, fmt.Errorf("NewTestStepBundle for test step '%s' with index %d failed: %w", testStepDesc.Name, idx, err)
 			}
 			if _, ok := labels[tsb.TestStepLabel]; ok {
 				// validate that the label associated to the test step does not clash

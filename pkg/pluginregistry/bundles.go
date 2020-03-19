@@ -25,7 +25,7 @@ func (r *PluginRegistry) NewTestStepBundle(testStepDescriptor test.TestStepDescr
 	}
 	label := testStepDescriptor.Label
 	if label == "" {
-		label = testStepDescriptor.Name
+		return nil, ErrStepLabelIsMandatory{TestStepDescriptor: testStepDescriptor}
 	}
 	testStepBundle := test.TestStepBundle{
 		TestStep:      testStep,

@@ -13,8 +13,7 @@ import (
 )
 
 // storage defines the events storage engine used by ConTest. It can be overridden
-// via the exported function SetStorage and it can be retrieved via the exported
-// function GetStorage
+// via the exported function SetStorage.
 var storage Storage
 
 // Storage defines the interface that storage engines must implement
@@ -34,8 +33,19 @@ type Storage interface {
 	// Job report interface
 	StoreJobReport(report *job.JobReport) error
 	GetJobReport(jobID types.JobID) (*job.JobReport, error)
+}
 
-	// Reset clears the state of the storage layer
+// TransactionalStorage is implemented by storage backends that support transactions.
+// Only default isolation level is supported.
+type TransactionalStorage interface {
+	Storage
+	BeginTx() (TransactionalStorage, error)
+	Commit() error
+	Rollback() error
+}
+
+// ResettableStorage is implemented by storage engines that support reset operation
+type ResettableStorage interface {
 	Reset() error
 }
 

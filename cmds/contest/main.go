@@ -204,8 +204,12 @@ func main() {
 	}
 
 	// storage initialization
-	log.Infof("Using database URI (MySQL DSN) for the main storage: %s", *flagDBURI)
-	storage.SetStorage(rdbms.New(*flagDBURI))
+	log.Infof("Using database URI (MySQL DSN) of the main storage: %s", *flagDBURI)
+	s, err := rdbms.New(*flagDBURI)
+	if err != nil {
+		log.Fatalf("could not initialize database: %v", err)
+	}
+	storage.SetStorage(s)
 
 	// set Locker engine
 	targetLocker, targetLockerName, targetLockerStorageDSN := newTargetLockerFromFlag(*flagTargetLocker)

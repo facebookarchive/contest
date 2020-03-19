@@ -17,15 +17,17 @@ import (
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/tests/integ/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
-const (
-	TestEventsFlushInterval     = 10 * time.Second
-	TestEventsFlushSize     int = 1
-)
+func mustBuildQuery(t require.TestingT, queryFields ...testevent.QueryField) *testevent.Query {
+	eventQuery, err := testevent.BuildQuery(queryFields...)
+	require.NoError(t, err)
+	return eventQuery
+}
 
 func populateTestEvents(backend storage.Storage, emitTime time.Time) error {
 	data := []byte("{ 'test_key': 'test_value' }")
@@ -78,22 +80,33 @@ func assertTestEvents(t *testing.T, ev []testevent.Event, emitTime time.Time) {
 
 type TestEventsSuite struct {
 	suite.Suite
+	// storage is the storage engine initially configured by the upper level TestSuite,
+	// which either configures a memory or a rdbms storage backend.
 	storage storage.Storage
+
+	// txStorage storage is initialized from storage at the beginning of each test. If
+	// the backend supports transactions, txStorage runs within a transaction. At the end
+	// of the job txStorage is finalized: it's either committed or rolled back, depending
+	// what the backend supports
+	txStorage storage.Storage
+}
+
+func (suite *TestEventsSuite) SetupTest() {
+	suite.txStorage = common.InitStorage(suite.storage)
 }
 
 func (suite *TestEventsSuite) TearDownTest() {
-	suite.storage.Reset()
+	common.FinalizeStorage(suite.txStorage)
 }
 
 func (suite *TestEventsSuite) TestRetrieveSingleTestEvent() {
 
 	emitTime := time.Now().Truncate(2 * time.Second)
-	err := populateTestEvents(suite.storage, emitTime)
+	err := populateTestEvents(suite.txStorage, emitTime)
 	require.NoError(suite.T(), err)
 
-	testEventQuery := &testevent.Query{}
-	testevent.QueryTestName("ATestName")(testEventQuery)
-	results, err := suite.storage.GetTestEvents(testEventQuery)
+	testEventQuery := mustBuildQuery(suite.T(), testevent.QueryTestName("ATestName"))
+	results, err := suite.txStorage.GetTestEvents(testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 1, len(results))
@@ -104,12 +117,11 @@ func (suite *TestEventsSuite) TestRetrieveSingleTestEvent() {
 func (suite *TestEventsSuite) TestRetrieveMultipleTestEvents() {
 
 	emitTime := time.Now().Truncate(2 * time.Second)
-	err := populateTestEvents(suite.storage, emitTime)
+	err := populateTestEvents(suite.txStorage, emitTime)
 	require.NoError(suite.T(), err)
 
-	testEventQuery := &testevent.Query{}
-	testevent.QueryTestStepLabel("TestStepLabel")(testEventQuery)
-	results, err := suite.storage.GetTestEvents(testEventQuery)
+	testEventQuery := mustBuildQuery(suite.T(), testevent.QueryTestStepLabel("TestStepLabel"))
+	results, err := suite.txStorage.GetTestEvents(testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 2, len(results))
@@ -120,28 +132,26 @@ func (suite *TestEventsSuite) TestRetrievesSingleTestEventByEmitTime() {
 
 	delta := 10 * time.Second
 	emitTime := time.Now().Truncate(2 * time.Second)
-	err := populateTestEvents(suite.storage, emitTime)
+	err := populateTestEvents(suite.txStorage, emitTime)
 	require.NoError(suite.T(), err)
 
 	emitTime = emitTime.Add(delta)
-	err = populateTestEvents(suite.storage, emitTime)
+	err = populateTestEvents(suite.txStorage, emitTime)
 	require.NoError(suite.T(), err)
 
-	testEventQuery := &testevent.Query{}
-	testevent.QueryEmittedStartTime(emitTime)(testEventQuery)
-	results, err := suite.storage.GetTestEvents(testEventQuery)
+	testEventQuery := mustBuildQuery(suite.T(), testevent.QueryEmittedStartTime(emitTime))
+	results, err := suite.txStorage.GetTestEvents(testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 2, len(results))
 	assertTestEvents(suite.T(), results, emitTime)
 
-	testEventQuery = &testevent.Query{}
-	testevent.QueryEmittedStartTime(emitTime.Add(-delta))(testEventQuery)
-	results, err = suite.storage.GetTestEvents(testEventQuery)
+	testEventQuery = mustBuildQuery(suite.T(), testevent.QueryEmittedStartTime(emitTime.Add(-delta)))
+	results, err = suite.txStorage.GetTestEvents(testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 4, len(results))
-	err = populateTestEvents(suite.storage, emitTime)
+	err = populateTestEvents(suite.txStorage, emitTime)
 	require.NoError(suite.T(), err)
 
 }
@@ -149,13 +159,12 @@ func (suite *TestEventsSuite) TestRetrievesSingleTestEventByEmitTime() {
 func (suite *TestEventsSuite) TestRetrievesMultipleTestEventsByName() {
 
 	emitTime := time.Now().Truncate(2 * time.Second)
-	err := populateTestEvents(suite.storage, emitTime)
+	err := populateTestEvents(suite.txStorage, emitTime)
 	require.NoError(suite.T(), err)
 
-	testEventQuery := &testevent.Query{}
 	eventNames := []event.Name{event.Name("AEventName"), event.Name("BEventName")}
-	testevent.QueryEventNames(eventNames)(testEventQuery)
-	results, err := suite.storage.GetTestEvents(testEventQuery)
+	testEventQuery := mustBuildQuery(suite.T(), testevent.QueryEventNames(eventNames))
+	results, err := suite.txStorage.GetTestEvents(testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 2, len(results))
@@ -165,12 +174,11 @@ func (suite *TestEventsSuite) TestRetrievesMultipleTestEventsByName() {
 func (suite *TestEventsSuite) TestRetrieveSingleTestEventsByName() {
 
 	emitTime := time.Now().Truncate(2 * time.Second)
-	err := populateTestEvents(suite.storage, emitTime)
+	err := populateTestEvents(suite.txStorage, emitTime)
 	require.NoError(suite.T(), err)
 
-	testEventQuery := &testevent.Query{}
-	testevent.QueryEventName(event.Name("AEventName"))(testEventQuery)
-	results, err := suite.storage.GetTestEvents(testEventQuery)
+	testEventQuery := mustBuildQuery(suite.T(), testevent.QueryEventName(event.Name("AEventName")))
+	results, err := suite.txStorage.GetTestEvents(testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 1, len(results))
@@ -180,13 +188,14 @@ func (suite *TestEventsSuite) TestRetrieveSingleTestEventsByName() {
 func (suite *TestEventsSuite) TestRetrieveSingleTestEventsByNameAndJobID() {
 
 	emitTime := time.Now().Truncate(2 * time.Second)
-	err := populateTestEvents(suite.storage, emitTime)
+	err := populateTestEvents(suite.txStorage, emitTime)
 	require.NoError(suite.T(), err)
 
-	testEventQuery := &testevent.Query{}
-	testevent.QueryEventName(event.Name("AEventName"))(testEventQuery)
-	testevent.QueryJobID(1)(testEventQuery)
-	results, err := suite.storage.GetTestEvents(testEventQuery)
+	testEventQuery := mustBuildQuery(suite.T(),
+		testevent.QueryEventName(event.Name("AEventName")),
+		testevent.QueryJobID(1),
+	)
+	results, err := suite.txStorage.GetTestEvents(testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 1, len(results))
