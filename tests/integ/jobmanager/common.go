@@ -439,7 +439,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCancellationFailure() {
 	// completed cancellation successfully (completing cancellation successfully
 	// means that the TestRunner returns within the timeout and that
 	// TargetManage.Release() all targets)
-	ev, err = pollForEvent(suite.eventManager, jobmanager.EventJobCancellationFailed, types.JobID(jobID))
+	ev, err = pollForEvent(suite.eventManager, jobmanager.EventJobCancelling, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
