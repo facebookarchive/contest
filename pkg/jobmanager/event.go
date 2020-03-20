@@ -26,7 +26,7 @@ var EventJobCancelling = event.Name("JobStateCancelling")
 var EventJobCancelled = event.Name("JobStateCancelled")
 
 // EventJobCancellationFailed indicates that the cancellation was not completed correctly
-var EventJobCancellationFailed = event.Name("JobStateCancelled")
+var EventJobCancellationFailed = event.Name("JobStateCancellationFailed")
 
 // JobCompletionEvents gather all event that mark the end of a job
 var JobCompletionEvents = []event.Name{
