@@ -15,7 +15,6 @@ import (
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/storage"
-	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
@@ -27,13 +26,8 @@ type Memory struct {
 	testEvents      []testevent.Event
 	frameworkEvents []frameworkevent.Event
 	jobIDCounter    types.JobID
-	jobRequests     map[types.JobID]req
+	jobRequests     map[types.JobID]*job.Request
 	jobReports      map[types.JobID]*job.JobReport
-}
-
-type req struct {
-	Request *job.Request
-	Steps   [][]*test.TestStepDescriptor
 }
 
 func emptyEventQuery(eventQuery *event.Query) bool {
@@ -137,32 +131,32 @@ func (m *Memory) Reset() error {
 	defer m.lock.Unlock()
 	m.testEvents = []testevent.Event{}
 	m.frameworkEvents = []frameworkevent.Event{}
-	m.jobRequests = make(map[types.JobID]req)
+	m.jobRequests = make(map[types.JobID]*job.Request)
 	m.jobReports = make(map[types.JobID]*job.JobReport)
 	m.jobIDCounter = 1
 	return nil
 }
 
 // StoreJobRequest stores a new job request
-func (m *Memory) StoreJobRequest(request *job.Request, testSteps [][]*test.TestStepDescriptor) (types.JobID, error) {
+func (m *Memory) StoreJobRequest(request *job.Request) (types.JobID, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
 	request.JobID = m.jobIDCounter
 	m.jobIDCounter++
-	m.jobRequests[request.JobID] = req{Request: request, Steps: testSteps}
+	m.jobRequests[request.JobID] = request
 	return request.JobID, nil
 }
 
 // GetJobRequest retrieves a job request from the in memory list
-func (m *Memory) GetJobRequest(jobID types.JobID) (*job.Request, [][]*test.TestStepDescriptor, error) {
+func (m *Memory) GetJobRequest(jobID types.JobID) (*job.Request, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	v, ok := m.jobRequests[jobID]
 	if !ok {
-		return nil, nil, fmt.Errorf("could not find job request with id %v", jobID)
+		return nil, fmt.Errorf("could not find job request with id %v", jobID)
 	}
-	return v.Request, v.Steps, nil
+	return v, nil
 }
 
 // StoreJobReport stores a report associated to a job. Returns an error if there is
@@ -220,7 +214,7 @@ func (m *Memory) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]framewor
 // New create a new Memory events storage backend
 func New() (storage.Storage, error) {
 	m := Memory{lock: &sync.Mutex{}}
-	m.jobRequests = make(map[types.JobID]req)
+	m.jobRequests = make(map[types.JobID]*job.Request)
 	m.jobReports = make(map[types.JobID]*job.JobReport)
 	m.jobIDCounter = 1
 	return &m, nil

@@ -45,7 +45,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 		return &api.EventResponse{
 			JobID:     jobID,
 			Requestor: ev.Msg.Requestor(),
-			Err:       fmt.Errorf("job manager is not owner of job id: %v", jobID),
+			Err:       fmt.Errorf("job manager is not owner of job id %d", jobID),
 		}
 	}
 

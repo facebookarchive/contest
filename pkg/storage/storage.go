@@ -9,7 +9,6 @@ import (
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/job"
-	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
@@ -28,8 +27,8 @@ type Storage interface {
 	GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]frameworkevent.Event, error)
 
 	// Job request interface
-	StoreJobRequest(request *job.Request, testDescriptors [][]*test.TestStepDescriptor) (types.JobID, error)
-	GetJobRequest(jobID types.JobID) (*job.Request, [][]*test.TestStepDescriptor, error)
+	StoreJobRequest(request *job.Request) (types.JobID, error)
+	GetJobRequest(jobID types.JobID) (*job.Request, error)
 
 	// Job report interface
 	StoreJobReport(report *job.JobReport) error

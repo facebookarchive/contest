@@ -54,6 +54,10 @@ type Job struct {
 	// unlimited, are specified.
 	RunInterval time.Duration
 
+	// TestDescriptors is the string form of the fetched test step
+	// descriptors.
+	TestDescriptors string
+	// Tests is the parsed form of the above TestDescriptors
 	Tests []*test.Test
 	// RunReporterBundles and FinalReporterBundles wrap the reporter instances
 	// chosen for the Job and its associated parameters, which have already
