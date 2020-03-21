@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/facebookincubator/contest/pkg/job"
-	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
@@ -29,9 +28,9 @@ type JobRequestEmitterFetcher struct {
 }
 
 // Emit persists a new job request into storage
-func (rc JobRequestEmitter) Emit(request *job.Request, testDescriptors [][]*test.TestStepDescriptor) (types.JobID, error) {
+func (rc JobRequestEmitter) Emit(request *job.Request) (types.JobID, error) {
 	var jobID types.JobID
-	jobID, err := storage.StoreJobRequest(request, testDescriptors)
+	jobID, err := storage.StoreJobRequest(request)
 	if err != nil {
 		return jobID, fmt.Errorf("could not store job request: %w", err)
 	}
@@ -39,12 +38,12 @@ func (rc JobRequestEmitter) Emit(request *job.Request, testDescriptors [][]*test
 }
 
 // Fetch fetches a Job request from storage based on job id
-func (rf JobRequestFetcher) Fetch(jobID types.JobID) (*job.Request, [][]*test.TestStepDescriptor, error) {
-	request, testDescriptors, err := storage.GetJobRequest(jobID)
+func (rf JobRequestFetcher) Fetch(jobID types.JobID) (*job.Request, error) {
+	request, err := storage.GetJobRequest(jobID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("could not fetch job request: %w", err)
+		return nil, fmt.Errorf("could not fetch job request: %w", err)
 	}
-	return request, testDescriptors, nil
+	return request, nil
 }
 
 // NewJobRequestEmitter creates a JobRequestEmitter object

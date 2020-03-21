@@ -259,13 +259,12 @@ func (suite *TestJobManagerSuite) TestJobManagerJobStartSingle() {
 	jobID, err := suite.startJob(jobDescriptorNoop)
 	require.NoError(suite.T(), err)
 
-	_, _, err = suite.jobRequestManager.Fetch(types.JobID(jobID))
+	_, err = suite.jobRequestManager.Fetch(types.JobID(jobID))
 	require.NoError(suite.T(), err)
 
-	r, steps, err := suite.jobRequestManager.Fetch(types.JobID(jobID + 1))
+	r, err := suite.jobRequestManager.Fetch(types.JobID(jobID + 1))
 	require.Error(suite.T(), err)
 	require.NotEqual(suite.T(), nil, r)
-	require.NotEqual(suite.T(), nil, steps)
 
 	// JobManager will emit an EventJobStarted when the Job is started
 	ev, err := pollForEvent(suite.eventManager, jobmanager.EventJobStarted, types.JobID(jobID))

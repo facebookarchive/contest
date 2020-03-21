@@ -8,7 +8,6 @@ package job
 import (
 	"time"
 
-	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
@@ -19,18 +18,21 @@ type Request struct {
 	Requestor     string
 	RequestTime   time.Time
 	JobDescriptor string
+	// TestDescriptors are the fetched test steps as per the test fetcher
+	// defined in the JobDescriptor above.
+	TestDescriptors string
 }
 
 // RequestEmitter is an interface implemented by creator objects that
 // create Request objects
 type RequestEmitter interface {
-	Emit(jobRequest *Request, testDescriptors [][]*test.TestStepDescriptor) (types.JobID, error)
+	Emit(jobRequest *Request) (types.JobID, error)
 }
 
 // RequestFetcher is an interface implemented by fetcher objects that fetch
 // job requests objects and the associated test step descriptors.
 type RequestFetcher interface {
-	Fetch(id types.JobID) (*Request, [][]*test.TestStepDescriptor, error)
+	Fetch(id types.JobID) (*Request, error)
 }
 
 // RequestEmitterFetcher is an interface implemented by objects that implement both

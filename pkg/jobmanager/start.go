@@ -16,19 +16,20 @@ import (
 
 func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 	msg := ev.Msg.(api.EventStartMsg)
-	j, testDescriptors, err := NewJob(jm.pluginRegistry, msg.JobDescriptor)
+	j, err := NewJob(jm.pluginRegistry, msg.JobDescriptor)
 	if err != nil {
 		return &api.EventResponse{Err: err}
 	}
 	// The job descriptor has been validated correctly, now use the JobRequestEmitter
 	// interface to obtain a JobRequest object with a valid id
 	request := job.Request{
-		JobName:       j.Name,
-		Requestor:     string(ev.Msg.Requestor()),
-		RequestTime:   time.Now(),
-		JobDescriptor: msg.JobDescriptor,
+		JobName:         j.Name,
+		Requestor:       string(ev.Msg.Requestor()),
+		RequestTime:     time.Now(),
+		JobDescriptor:   msg.JobDescriptor,
+		TestDescriptors: j.TestDescriptors,
 	}
-	jobID, err := jm.jobRequestManager.Emit(&request, testDescriptors)
+	jobID, err := jm.jobRequestManager.Emit(&request)
 	if err != nil {
 		return &api.EventResponse{
 			Requestor: ev.Msg.Requestor(),
