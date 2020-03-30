@@ -40,12 +40,12 @@ func (r *Report) ToJSON() ([]byte, error) {
 
 // ReportEmitter is an interface implemented by objects that implement report emission logic
 type ReportEmitter interface {
-	Emit(jobReport *JobReport) error
+	EmitReport(jobReport *JobReport) error
 }
 
 // ReportFetcher is an interface implemented by objects that implement report fetching logic
 type ReportFetcher interface {
-	Fetch(jobID types.JobID) (*JobReport, error)
+	FetchReport(jobID types.JobID) (*JobReport, error)
 }
 
 // ReportEmitterFetcher is an interface implemented by objects the implement report emission

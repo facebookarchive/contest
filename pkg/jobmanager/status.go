@@ -19,7 +19,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 	msg := ev.Msg.(api.EventStatusMsg)
 	jobID := msg.JobID
 
-	report, err := jm.jobReportManager.Fetch(jobID)
+	report, err := jm.jobEventManager.FetchReport(jobID)
 	if err != nil {
 		return &api.EventResponse{
 			JobID:     jobID,

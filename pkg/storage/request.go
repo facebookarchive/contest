@@ -27,8 +27,8 @@ type JobRequestEmitterFetcher struct {
 	JobRequestFetcher
 }
 
-// Emit persists a new job request into storage
-func (rc JobRequestEmitter) Emit(request *job.Request) (types.JobID, error) {
+// EmitRequest persists a new job request into storage
+func (rc JobRequestEmitter) EmitRequest(request *job.Request) (types.JobID, error) {
 	var jobID types.JobID
 	jobID, err := storage.StoreJobRequest(request)
 	if err != nil {
@@ -37,8 +37,8 @@ func (rc JobRequestEmitter) Emit(request *job.Request) (types.JobID, error) {
 	return jobID, nil
 }
 
-// Fetch fetches a Job request from storage based on job id
-func (rf JobRequestFetcher) Fetch(jobID types.JobID) (*job.Request, error) {
+// FetchRequest fetches a Job request from storage based on job id
+func (rf JobRequestFetcher) FetchRequest(jobID types.JobID) (*job.Request, error) {
 	request, err := storage.GetJobRequest(jobID)
 	if err != nil {
 		return nil, fmt.Errorf("could not fetch job request: %w", err)
@@ -58,8 +58,5 @@ func NewJobRequestFetcher() job.RequestFetcher {
 
 // NewJobRequestEmitterFetcher creates a JobRequestEmitterFetcher object
 func NewJobRequestEmitterFetcher() job.RequestEmitterFetcher {
-	return JobRequestEmitterFetcher{
-		JobRequestEmitter{},
-		JobRequestFetcher{},
-	}
+	return JobRequestEmitterFetcher{}
 }

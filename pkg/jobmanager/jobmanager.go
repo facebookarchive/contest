@@ -52,8 +52,7 @@ type JobManager struct {
 	jobsMu sync.Mutex
 	jobsWg sync.WaitGroup
 
-	jobRequestManager  job.RequestEmitterFetcher
-	jobReportManager   job.ReportEmitterFetcher
+	jobEventManager    job.EventEmitterFetcher
 	frameworkEvManager frameworkevent.EmitterFetcher
 	testEvManager      testevent.Fetcher
 
@@ -207,8 +206,7 @@ func New(l api.Listener, pr *pluginregistry.PluginRegistry) (*JobManager, error)
 	if pr == nil {
 		return nil, errors.New("plugin registry cannot be nil")
 	}
-	jobRequestManager := storage.NewJobRequestEmitterFetcher()
-	jobReportManager := storage.NewJobReportEmitterFetcher()
+	jobEventManager := storage.NewJobEventEmitterFetcher()
 
 	frameworkEvManager := storage.NewFrameworkEventEmitterFetcher()
 	testEvManager := storage.NewTestEventFetcher()
@@ -217,8 +215,7 @@ func New(l api.Listener, pr *pluginregistry.PluginRegistry) (*JobManager, error)
 		apiListener:        l,
 		pluginRegistry:     pr,
 		jobs:               make(map[types.JobID]*job.Job),
-		jobRequestManager:  jobRequestManager,
-		jobReportManager:   jobReportManager,
+		jobEventManager:    jobEventManager,
 		frameworkEvManager: frameworkEvManager,
 		testEvManager:      testEvManager,
 		apiCancel:          make(chan struct{}),
