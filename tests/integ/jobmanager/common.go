@@ -135,9 +135,8 @@ type TestJobManagerSuite struct {
 
 	jm *jobmanager.JobManager
 
-	jobRequestManager job.RequestEmitterFetcher
-	jobReportManager  job.ReportEmitterFetcher
-	eventManager      frameworkevent.EmitterFetcher
+	jobEventManager job.EventEmitterFetcher
+	eventManager    frameworkevent.EmitterFetcher
 
 	// commandCh is the counterpart of the commandCh in the Listener
 	commandCh chan command
@@ -185,12 +184,10 @@ func (suite *TestJobManagerSuite) stopJob(jobID types.JobID) error {
 
 func (suite *TestJobManagerSuite) SetupTest() {
 
-	jobRequestManager := storage.NewJobRequestEmitterFetcher()
-	jobReportManager := storage.NewJobReportEmitterFetcher()
+	jobEventManager := storage.NewJobEventEmitterFetcher()
 	eventManager := storage.NewFrameworkEventEmitterFetcher()
 
-	suite.jobRequestManager = jobRequestManager
-	suite.jobReportManager = jobReportManager
+	suite.jobEventManager = jobEventManager
 	suite.eventManager = eventManager
 
 	commandCh := make(chan command)
@@ -259,10 +256,10 @@ func (suite *TestJobManagerSuite) TestJobManagerJobStartSingle() {
 	jobID, err := suite.startJob(jobDescriptorNoop)
 	require.NoError(suite.T(), err)
 
-	_, err = suite.jobRequestManager.Fetch(types.JobID(jobID))
+	_, err = suite.jobEventManager.FetchRequest(types.JobID(jobID))
 	require.NoError(suite.T(), err)
 
-	r, err := suite.jobRequestManager.Fetch(types.JobID(jobID + 1))
+	r, err := suite.jobEventManager.FetchRequest(types.JobID(jobID + 1))
 	require.Error(suite.T(), err)
 	require.NotEqual(suite.T(), nil, r)
 
@@ -293,14 +290,14 @@ func (suite *TestJobManagerSuite) TestJobManagerJobReport() {
 	require.Equal(suite.T(), 1, len(ev))
 
 	// A Report must be persisted for the Job
-	jobReport, err := suite.jobReportManager.Fetch(types.JobID(jobID))
+	jobReport, err := suite.jobEventManager.FetchReport(types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(jobReport.RunReports))
 	require.Equal(suite.T(), 0, len(jobReport.FinalReports))
 
 	// Any other Job should not have a Job report, but fetching the
 	// report should not error out
-	jobReport, err = suite.jobReportManager.Fetch(types.JobID(2))
+	jobReport, err = suite.jobEventManager.FetchReport(types.JobID(2))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), &job.JobReport{JobID: 2}, jobReport)
 }
@@ -356,7 +353,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobNotSuccessful() {
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
-	jobReport, err := suite.jobReportManager.Fetch(types.JobID(jobID))
+	jobReport, err := suite.jobEventManager.FetchReport(types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(jobReport.RunReports))
 	require.Equal(suite.T(), 0, len(jobReport.FinalReports))
@@ -378,7 +375,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobFailure() {
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
-	jobReport, err := suite.jobReportManager.Fetch(types.JobID(jobID))
+	jobReport, err := suite.jobEventManager.FetchReport(types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(jobReport.RunReports))
 	require.Equal(suite.T(), 0, len(jobReport.FinalReports))
@@ -399,7 +396,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCrash() {
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 	require.Equal(suite.T(), string(*ev[0].Payload), "{\"Err\":\"TestStep crashed\"}")
-	jobReport, err := suite.jobReportManager.Fetch(types.JobID(jobID))
+	jobReport, err := suite.jobEventManager.FetchReport(types.JobID(jobID))
 
 	require.NoError(suite.T(), err)
 	// no reports are expected if the job crashes

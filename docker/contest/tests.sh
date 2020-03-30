@@ -9,7 +9,9 @@
 # See https://github.com/codecov/example-go#caveat-multiple-files
 # and https://github.com/insomniacslk/dhcp/tree/master/.travis/tests.sh
 
-set -e
+set -eu
+
+CI=${CI:-false}
 
 # Wait until mysql instance is up and running.
 attempts=0
@@ -48,7 +50,13 @@ done
 
 # Distinguish between coverage for unit tests and integration tests
 # Report coverage for unit tests and clear workspace afterwards (-c)
-[[ ! -z ${TRAVIS} ]] && bash <(curl -s https://codecov.io/bash) -c -F unittests
+if [ "${CI}" == "true" ]
+then
+    echo "Uploading coverage profile for unit tests"
+    [[ ! -z ${CI} ]] && bash <(curl -s https://codecov.io/bash) -c -F unittests
+else
+    echo "Skipping upload of coverage profile for unit tests because not running in a CI"
+fi
 
 # Run integration tests collecting coverage only for the business logic (pkg directory)
 for tag in integration integration_storage; do
@@ -75,5 +83,10 @@ for tag in integration integration_storage; do
     done
 done
 
-echo "Uploading coverage profile"
-[[ ! -z ${TRAVIS} ]] && bash <(curl -s https://codecov.io/bash) -c -F integration
+if [ "${CI}" == "true" ]
+then
+    echo "Uploading coverage profile for integration tests"
+    bash <(curl -s https://codecov.io/bash) -c -F integration
+else
+    echo "Skipping upload of coverage profile for integration tests because not running in a CI"
+fi

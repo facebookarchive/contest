@@ -26,16 +26,16 @@ type JobReportEmitterFetcher struct {
 	JobReportFetcher
 }
 
-// Emit emits the report using the selected storage layer
-func (e JobReportEmitter) Emit(jobReport *job.JobReport) error {
+// EmitReport emits the report using the selected storage layer
+func (e JobReportEmitter) EmitReport(jobReport *job.JobReport) error {
 	if err := storage.StoreJobReport(jobReport); err != nil {
 		return fmt.Errorf("could not persist job report: %v", err)
 	}
 	return nil
 }
 
-// Fetch retrieves job report objects based on JobID
-func (ev JobReportFetcher) Fetch(jobID types.JobID) (*job.JobReport, error) {
+// FetchReport retrieves job report objects based on JobID
+func (ev JobReportFetcher) FetchReport(jobID types.JobID) (*job.JobReport, error) {
 	report, err := storage.GetJobReport(jobID)
 	if err != nil {
 		return nil, err
@@ -55,8 +55,5 @@ func NewJobReportFetcher() job.ReportFetcher {
 
 // NewJobReportEmitterFetcher creates a new EmitterFetcher object for Job reports
 func NewJobReportEmitterFetcher() job.ReportEmitterFetcher {
-	return JobReportEmitterFetcher{
-		JobReportEmitter{},
-		JobReportFetcher{},
-	}
+	return JobReportEmitterFetcher{}
 }

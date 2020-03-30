@@ -26,13 +26,13 @@ type Request struct {
 // RequestEmitter is an interface implemented by creator objects that
 // create Request objects
 type RequestEmitter interface {
-	Emit(jobRequest *Request) (types.JobID, error)
+	EmitRequest(jobRequest *Request) (types.JobID, error)
 }
 
 // RequestFetcher is an interface implemented by fetcher objects that fetch
 // job requests objects and the associated test step descriptors.
 type RequestFetcher interface {
-	Fetch(id types.JobID) (*Request, error)
+	FetchRequest(id types.JobID) (*Request, error)
 }
 
 // RequestEmitterFetcher is an interface implemented by objects that implement both
