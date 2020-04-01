@@ -23,8 +23,8 @@ func (r *RDBMS) StoreJobRequest(request *job.Request) (types.JobID, error) {
 	defer r.unlockTx()
 
 	// store job descriptor
-	insertStatement := "insert into jobs (name, descriptor, teststeps, requestor, request_time) values (?, ?, ?, ?, ?)"
-	result, err := r.db.Exec(insertStatement, request.JobName, request.JobDescriptor, request.TestDescriptors, request.Requestor, request.RequestTime)
+	insertStatement := "insert into jobs (name, descriptor, teststeps, requestor, server_id, request_time) values (?, ?, ?, ?, ?, ?)"
+	result, err := r.db.Exec(insertStatement, request.JobName, request.JobDescriptor, request.TestDescriptors, request.Requestor, request.ServerID, request.RequestTime)
 	if err != nil {
 		return jobID, fmt.Errorf("could not store job request in database: %w", err)
 	}
@@ -43,7 +43,7 @@ func (r *RDBMS) GetJobRequest(jobID types.JobID) (*job.Request, error) {
 	r.lockTx()
 	defer r.unlockTx()
 
-	selectStatement := "select job_id, name, requestor, request_time, descriptor, teststeps from jobs where job_id = ?"
+	selectStatement := "select job_id, name, requestor, server_id, request_time, descriptor, teststeps from jobs where job_id = ?"
 	log.Debugf("Executing query: %s", selectStatement)
 	rows, err := r.db.Query(selectStatement, jobID)
 	if err != nil {
@@ -71,6 +71,7 @@ func (r *RDBMS) GetJobRequest(jobID types.JobID) (*job.Request, error) {
 			&currRequest.JobID,
 			&currRequest.JobName,
 			&currRequest.Requestor,
+			&currRequest.ServerID,
 			&currRequest.RequestTime,
 			&currRequest.JobDescriptor,
 			&currRequest.TestDescriptors,

@@ -61,13 +61,21 @@ type JobManager struct {
 	pluginRegistry *pluginregistry.PluginRegistry
 }
 
-// NewJob returns a new Job object and the fetched test descriptors
-func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, error) {
-
+// NewJobFromRequest returns a new Job object from a job.Request .
+func NewJobFromRequest(req *job.Request) (*job.Job, error) {
 	var jd *job.JobDescriptor
-	if err := json.Unmarshal([]byte(jobDescriptor), &jd); err != nil {
+	if err := json.Unmarshal([]byte(req.JobDescriptor), &jd); err != nil {
 		return nil, err
 	}
+	j, err := newPartialJobFromDescriptor(jd)
+	if err != nil {
+		return nil, err
+	}
+	// TODO set j.Tests, j.RunReporterBundles and j.FinalReporterBundles
+	return j, nil
+}
+
+func newPartialJobFromDescriptor(jd *job.JobDescriptor) (*job.Job, error) {
 
 	if jd == nil {
 		return nil, errors.New("JobDescriptor cannot be nil")
@@ -89,6 +97,38 @@ func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, 
 		if strings.TrimSpace(reporter.Name) == "" {
 			return nil, errors.New("run reporters cannot have empty or all-whitespace names")
 		}
+	}
+
+	job := job.Job{
+		ID:          types.JobID(0),
+		Name:        jd.JobName,
+		Tags:        jd.Tags,
+		Runs:        jd.Runs,
+		RunInterval: time.Duration(jd.RunInterval),
+		// Tests and bundles must be set externally
+		TestDescriptors:      "",
+		Tests:                nil,
+		RunReporterBundles:   nil,
+		FinalReporterBundles: nil,
+	}
+
+	job.Done = make(chan struct{})
+
+	job.CancelCh = make(chan struct{})
+	job.PauseCh = make(chan struct{})
+
+	return &job, nil
+}
+
+// NewJob returns a new Job object and the fetched test descriptors
+func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, error) {
+	var jd *job.JobDescriptor
+	if err := json.Unmarshal([]byte(jobDescriptor), &jd); err != nil {
+		return nil, err
+	}
+	j, err := newPartialJobFromDescriptor(jd)
+	if err != nil {
+		return nil, err
 	}
 
 	var runReporterBundles []*job.ReporterBundle
@@ -179,26 +219,12 @@ func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, 
 		return nil, fmt.Errorf("failed to marshal test descriptors: %w", err)
 	}
 
-	// Create a Job object from the above managers and parameters. The Job ID assigned
-	// is 0, and gets actually set by the JobManager after calling the persistence layer
-	job := job.Job{
-		ID:                   types.JobID(0),
-		Name:                 jd.JobName,
-		Tags:                 jd.Tags,
-		Runs:                 jd.Runs,
-		RunInterval:          time.Duration(jd.RunInterval),
-		TestDescriptors:      string(testDescriptorsJSON),
-		Tests:                tests,
-		RunReporterBundles:   runReporterBundles,
-		FinalReporterBundles: finalReporterBundles,
-	}
+	j.TestDescriptors = string(testDescriptorsJSON)
+	j.Tests = tests
+	j.RunReporterBundles = runReporterBundles
+	j.FinalReporterBundles = finalReporterBundles
 
-	job.Done = make(chan struct{})
-
-	job.CancelCh = make(chan struct{})
-	job.PauseCh = make(chan struct{})
-
-	return &job, nil
+	return j, nil
 }
 
 // New initializes and returns a new JobManager with the given API listener.
@@ -313,14 +339,16 @@ loop:
 // CancelJob sends a cancellation request to a specific job.
 func (jm *JobManager) CancelJob(jobID types.JobID) error {
 	jm.jobsMu.Lock()
-	job, ok := jm.jobs[jobID]
+	// get the job from the local cache rather than the storage layer. We can
+	// only cancel jobs that we are actively handling.
+	j, ok := jm.jobs[jobID]
 	if !ok {
 		jm.jobsMu.Unlock()
 		return fmt.Errorf("unknown job ID: %d", jobID)
 	}
+	j.Cancel()
 	delete(jm.jobs, jobID)
 	jm.jobsMu.Unlock()
-	job.Cancel()
 	return nil
 }
 
@@ -329,8 +357,10 @@ func (jm *JobManager) CancelJob(jobID types.JobID) error {
 func (jm *JobManager) CancelAll() {
 	// TODO This doesn't seem the right thing to do, if the listener fails we should
 	// pause, not cancel.
+
+	// Get the job from the local cache rather than the storage layer. We can
+	// only cancel jobs that we are actively handling.
 	log.Info("JobManager: cancelling all jobs")
-	close(jm.apiCancel)
 	for jobID, job := range jm.jobs {
 		log.Debugf("JobManager: cancelling job with ID %v", jobID)
 		job.Cancel()

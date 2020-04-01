@@ -13,6 +13,7 @@ import (
 type JobEventEmitterFetcher struct {
 	JobRequestEmitterFetcher
 	JobReportEmitterFetcher
+	JobInfoFetcher
 }
 
 // NewJobEventEmitterFetcher creates a new emitter/fetcher object for job events

@@ -25,6 +25,7 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 	request := job.Request{
 		JobName:         j.Name,
 		Requestor:       string(ev.Msg.Requestor()),
+		ServerID:        ev.ServerID,
 		RequestTime:     time.Now(),
 		JobDescriptor:   msg.JobDescriptor,
 		TestDescriptors: j.TestDescriptors,
