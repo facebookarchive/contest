@@ -85,3 +85,10 @@ func (j *Job) IsCancelled() bool {
 		return false
 	}
 }
+
+// InfoFetcher defines how to fetch job information
+type InfoFetcher interface {
+	FetchJob(types.JobID) (*Job, error)
+	FetchJobs([]types.JobID) ([]*Job, error)
+	FetchJobIDsByServerID(serverID string) ([]types.JobID, error)
+}

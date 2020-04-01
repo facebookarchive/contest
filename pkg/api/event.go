@@ -46,9 +46,10 @@ const (
 // Event represents an event that the API can generate. This is used by the API
 // listener to enable event handling.
 type Event struct {
-	Type EventType
-	Err  error
-	Msg  EventMsg
+	Type     EventType
+	ServerID string
+	Err      error
+	Msg      EventMsg
 	// RespCh is a channel where the JobManager can send the responses back to
 	// what generated the event. E.g. if a job status is requested, the answer
 	// goes back to the caller in an EventResponse via this channel.

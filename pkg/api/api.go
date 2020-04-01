@@ -144,15 +144,16 @@ func (a *API) SendReceiveEvent(ev *Event, timeout *time.Duration) (*EventRespons
 // This method should return an error if the job description is malformed or
 // invalid, and if the API version is incompatible.
 func (a *API) Start(requestor EventRequestor, jobDescriptor string) (Response, error) {
+	resp := a.newResponse(ResponseTypeStart)
 	ev := &Event{
-		Type: EventTypeStart,
+		Type:     EventTypeStart,
+		ServerID: resp.ServerID,
 		Msg: EventStartMsg{
 			requestor:     requestor,
 			JobDescriptor: jobDescriptor,
 		},
 		RespCh: make(chan *EventResponse, 1),
 	}
-	resp := a.newResponse(ResponseTypeStart)
 	respEv, err := a.SendReceiveEvent(ev, nil)
 	if err != nil {
 		return resp, err
@@ -166,15 +167,16 @@ func (a *API) Start(requestor EventRequestor, jobDescriptor string) (Response, e
 
 // Stop requests a job cancellation by the given job ID.
 func (a *API) Stop(requestor EventRequestor, jobID types.JobID) (Response, error) {
+	resp := a.newResponse(ResponseTypeStop)
 	ev := &Event{
-		Type: EventTypeStop,
+		Type:     EventTypeStop,
+		ServerID: resp.ServerID,
 		Msg: EventStopMsg{
 			requestor: requestor,
 			JobID:     jobID,
 		},
 		RespCh: make(chan *EventResponse, 1),
 	}
-	resp := a.newResponse(ResponseTypeStop)
 	respEv, err := a.SendReceiveEvent(ev, nil)
 	if err != nil {
 		return resp, err
@@ -187,15 +189,16 @@ func (a *API) Stop(requestor EventRequestor, jobID types.JobID) (Response, error
 // Status polls the status of a job by its ID, and returns a contest.Status
 //object
 func (a *API) Status(requestor EventRequestor, jobID types.JobID) (Response, error) {
+	resp := a.newResponse(ResponseTypeStatus)
 	ev := &Event{
-		Type: EventTypeStatus,
+		Type:     EventTypeStatus,
+		ServerID: resp.ServerID,
 		Msg: EventStatusMsg{
 			requestor: requestor,
 			JobID:     jobID,
 		},
 		RespCh: make(chan *EventResponse, 1),
 	}
-	resp := a.newResponse(ResponseTypeStatus)
 	respEv, err := a.SendReceiveEvent(ev, nil)
 	if err != nil {
 		return resp, err
@@ -210,15 +213,16 @@ func (a *API) Status(requestor EventRequestor, jobID types.JobID) (Response, err
 // Retry will retry a job identified by its ID, using the same job
 // description. If the job is still running, an error is returned.
 func (a *API) Retry(requestor EventRequestor, jobID types.JobID) (Response, error) {
+	resp := a.newResponse(ResponseTypeRetry)
 	ev := &Event{
-		Type: EventTypeRetry,
+		Type:     EventTypeRetry,
+		ServerID: resp.ServerID,
 		Msg: EventRetryMsg{
 			requestor: requestor,
 			JobID:     jobID,
 		},
 		RespCh: make(chan *EventResponse, 1),
 	}
-	resp := a.newResponse(ResponseTypeRetry)
 	respEv, err := a.SendReceiveEvent(ev, nil)
 	if err != nil {
 		return resp, err

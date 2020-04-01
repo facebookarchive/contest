@@ -51,6 +51,7 @@ CREATE TABLE jobs (
 	job_id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
 	name VARCHAR(32) NOT NULL,
 	requestor VARCHAR(32) NOT NULL,
+	server_id VARCHAR(64) NOT NULL,
 	request_time TIMESTAMP NOT NULL,
 	descriptor TEXT NOT NULL,
 	teststeps TEXT,

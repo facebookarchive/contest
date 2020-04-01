@@ -16,6 +16,7 @@ type Request struct {
 	JobID         types.JobID
 	JobName       string
 	Requestor     string
+	ServerID      string
 	RequestTime   time.Time
 	JobDescriptor string
 	// TestDescriptors are the fetched test steps as per the test fetcher

@@ -9,4 +9,5 @@ package job
 type EventEmitterFetcher interface {
 	RequestEmitterFetcher
 	ReportEmitterFetcher
+	InfoFetcher
 }
