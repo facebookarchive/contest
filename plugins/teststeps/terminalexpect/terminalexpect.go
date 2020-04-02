@@ -92,7 +92,7 @@ func (ts *TerminalExpect) validateAndPopulate(params test.TestStepParameters) er
 	if port.IsEmpty() {
 		return errors.New("invalid or missing 'port' parameter, must be exactly one string")
 	}
-	ts.Port = string(port)
+	ts.Port = port.String()
 	speed, err := params.GetInt("speed")
 	if err != nil {
 		return fmt.Errorf("invalid or missing 'speed' parameter: %v", err)
@@ -102,12 +102,12 @@ func (ts *TerminalExpect) validateAndPopulate(params test.TestStepParameters) er
 	if match.IsEmpty() {
 		return errors.New("invalid or missing 'match' parameter, must be exactly one string")
 	}
-	ts.Match = string(match)
+	ts.Match = match.String()
 	timeoutStr := params.GetOne("timeout")
 	if timeoutStr.IsEmpty() {
 		return errors.New("invalid or missing 'timeout' parameter, must be exactly one string")
 	}
-	timeout, err := time.ParseDuration(string(timeoutStr))
+	timeout, err := time.ParseDuration(timeoutStr.String())
 	if err != nil {
 		return fmt.Errorf("invalid terminal timeout %s", timeoutStr)
 	}

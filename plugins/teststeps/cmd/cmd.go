@@ -86,7 +86,7 @@ func (ts *Cmd) validateAndPopulate(params test.TestStepParameters) error {
 	if param.IsEmpty() {
 		return errors.New("invalid or missing 'executable' parameter, must be exactly one string")
 	}
-	ex := string(param)
+	ex := param.String()
 	if filepath.IsAbs(ex) {
 		ts.executable = ex
 	} else {
