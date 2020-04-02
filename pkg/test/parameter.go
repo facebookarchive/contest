@@ -15,6 +15,13 @@ import (
 	"github.com/facebookincubator/contest/pkg/target"
 )
 
+// NewParam inititalizes a new Param object from a string
+func NewParam(s string) Param {
+	var p Param
+	p.RawMessage = json.RawMessage(s)
+	return p
+}
+
 // Param represents a test step parameter. It is initialized from JSON,
 // and can be either a strings or more complex JSON structures.
 // Plugins are expected to know which one they expect and use the

@@ -17,7 +17,6 @@ package sshcmd
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -224,7 +223,7 @@ func (ts *SSHCmd) validateAndPopulate(params test.TestStepParameters) error {
 		return errors.New("invalid or missing 'host' parameter, must be exactly one string")
 	}
 	if params.GetOne("port").IsEmpty() {
-		ts.Port.RawMessage = json.RawMessage(strconv.Itoa(defaultSSHPort))
+		ts.Port = test.NewParam(strconv.Itoa(defaultSSHPort))
 	} else {
 		var port int64
 		port, err = params.GetInt("port")
