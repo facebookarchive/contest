@@ -73,10 +73,10 @@ func (e *Step) ValidateParameters(params test.TestStepParameters) error {
 	}
 
 	// no expression expansion here
-	if len(secStr) != 1 {
+	if len(secStr.String()) != 1 {
 		return fmt.Errorf("invalid empty 'sleep' parameter: %v", secStr)
 	}
-	_, err := sleepTime(string(secStr))
+	_, err := sleepTime(secStr.String())
 	if err != nil {
 		return err
 	}
@@ -85,7 +85,7 @@ func (e *Step) ValidateParameters(params test.TestStepParameters) error {
 
 // Run executes the step
 func (e *Step) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
-	sleep, err := sleepTime(string(params.GetOne("sleep")))
+	sleep, err := sleepTime(params.GetOne("sleep").String())
 	if err != nil {
 		return err
 	}

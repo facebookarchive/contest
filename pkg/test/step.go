@@ -45,7 +45,7 @@ func (t TestStepParameters) GetOne(k string) Param {
 // and returns an error if this fails.
 func (t TestStepParameters) GetInt(k string) (int64, error) {
 	v := t.GetOne(k)
-	if v == "" {
+	if v.IsEmpty() {
 		return 0, errors.New("expected an integer string, got an empty string")
 	}
 	n, err := strconv.ParseInt(string(v), 10, 64)

@@ -191,7 +191,7 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 			log.Infof("Stdout of command '%s' is '%s'", cmd, stdout.Bytes())
 			if err == nil {
 				// Execute expectations
-				expect := string(ts.Expect)
+				expect := ts.Expect.String()
 				if expect == "" {
 					log.Warningf("no expectations specified")
 				} else {
