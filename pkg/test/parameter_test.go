@@ -6,7 +6,6 @@
 package test
 
 import (
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -24,8 +23,7 @@ func TestParameterExpand(t *testing.T) {
 		[4]string{"name={{ .Name }}, id={{ .ID }}", "blah", "12345", "name=blah, id=12345"},
 	}
 	for _, x := range validExprs {
-		var p Param
-		p.RawMessage = json.RawMessage(x[0])
+		p := NewParam(x[0])
 		res, err := p.Expand(&target.Target{Name: x[1], ID: x[2]})
 		require.NoError(t, err, x[0])
 		require.Equal(t, x[3], res, x[0])
@@ -47,8 +45,7 @@ func TestParameterExpandUserFunctions(t *testing.T) {
 		[4]string{"{{ Title .ID }}", "slackware.it", "a1234a", "A1234a"},
 	}
 	for _, x := range validExprs {
-		var p Param
-		p.RawMessage = json.RawMessage(x[0])
+		p := NewParam(x[0])
 		res, err := p.Expand(&target.Target{Name: x[1], ID: x[2]})
 		require.NoError(t, err, x[0])
 		require.Equal(t, x[3], res, x[0])
