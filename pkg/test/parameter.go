@@ -20,31 +20,26 @@ import (
 // Plugins are expected to know which one they expect and use the
 // provided convenience functions to obtain either the string or
 // json.RawMessage representation.
-// Simple strings can contain simple function expressions that can
-// be expanded, for example to include the hostname of the test target.
-type Param json.RawMessage
+type Param struct {
+	json.RawMessage
+}
 
 // IsEmpty returns true if the original raw string is empty, false otherwise.
 func (p Param) IsEmpty() bool {
 	return p.String() == ""
 }
 
-// String returns the parameter as a string. This helper never fails.
-// If the underlying JSON cannot be unmarshalled into a simple string,
-// this function returns a string representation of the JSON structure.
 func (p Param) String() string {
-	var s string
-	if err := json.Unmarshal(p, &s); err == nil {
-		return s
+	var str string
+	if json.Unmarshal(p.RawMessage, &str) == nil {
+		return str
 	}
-	// full JSON
-	return string(p)
+	// can't unmarshal to string, return raw json
+	return string(p.RawMessage)
 }
 
-// JSON returns the parameter as json.RawMessage for further
-// unmarshalling by the plugin.
-func (p Param) JSON() json.RawMessage {
-	return json.RawMessage(p)
+func (p *Param) UnmarshalJSON(data []byte) error {
+	return json.Unmarshal(data, &p.RawMessage)
 }
 
 // Expand evaluates the raw expression and applies the necessary manipulation,
@@ -54,7 +49,7 @@ func (p *Param) Expand(target *target.Target) (string, error) {
 		return "", errors.New("parameter cannot be nil")
 	}
 	// use Go text/template from here
-	tmpl, err := template.New("").Funcs(getFuncMap()).Parse(string(*p))
+	tmpl, err := template.New("").Funcs(getFuncMap()).Parse(p.String())
 	if err != nil {
 		return "", fmt.Errorf("failed to parse template: %v", err)
 	}

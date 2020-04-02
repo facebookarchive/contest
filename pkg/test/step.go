@@ -36,7 +36,7 @@ func (t TestStepParameters) Get(k string) []Param {
 func (t TestStepParameters) GetOne(k string) Param {
 	v, ok := t[k]
 	if !ok || len(v) == 0 {
-		return Param("")
+		return Param{}
 	}
 	return v[0]
 }
@@ -45,10 +45,10 @@ func (t TestStepParameters) GetOne(k string) Param {
 // and returns an error if this fails.
 func (t TestStepParameters) GetInt(k string) (int64, error) {
 	v := t.GetOne(k)
-	if v.IsEmpty() {
+	if v.String() == "" {
 		return 0, errors.New("expected an integer string, got an empty string")
 	}
-	n, err := strconv.ParseInt(string(v), 10, 64)
+	n, err := strconv.ParseInt(v.String(), 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("cannot convert '%s' to int: %v", v, err)
 	}
