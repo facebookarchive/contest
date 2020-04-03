@@ -51,14 +51,14 @@ const defaultSSHPort = 22
 
 // SSHCmd is used to run arbitrary commands as test steps.
 type SSHCmd struct {
-	Host           test.Param
-	Port           test.Param
-	User           test.Param
-	PrivateKeyFile test.Param
-	Password       test.Param
-	Executable     test.Param
+	Host           *test.Param
+	Port           *test.Param
+	User           *test.Param
+	PrivateKeyFile *test.Param
+	Password       *test.Param
+	Executable     *test.Param
 	Args           []test.Param
-	Expect         test.Param
+	Expect         *test.Param
 }
 
 // Name returns the plugin name.
