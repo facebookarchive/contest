@@ -15,15 +15,16 @@ import (
 	"github.com/facebookincubator/contest/pkg/target"
 )
 
-// NewParam inititalizes a new Param object from a string
-func NewParam(s string) Param {
+// NewParam inititalizes a new Param object directly from a string.
+// Note that no validation is performed if the input is actually valid JSON.
+func NewParam(s string) *Param {
 	var p Param
 	p.RawMessage = json.RawMessage(s)
-	return p
+	return &p
 }
 
 // Param represents a test step parameter. It is initialized from JSON,
-// and can be either a strings or more complex JSON structures.
+// and can be a string or a more complex JSON structure.
 // Plugins are expected to know which one they expect and use the
 // provided convenience functions to obtain either the string or
 // json.RawMessage representation.
@@ -36,6 +37,9 @@ func (p Param) IsEmpty() bool {
 	return p.String() == ""
 }
 
+// String returns the parameter as a string. This helper never fails.
+// If the underlying JSON cannot be unmarshalled into a simple string,
+// this function returns a string representation of the JSON structure.
 func (p Param) String() string {
 	var str string
 	if json.Unmarshal(p.RawMessage, &str) == nil {
@@ -44,9 +48,10 @@ func (p Param) String() string {
 	// can't unmarshal to string, return raw json
 	return string(p.RawMessage)
 }
-
-func (p *Param) UnmarshalJSON(data []byte) error {
-	return json.Unmarshal(data, &p.RawMessage)
+// JSON returns the parameter as json.RawMessage for further
+// unmarshalling by the test plugin.
+func (p Param) JSON() json.RawMessage {
+	return p.RawMessage
 }
 
 // Expand evaluates the raw expression and applies the necessary manipulation,

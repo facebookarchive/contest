@@ -33,12 +33,12 @@ func (t TestStepParameters) Get(k string) []Param {
 
 // GetOne returns the first value of the requested parameter. If the parameter
 // is missing, an empty string is returned.
-func (t TestStepParameters) GetOne(k string) Param {
+func (t TestStepParameters) GetOne(k string) *Param {
 	v, ok := t[k]
 	if !ok || len(v) == 0 {
-		return Param{}
+		return &Param{}
 	}
-	return v[0]
+	return &v[0]
 }
 
 // GetInt works like GetOne, but also tries to convert the string to an int64,

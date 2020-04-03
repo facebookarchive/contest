@@ -322,10 +322,10 @@ func TestCmdPlugin(t *testing.T) {
 
 	params := make(test.TestStepParameters)
 	params["executable"] = []test.Param{
-		test.NewParam("sleep"),
+		*test.NewParam("sleep"),
 	}
 	params["args"] = []test.Param{
-		test.NewParam("5"),
+		*test.NewParam("5"),
 	}
 
 	testSteps := []test.TestStepBundle{
