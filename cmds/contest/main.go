@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/facebookincubator/contest/pkg/api"
 	"github.com/facebookincubator/contest/pkg/config"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/jobmanager"
@@ -42,7 +43,8 @@ import (
 const defaultDBURI = "contest:contest@tcp(localhost:3306)/contest?parseTime=true"
 
 var (
-	flagDBURI = flag.String("dbURI", defaultDBURI, "Database URI")
+	flagDBURI    = flag.String("dbURI", defaultDBURI, "Database URI")
+	flagServerID = flag.String("serverID", "", "Set a static server ID, e.g. the host name or another unique identifier. If unset, will use the listener's default")
 )
 
 var targetManagers = []target.TargetManagerLoader{
@@ -139,7 +141,11 @@ func main() {
 	// spawn JobManager
 	listener := httplistener.HTTPListener{}
 
-	jm, err := jobmanager.New(&listener, pluginRegistry)
+	var serverIDFunc api.ServerIDFunc
+	if *flagServerID != "" {
+		serverIDFunc = func() string { return *flagServerID }
+	}
+	jm, err := jobmanager.New(&listener, serverIDFunc, pluginRegistry)
 	if err != nil {
 		log.Fatal(err)
 	}

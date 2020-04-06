@@ -23,6 +23,9 @@ const CurrentAPIVersion uint32 = 5
 // event on the events channel.
 var DefaultEventTimeout = 3 * time.Second
 
+// ServerIDFunc is used to return a custom server ID in api responses.
+type ServerIDFunc func() string
+
 // The API structure implements the communication between clients and the
 // JobManager. It enables several operations like starting, stopping,
 // retrying a job, and getting a job status.
@@ -33,18 +36,12 @@ type API struct {
 	Events chan *Event
 	// serverIDFunc is used by ServerID() to return a custom server ID in API
 	// responses.
-	serverIDFunc func() string
+	serverIDFunc ServerIDFunc
 }
 
-// New returns an initialized instance of an API struct with a default server ID
-// generation function.
-func New() *API {
-	return NewWithServerIDFunc(nil)
-}
-
-// NewWithServerIDFunc is like New, but it lets the user specify a function to
-// generate the server ID.
-func NewWithServerIDFunc(serverIDFunc func() string) *API {
+// New returns an initialized instance of an API struct with the specified
+// server ID generation function.
+func New(serverIDFunc func() string) *API {
 	return &API{
 		Events:       make(chan *Event),
 		serverIDFunc: serverIDFunc,

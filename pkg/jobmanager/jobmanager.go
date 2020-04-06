@@ -59,6 +59,7 @@ type JobManager struct {
 	apiListener    api.Listener
 	apiCancel      chan struct{}
 	pluginRegistry *pluginregistry.PluginRegistry
+	serverIDFunc   api.ServerIDFunc
 }
 
 // NewJobFromRequest returns a new Job object from a job.Request .
@@ -228,7 +229,7 @@ func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, 
 }
 
 // New initializes and returns a new JobManager with the given API listener.
-func New(l api.Listener, pr *pluginregistry.PluginRegistry) (*JobManager, error) {
+func New(l api.Listener, serverIDFunc api.ServerIDFunc, pr *pluginregistry.PluginRegistry) (*JobManager, error) {
 	if pr == nil {
 		return nil, errors.New("plugin registry cannot be nil")
 	}
@@ -245,6 +246,7 @@ func New(l api.Listener, pr *pluginregistry.PluginRegistry) (*JobManager, error)
 		frameworkEvManager: frameworkEvManager,
 		testEvManager:      testEvManager,
 		apiCancel:          make(chan struct{}),
+		serverIDFunc:       serverIDFunc,
 	}
 	jm.jobRunner = runner.NewJobRunner()
 	return &jm, nil
@@ -287,7 +289,7 @@ func (jm *JobManager) handleEvent(ev *api.Event) {
 // events. It also responds to cancellation requests coming from SIGINT/SIGTERM
 // signals, propagating the signals downwards to all jobs.
 func (jm *JobManager) Start(sigs chan os.Signal) error {
-	a := api.New()
+	a := api.New(jm.serverIDFunc)
 	errCh := make(chan error, 1)
 	go func() {
 		if lErr := jm.apiListener.Serve(jm.apiCancel, a); lErr != nil {
