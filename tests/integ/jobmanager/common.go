@@ -213,7 +213,7 @@ func (suite *TestJobManagerSuite) SetupTest() {
 	pluginRegistry.RegisterTestStep(noreturn.Name, noreturn.New, noreturn.Events)
 	pluginRegistry.RegisterTestStep(slowecho.Name, slowecho.New, slowecho.Events)
 
-	jm, err := jobmanager.New(&testListener, pluginRegistry)
+	jm, err := jobmanager.New(&testListener, nil, pluginRegistry)
 	require.NoError(suite.T(), err)
 
 	suite.jm = jm
