@@ -15,8 +15,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/facebookincubator/contest/plugins/listeners/httplistener"
+	"github.com/facebookincubator/contest/pkg/api"
+	"github.com/facebookincubator/contest/pkg/jobmanager"
 )
 
 // Unauthenticated, unencrypted sample HTTP client for ConTest.
@@ -31,11 +35,13 @@ import (
 
 const (
 	defaultRequestor = "contestcli-http"
+	jobWaitPoll      = 10 * time.Second
 )
 
 var (
 	flagAddr      = flag.String("addr", "http://localhost:8080", "ConTest server [scheme://]host:port[/basepath] to connect to")
 	flagRequestor = flag.String("r", defaultRequestor, "Identifier of the requestor of the API call")
+	flagWait      = flag.Bool("wait", false, "After starting a job, wait for it to finish, and exit 0 only if it is successful")
 )
 
 func main() {
@@ -45,6 +51,8 @@ func main() {
 		fmt.Fprintf(flag.CommandLine.Output(), "command: start, stop, status, retry, version\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  start\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "        start a new job using the job description passed via stdin\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "        when used with -wait flag, stdout will have two JSON outputs\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "        for job start and completion status separated with newline\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  stop int\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "        stop a job by job ID\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  status int\n")
@@ -77,26 +85,57 @@ func run(verb string) error {
 			return fmt.Errorf("failed to parse job descriptor: %v", err)
 		}
 		params.Add("jobDesc", string(jobDesc))
+		resp, err := request(verb, params)
+		if err != nil {
+			return err
+		}
+		fmt.Println(resp)
+
+		if *flagWait {
+			fmt.Fprintf(os.Stderr, "\nWaiting for job to complete...\n")
+			parsedData := &api.ResponseDataStart{}
+			parsedResp := &httplistener.HTTPAPIResponse{Data: parsedData}
+			if err := json.Unmarshal([]byte(resp), parsedResp); err != nil {
+				return fmt.Errorf("cannot decode json response: %v", err)
+			}
+			jobID := parsedData.JobID
+			params.Set("jobID", strconv.Itoa(int(jobID)))
+			
+			resp, err = wait(params, jobWaitPoll)
+			if err != nil {
+				return err
+			}
+			fmt.Println(resp)
+		}
 	case "stop", "status", "retry":
 		jobID := flag.Arg(1)
 		if jobID == "" {
 			return errors.New("missing job ID")
 		}
 		params.Set("jobID", jobID)
+		resp, err := request(verb, params)
+		if err != nil {
+			return err
+		}
+		fmt.Println(resp)
 	case "version":
 		// no params for protocol version
 	default:
 		return fmt.Errorf("invalid verb: '%s'", verb)
 	}
+	return nil
+}
+
+func request(verb string, params url.Values) (string, error) {
 	u, err := url.Parse(*flagAddr)
 	if err != nil {
-		return fmt.Errorf("failed to parse server address '%s': %v", *flagAddr, err)
+		return "", fmt.Errorf("failed to parse server address '%s': %v", *flagAddr, err)
 	}
 	if u.Scheme == "" {
-		return errors.New("server URL scheme not specified")
+		return "", errors.New("server URL scheme not specified")
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("unsupported URL scheme '%s', please specify either http or https", u.Scheme)
+		return "", fmt.Errorf("unsupported URL scheme '%s', please specify either http or https", u.Scheme)
 	}
 	u.Path += "/" + verb
 	fmt.Fprintf(os.Stderr, "Requesting URL %s with requestor ID '%s'\n", u.String(), *flagRequestor)
@@ -107,12 +146,12 @@ func run(verb string) error {
 	fmt.Fprintf(os.Stderr, "\n")
 	resp, err := http.PostForm(u.String(), params)
 	if err != nil {
-		return fmt.Errorf("HTTP POST failed: %v", err)
+		return "", fmt.Errorf("HTTP POST failed: %v", err)
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("Cannot read HTTP response: %v", err)
+		return "", fmt.Errorf("Cannot read HTTP response: %v", err)
 	}
 	fmt.Fprintf(os.Stderr, "The server responded with status %s", resp.Status)
 	var indentedJSON []byte
@@ -120,12 +159,12 @@ func run(verb string) error {
 		// the Data field of apiResp will result in a map[string]interface{}
 		var apiResp httplistener.HTTPAPIResponse
 		if err := json.Unmarshal(body, &apiResp); err != nil {
-			return fmt.Errorf("response is not a valid HTTP API response object: '%s': %v", body, err)
+			return "", fmt.Errorf("response is not a valid HTTP API response object: '%s': %v", body, err)
 		}
 		// re-encode and indent, for pretty-printing
 
 		if err != nil {
-			return fmt.Errorf("cannot marshal HTTPAPIResponse: %v", err)
+			return "", fmt.Errorf("cannot marshal HTTPAPIResponse: %v", err)
 		}
 
 		buffer := &bytes.Buffer{}
@@ -134,13 +173,13 @@ func run(verb string) error {
 		encoder.SetIndent("", " ")
 		err := encoder.Encode(apiResp)
 		if err != nil {
-			return fmt.Errorf("cannot re-encode httplistener.HTTPAPIResponse object: %v", err)
+			return "", fmt.Errorf("cannot re-encode httplistener.HTTPAPIResponse object: %v", err)
 		}
 		indentedJSON = buffer.Bytes()
 	} else {
 		var apiErr httplistener.HTTPAPIError
 		if err := json.Unmarshal(body, &apiErr); err != nil {
-			return fmt.Errorf("response is not a valid HTTP API Error object: '%s': %v", body, err)
+			return "", fmt.Errorf("response is not a valid HTTP API Error object: '%s': %v", body, err)
 		}
 		// re-encode and indent, for pretty-printing
 		buffer := &bytes.Buffer{}
@@ -149,12 +188,39 @@ func run(verb string) error {
 		encoder.SetIndent("", " ")
 		err := encoder.Encode(apiErr)
 		if err != nil {
-			return fmt.Errorf("cannot re-encode httplistener.HTTPAPIResponse object: %v", err)
+			return "", fmt.Errorf("cannot re-encode httplistener.HTTPAPIResponse object: %v", err)
 		}
 		indentedJSON = buffer.Bytes()
 	}
 	// this is the only thing we want on stdout - the JSON-formatted response,
 	// so it can be piped to other tools if desired.
-	fmt.Println(string(indentedJSON))
-	return nil
+	return string(indentedJSON), nil
 }
+ 
+func wait(params url.Values, jobWaitPoll time.Duration) (string, error) {
+	// keep polling for status till job is completed, used when -wait is set
+	for {
+		resp, err := request("status", params)
+		if err != nil {
+			return "", err
+		}
+
+		parsedData := &api.ResponseDataStatus{}
+		parsedResp := &httplistener.HTTPAPIResponse{Data: parsedData}
+		if err := json.Unmarshal([]byte(resp), parsedResp); err != nil {
+			return "", fmt.Errorf("cannot decode json response: %v", err)
+		}
+		if parsedResp.Error != nil {
+			return "", fmt.Errorf("server responded with an error: %s", *parsedResp.Error)
+		}
+		jobState := parsedData.Status.State
+
+		for _, eventName := range jobmanager.JobCompletionEvents {
+			if string(jobState) == string(eventName) {
+				return resp, nil
+			}
+		}
+		// TODO use  time.Ticker instead of time.Sleep
+		time.Sleep(jobWaitPoll)
+	}
+ }
