@@ -21,7 +21,7 @@ import (
 // Name is the name used to look this plugin up.
 var Name = "InMemory"
 
-var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
+var log = logging.GetLogger("targetlocker/" + strings.ToLower(Name))
 
 type request struct {
 	targets []*target.Target
