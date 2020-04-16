@@ -63,20 +63,20 @@ type JobManager struct {
 }
 
 // NewJobFromRequest returns a new Job object from a job.Request .
-func NewJobFromRequest(req *job.Request) (*job.Job, error) {
+func NewJobFromRequest(pr *pluginregistry.PluginRegistry, req *job.Request) (*job.Job, error) {
 	var jd *job.JobDescriptor
 	if err := json.Unmarshal([]byte(req.JobDescriptor), &jd); err != nil {
 		return nil, err
 	}
-	j, err := newPartialJobFromDescriptor(jd)
+	j, err := newPartialJobFromDescriptor(pr, jd)
 	if err != nil {
 		return nil, err
 	}
-	// TODO set j.Tests, j.RunReporterBundles and j.FinalReporterBundles
+	// TODO set j.RunReporterBundles and j.FinalReporterBundles
 	return j, nil
 }
 
-func newPartialJobFromDescriptor(jd *job.JobDescriptor) (*job.Job, error) {
+func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobDescriptor) (*job.Job, error) {
 
 	if jd == nil {
 		return nil, errors.New("JobDescriptor cannot be nil")
@@ -98,61 +98,6 @@ func newPartialJobFromDescriptor(jd *job.JobDescriptor) (*job.Job, error) {
 		if strings.TrimSpace(reporter.Name) == "" {
 			return nil, errors.New("run reporters cannot have empty or all-whitespace names")
 		}
-	}
-
-	job := job.Job{
-		ID:          types.JobID(0),
-		Name:        jd.JobName,
-		Tags:        jd.Tags,
-		Runs:        jd.Runs,
-		RunInterval: time.Duration(jd.RunInterval),
-		// Tests and bundles must be set externally
-		TestDescriptors:      "",
-		Tests:                nil,
-		RunReporterBundles:   nil,
-		FinalReporterBundles: nil,
-	}
-
-	job.Done = make(chan struct{})
-
-	job.CancelCh = make(chan struct{})
-	job.PauseCh = make(chan struct{})
-
-	return &job, nil
-}
-
-// NewJob returns a new Job object and the fetched test descriptors
-func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, error) {
-	var jd *job.JobDescriptor
-	if err := json.Unmarshal([]byte(jobDescriptor), &jd); err != nil {
-		return nil, err
-	}
-	j, err := newPartialJobFromDescriptor(jd)
-	if err != nil {
-		return nil, err
-	}
-
-	var runReporterBundles []*job.ReporterBundle
-	for _, reporter := range jd.Reporting.RunReporters {
-		if strings.TrimSpace(reporter.Name) == "" {
-			return nil, errors.New("invalid empty or all-whitespace run reporter name")
-		}
-		bundle, err := pr.NewRunReporterBundle(reporter.Name, reporter.Parameters)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create bundle for run reporter '%s': %v", reporter.Name, err)
-		}
-		runReporterBundles = append(runReporterBundles, bundle)
-	}
-	var finalReporterBundles []*job.ReporterBundle
-	for _, reporter := range jd.Reporting.FinalReporters {
-		if strings.TrimSpace(reporter.Name) == "" {
-			return nil, errors.New("invalid empty or all-whitespace final reporter name")
-		}
-		bundle, err := pr.NewFinalReporterBundle(reporter.Name, reporter.Parameters)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create bundle for final reporter '%s': %v", reporter.Name, err)
-		}
-		finalReporterBundles = append(finalReporterBundles, bundle)
 	}
 
 	tests := make([]*test.Test, 0, len(jd.TestDescriptors))
@@ -220,8 +165,61 @@ func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, 
 		return nil, fmt.Errorf("failed to marshal test descriptors: %w", err)
 	}
 
-	j.TestDescriptors = string(testDescriptorsJSON)
-	j.Tests = tests
+	job := job.Job{
+		ID:          types.JobID(0),
+		Name:        jd.JobName,
+		Tags:        jd.Tags,
+		Runs:        jd.Runs,
+		RunInterval: time.Duration(jd.RunInterval),
+		// reporter bundles must be set externally
+		TestDescriptors:      string(testDescriptorsJSON),
+		Tests:                tests,
+		RunReporterBundles:   nil,
+		FinalReporterBundles: nil,
+	}
+
+	job.Done = make(chan struct{})
+
+	job.CancelCh = make(chan struct{})
+	job.PauseCh = make(chan struct{})
+
+	return &job, nil
+}
+
+// NewJob returns a new Job object and the fetched test descriptors
+func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, error) {
+	var jd *job.JobDescriptor
+	if err := json.Unmarshal([]byte(jobDescriptor), &jd); err != nil {
+		return nil, err
+	}
+	j, err := newPartialJobFromDescriptor(pr, jd)
+	if err != nil {
+		return nil, err
+	}
+
+	var runReporterBundles []*job.ReporterBundle
+	for _, reporter := range jd.Reporting.RunReporters {
+		if strings.TrimSpace(reporter.Name) == "" {
+			return nil, errors.New("invalid empty or all-whitespace run reporter name")
+		}
+		bundle, err := pr.NewRunReporterBundle(reporter.Name, reporter.Parameters)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create bundle for run reporter '%s': %v", reporter.Name, err)
+		}
+		runReporterBundles = append(runReporterBundles, bundle)
+	}
+	var finalReporterBundles []*job.ReporterBundle
+	for _, reporter := range jd.Reporting.FinalReporters {
+		if strings.TrimSpace(reporter.Name) == "" {
+			return nil, errors.New("invalid empty or all-whitespace final reporter name")
+		}
+		bundle, err := pr.NewFinalReporterBundle(reporter.Name, reporter.Parameters)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create bundle for final reporter '%s': %v", reporter.Name, err)
+		}
+		finalReporterBundles = append(finalReporterBundles, bundle)
+	}
+
 	j.RunReporterBundles = runReporterBundles
 	j.FinalReporterBundles = finalReporterBundles
 
