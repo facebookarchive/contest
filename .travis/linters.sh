@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -exu
 
-go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
-go install github.com/golangci/golangci-lint/cmd/golangci-lint
+GO111MODULE=on
+# installing golangci-lint as recommended on the project page
+curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin latest
 cd "${TRAVIS_BUILD_DIR}"
+go mod download
 golangci-lint run --disable typecheck --enable deadcode --enable varcheck --enable staticcheck
 
 # check license headers

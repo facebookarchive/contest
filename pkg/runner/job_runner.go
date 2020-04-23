@@ -121,7 +121,8 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			case err := <-errCh:
 				targets = <-targetsCh
 				if err != nil {
-					jobLog.Warningf("Run #%d: cannot fetch targets for test '%s': %v", run+1, t.Name, err)
+					err = fmt.Errorf("run #%d: cannot fetch targets for test '%s': %v", run+1, t.Name, err)
+					jobLog.Errorf(err.Error())
 					return nil, nil, err
 				}
 				// Associate the targets with the job for later retrievel
@@ -173,9 +174,9 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 
 			// Emit events tracking targets acquisition
 			header := testevent.Header{JobID: j.ID, RunID: types.RunID(run + 1), TestName: t.Name}
-			testEvenEmitter := storage.NewTestEventEmitter(header)
+			testEventEmitter := storage.NewTestEventEmitter(header)
 
-			if runErr = jr.emitAcquiredTargets(testEvenEmitter, targets); runErr == nil {
+			if runErr = jr.emitAcquiredTargets(testEventEmitter, targets); runErr == nil {
 				jobLog.Infof("Run #%d: running test #%d for job '%s' (job ID: %d) on %d targets", run+1, idx, j.Name, j.ID, len(targets))
 				testRunner := NewTestRunner()
 				runErr = testRunner.Run(j.CancelCh, j.PauseCh, t, targets, j.ID, types.RunID(run+1))

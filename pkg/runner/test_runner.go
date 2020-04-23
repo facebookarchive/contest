@@ -548,9 +548,15 @@ func (tr *TestRunner) WaitPipelineCompletion(terminate <-chan struct{}, ch compl
 			return nil
 		case res := <-ch.routingResultCh:
 			err = res.err
+			if err != nil {
+				err = fmt.Errorf("error at test step '%s' (label: '%s'): %w", res.bundle.TestStep.Name(), res.bundle.TestStepLabel, err)
+			}
 			tr.state.SetRouting(res.bundle.TestStepLabel, res.err)
 		case res := <-ch.stepResultCh:
 			err = res.err
+			if err != nil {
+				err = fmt.Errorf("error at test step '%s' (label: '%s'): %w", res.bundle.TestStep.Name(), res.bundle.TestStepLabel, err)
+			}
 			tr.state.SetStep(res.bundle.TestStepLabel, res.err)
 		case targetErr := <-ch.targetErr:
 			tr.state.SetTarget(targetErr.Target, targetErr.Err)
