@@ -738,8 +738,34 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, t *test.Test, targets [
 		log.Printf("TestRunner completed")
 	}
 
+	ev := storage.NewTestEventEmitterFetcher(testevent.Header{
+		JobID:    jobID,
+		RunID:    runID,
+		TestName: t.Name,
+	})
+	errEv := testevent.Data{
+		EventName: EventTestError,
+		// this event is not associated to any target, e.g. a plugin has
+		// returned an error.
+		Target:  nil,
+		Payload: nil,
+	}
 	if completionError != nil {
+		// emit test event containing the completion error
+		rm := json.RawMessage(completionError.Error())
+		errEv.Payload = &rm
+		if err := ev.Emit(errEv); err != nil {
+			log.Warningf("Could not emit completion error event %v", errEv)
+		}
 		return completionError
+	}
+	if terminationError != nil {
+		// emit test event containing the termination error
+		rm := json.RawMessage(terminationError.Error())
+		errEv.Payload = &rm
+		if err := ev.Emit(errEv); err != nil {
+			log.Warningf("Could not emit termination error event %v", errEv)
+		}
 	}
 
 	return terminationError
