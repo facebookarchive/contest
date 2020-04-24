@@ -10,10 +10,13 @@ import (
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
-// Payload represents the payload carried by a failure event (e.g. JobStateFailed, JobStateCancelled, etc.)
+// RunStartedPayload represents the payload carried by a failure event (e.g. JobStateFailed, JobStateCancelled, etc.)
 type RunStartedPayload struct {
 	RunID types.RunID
 }
 
 // EventRunStarted indicates that a run has begun
 var EventRunStarted = event.Name("RunStarted")
+
+// EventTestError indicates that a test failed.
+var EventTestError = event.Name("TestError")
