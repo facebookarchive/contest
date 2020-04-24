@@ -53,7 +53,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 	// Lookup job starting time and job termination time based on the events emitted
 	var (
 		startTime time.Time
-		endTime   time.Time
+		endTime   *time.Time
 	)
 
 	completionEvents := make(map[event.Name]bool)
@@ -66,10 +66,10 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 			startTime = ev.EmitTime
 		} else if _, ok := completionEvents[ev.EventName]; ok {
 			// A completion event has been seen for this Job. Only one completion event can be associated to the job
-			if !endTime.IsZero() {
+			if endTime != nil && !endTime.IsZero() {
 				log.Warningf("Job %d is associated to multiple completion events", jobID)
 			}
-			endTime = ev.EmitTime
+			endTime = &ev.EmitTime
 		}
 	}
 
