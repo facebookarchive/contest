@@ -82,9 +82,8 @@ type Status struct {
 	// started yet"
 	StartTime time.Time
 
-	// EndTime indicates when the job started. This value should be ignored if
-	// `Finished` is false.
-	EndTime time.Time
+	// EndTime indicates when the job ended.
+	EndTime *time.Time
 
 	// RunStatuses represents the status of the current run of the job
 	RunStatus RunStatus
