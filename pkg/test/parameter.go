@@ -48,6 +48,7 @@ func (p Param) String() string {
 	// can't unmarshal to string, return raw json
 	return string(p.RawMessage)
 }
+
 // JSON returns the parameter as json.RawMessage for further
 // unmarshalling by the test plugin.
 func (p Param) JSON() json.RawMessage {

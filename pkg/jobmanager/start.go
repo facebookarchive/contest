@@ -30,7 +30,7 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 		JobDescriptor:   msg.JobDescriptor,
 		TestDescriptors: j.TestDescriptors,
 	}
-	jobID, err := jm.jobEventManager.EmitRequest(&request)
+	jobID, err := jm.jobStorageManager.StoreJobRequest(&request)
 	if err != nil {
 		return &api.EventResponse{
 			Requestor: ev.Msg.Requestor(),
@@ -92,7 +92,7 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 			RunReports:   runReports,
 			FinalReports: finalReports,
 		}
-		err = jm.jobEventManager.EmitReport(&jobReport)
+		err = jm.jobStorageManager.StoreJobReport(&jobReport)
 		if err != nil {
 			log.Warningf("Could not emit job report: %v", err)
 		}

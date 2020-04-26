@@ -13,8 +13,8 @@ import (
 )
 
 type paramSubStructure struct {
-	Val1 		 string
-	Val2 		 string
+	Val1         string
+	Val2         string
 	More_nesting map[string]string
 }
 
