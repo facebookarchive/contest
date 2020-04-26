@@ -18,9 +18,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/facebookincubator/contest/plugins/listeners/httplistener"
 	"github.com/facebookincubator/contest/pkg/api"
 	"github.com/facebookincubator/contest/pkg/jobmanager"
+	"github.com/facebookincubator/contest/plugins/listeners/httplistener"
 )
 
 // Unauthenticated, unencrypted sample HTTP client for ConTest.
@@ -100,7 +100,7 @@ func run(verb string) error {
 			}
 			jobID := parsedData.JobID
 			params.Set("jobID", strconv.Itoa(int(jobID)))
-			
+
 			resp, err = wait(params, jobWaitPoll)
 			if err != nil {
 				return err
@@ -196,7 +196,7 @@ func request(verb string, params url.Values) (string, error) {
 	// so it can be piped to other tools if desired.
 	return string(indentedJSON), nil
 }
- 
+
 func wait(params url.Values, jobWaitPoll time.Duration) (string, error) {
 	// keep polling for status till job is completed, used when -wait is set
 	for {
@@ -223,4 +223,4 @@ func wait(params url.Values, jobWaitPoll time.Duration) (string, error) {
 		// TODO use  time.Ticker instead of time.Sleep
 		time.Sleep(jobWaitPoll)
 	}
- }
+}
