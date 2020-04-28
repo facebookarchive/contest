@@ -8,6 +8,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -28,8 +29,24 @@ var Name = "Cmd"
 
 var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
+// event names for this plugin.
+const (
+	EventCmdStart = event.Name("CmdStart")
+	EventCmdEnd   = event.Name("CmdEnd")
+)
+
 // Events defines the events that a TestStep is allow to emit
-var Events = []event.Name{event.Name("CmdStart"), event.Name("CmdEnd")}
+var Events = []event.Name{
+	EventCmdStart,
+	EventCmdEnd,
+}
+
+// eventCmdStartPayload is the payload of an EventStartCmd event, and it
+// contains the expanded command matching the Cmd struct.
+type eventCmdStartPayload struct {
+	Path string
+	Args []string
+}
 
 // Cmd is used to run arbitrary commands as test steps.
 type Cmd struct {
@@ -65,7 +82,32 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 		log.Printf("Running command '%+v'", cmd)
 		errCh := make(chan error)
 		go func() {
+			// Emit EventCmdStart
+			payload, err := json.Marshal(eventCmdStartPayload{Path: cmd.Path, Args: cmd.Args})
+			if err != nil {
+				log.Warningf("Cannot encode payload for EventCmdStart: %v", err)
+			} else {
+				rm := json.RawMessage(payload)
+				evData := testevent.Data{
+					EventName: EventCmdStart,
+					Target:    target,
+					Payload:   &rm,
+				}
+				if err := ev.Emit(evData); err != nil {
+					log.Warningf("Cannot emit event EventCmdStart: %v", err)
+				}
+			}
+			// Run the command
 			errCh <- cmd.Run()
+			// Emit EventCmdEnd
+			evData := testevent.Data{
+				EventName: EventCmdStart,
+				Target:    target,
+				Payload:   nil,
+			}
+			if err := ev.Emit(evData); err != nil {
+				log.Warningf("Cannot emit event EventCmdEnd: %v", err)
+			}
 			log.Infof("Stdout of command '%s' with args '%s' is '%s'", cmd.Path, cmd.Args, stdout.Bytes())
 		}()
 		select {

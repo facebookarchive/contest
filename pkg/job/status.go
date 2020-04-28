@@ -45,12 +45,17 @@ type TargetStatus struct {
 	InTime  time.Time
 	OutTime time.Time
 	Error   string
+	// these are events that have an associated target. For events
+	// that are not associated to a target, see TestStepStatus.Events .
+	Events []testevent.Event
 }
 
 // TestStepStatus bundles together all the TargetStatus for a specific TestStep (represented via
 // its name and label)
 type TestStepStatus struct {
 	TestStepCoordinates
+	// these are events that have no target associated. For events
+	// associated to a target, see TargetStatus.TargetEvents .
 	Events         []testevent.Event
 	TargetStatuses []TargetStatus
 }

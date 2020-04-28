@@ -8,7 +8,6 @@
 package tests
 
 import (
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -304,7 +303,7 @@ func TestStepClosesChannels(t *testing.T) {
 	testTimeout := 2 * time.Second
 	select {
 	case err = <-errCh:
-		if _, ok := errors.Unwrap(err).(*cerrors.ErrTestStepClosedChannels); !ok {
+		if _, ok := err.(*cerrors.ErrTestStepClosedChannels); !ok {
 			errString := fmt.Sprintf("Error returned by TestRunner should be of type ErrTestStepClosedChannels, got %T(%v)", err, err)
 			assert.FailNow(t, errString)
 		}
