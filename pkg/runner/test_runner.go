@@ -81,6 +81,8 @@ type routeResult struct {
 
 // stepResult represents the result of a TestStep, possibly carrying error information
 type stepResult struct {
+	jobID  types.JobID
+	runID  types.RunID
 	bundle test.TestStepBundle
 	err    error
 }
@@ -338,13 +340,13 @@ func (tr *TestRunner) Route(terminateRoute <-chan struct{}, bundle test.TestStep
 // indefinitely and does not respond to cancellation signals, the TestRunner will
 // flag it as misbehaving and return. If the TestStep returns once the TestRunner
 // has completed, it will timeout trying to write on the result channel.
-func (tr *TestRunner) RunTestStep(cancel, pause <-chan struct{}, bundle test.TestStepBundle, stepCh stepCh, resultCh chan<- stepResult, ev testevent.EmitterFetcher) {
+func (tr *TestRunner) RunTestStep(cancel, pause <-chan struct{}, jobID types.JobID, runID types.RunID, bundle test.TestStepBundle, stepCh stepCh, resultCh chan<- stepResult, ev testevent.EmitterFetcher) {
 
 	defer func() {
 		if r := recover(); r != nil {
 			err := fmt.Errorf("step %s paniced (%v): %s", bundle.TestStepLabel, r, debug.Stack())
 			select {
-			case resultCh <- stepResult{bundle: bundle, err: err}:
+			case resultCh <- stepResult{jobID: jobID, runID: runID, bundle: bundle, err: err}:
 			case <-time.After(tr.timeouts.MessageTimeout):
 				log.Warningf("sending error back from TestStep runner timed out after %v. Error was: %v", tr.timeouts.MessageTimeout, err)
 				return
@@ -384,7 +386,7 @@ func (tr *TestRunner) RunTestStep(cancel, pause <-chan struct{}, bundle test.Tes
 
 	if cancellationAsserted || pauseAsserted {
 		select {
-		case resultCh <- stepResult{bundle: bundle, err: err}:
+		case resultCh <- stepResult{jobID: jobID, runID: runID, bundle: bundle, err: err}:
 		case <-time.After(tr.timeouts.MessageTimeout):
 			log.Warningf("sending error back from TestStep runner timed out after %v. Error was: %v", tr.timeouts.MessageTimeout, err)
 		}
@@ -395,7 +397,7 @@ func (tr *TestRunner) RunTestStep(cancel, pause <-chan struct{}, bundle test.Tes
 	// which in turn will issue a cancellation signal to the pipeline
 	if err != nil {
 		select {
-		case resultCh <- stepResult{bundle: bundle, err: err}:
+		case resultCh <- stepResult{jobID: jobID, runID: runID, bundle: bundle, err: err}:
 		case <-time.After(tr.timeouts.MessageTimeout):
 			log.Warningf("sending error back from TestStep runner timed out after %v. Error was: %v", tr.timeouts.MessageTimeout, err)
 		}
@@ -455,7 +457,7 @@ func (tr *TestRunner) RunTestStep(cancel, pause <-chan struct{}, bundle test.Tes
 	}
 
 	select {
-	case resultCh <- stepResult{bundle: bundle, err: err}:
+	case resultCh <- stepResult{jobID: jobID, runID: runID, bundle: bundle, err: err}:
 	case <-time.After(tr.timeouts.MessageTimeout):
 		log.Warningf("sending error back from TestStep runner timed out after %v. Error was: %v", tr.timeouts.MessageTimeout, err)
 		return
@@ -532,7 +534,7 @@ func (tr *TestRunner) WaitPipelineTermination(ch completionCh, bundles []test.Te
 // have completed or an error occurs. If all Targets complete successfully, it checks
 // whether TestSteps and routing blocks have completed as well. If not, returns an
 // error. Termination is signalled via terminate channel.
-func (tr *TestRunner) WaitPipelineCompletion(terminate <-chan struct{}, ch completionCh, bundles []test.TestStepBundle, targets []*target.Target) error {
+func (tr *TestRunner) WaitPipelineCompletion(terminate <-chan struct{}, ch completionCh, t *test.Test, bundles []test.TestStepBundle, targets []*target.Target) error {
 	var err error
 	for {
 		if len(tr.state.CompletedTargets()) == len(targets) {
@@ -548,14 +550,33 @@ func (tr *TestRunner) WaitPipelineCompletion(terminate <-chan struct{}, ch compl
 			return nil
 		case res := <-ch.routingResultCh:
 			err = res.err
-			if err != nil {
-				err = fmt.Errorf("error at test step '%s' (label: '%s'): %w", res.bundle.TestStep.Name(), res.bundle.TestStepLabel, err)
-			}
 			tr.state.SetRouting(res.bundle.TestStepLabel, res.err)
 		case res := <-ch.stepResultCh:
 			err = res.err
 			if err != nil {
-				err = fmt.Errorf("error at test step '%s' (label: '%s'): %w", res.bundle.TestStep.Name(), res.bundle.TestStepLabel, err)
+				payload, jmErr := json.Marshal(err.Error())
+				if jmErr != nil {
+					log.Warningf("Failed to marshal error string to JSON: %v", jmErr)
+					continue
+				}
+				rm := json.RawMessage(payload)
+				ev := storage.NewTestEventEmitterFetcher(testevent.Header{
+					JobID:         res.jobID,
+					RunID:         res.runID,
+					TestName:      t.Name,
+					TestStepLabel: res.bundle.TestStepLabel,
+				})
+				errEv := testevent.Data{
+					EventName: EventTestError,
+					// this event is not associated to any target, e.g. a plugin has
+					// returned an error.
+					Target:  nil,
+					Payload: &rm,
+				}
+				// emit test event containing the completion error
+				if err := ev.Emit(errEv); err != nil {
+					log.Warningf("Could not emit completion error event %v", errEv)
+				}
 			}
 			tr.state.SetStep(res.bundle.TestStepLabel, res.err)
 		case targetErr := <-ch.targetErr:
@@ -655,7 +676,7 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, t *test.Test, targets [
 		}
 		ev := storage.NewTestEventEmitterFetcher(Header)
 		go tr.Route(terminateRouting, testStepBundle, routingChannels, routingResultCh, ev)
-		go tr.RunTestStep(cancelTestStep, pauseTestStep, testStepBundle, stepChannels, stepResultCh, ev)
+		go tr.RunTestStep(cancelTestStep, pauseTestStep, jobID, runID, testStepBundle, stepChannels, stepResultCh, ev)
 		// The input of the next routing block is the output of the current routing block
 		routeIn = routeOut
 	}
@@ -680,7 +701,7 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, t *test.Test, targets [
 	log.Printf("TestRunner: waiting for test to complete")
 
 	go func() {
-		errCh <- tr.WaitPipelineCompletion(terminateWaitCompletion, completionChannels, testStepBundles, targets)
+		errCh <- tr.WaitPipelineCompletion(terminateWaitCompletion, completionChannels, t, testStepBundles, targets)
 	}()
 
 	select {
@@ -738,36 +759,9 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, t *test.Test, targets [
 		log.Printf("TestRunner completed")
 	}
 
-	ev := storage.NewTestEventEmitterFetcher(testevent.Header{
-		JobID:    jobID,
-		RunID:    runID,
-		TestName: t.Name,
-	})
-	errEv := testevent.Data{
-		EventName: EventTestError,
-		// this event is not associated to any target, e.g. a plugin has
-		// returned an error.
-		Target:  nil,
-		Payload: nil,
-	}
 	if completionError != nil {
-		// emit test event containing the completion error
-		rm := json.RawMessage(completionError.Error())
-		errEv.Payload = &rm
-		if err := ev.Emit(errEv); err != nil {
-			log.Warningf("Could not emit completion error event %v", errEv)
-		}
 		return completionError
 	}
-	if terminationError != nil {
-		// emit test event containing the termination error
-		rm := json.RawMessage(terminationError.Error())
-		errEv.Payload = &rm
-		if err := ev.Emit(errEv); err != nil {
-			log.Warningf("Could not emit termination error event %v", errEv)
-		}
-	}
-
 	return terminationError
 }
 

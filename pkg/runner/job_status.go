@@ -18,31 +18,19 @@ import (
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
-// TargetRoutingEvents gather all event names which track the flow of targets
+// targetRoutingEvents gather all event names which track the flow of targets
 // between TestSteps
-var TargetRoutingEvents = []event.Name{
-	target.EventTargetIn,
-	target.EventTargetErr,
-	target.EventTargetOut,
-	target.EventTargetInErr,
+var targetRoutingEvents = map[event.Name]struct{}{
+	target.EventTargetIn:    struct{}{},
+	target.EventTargetErr:   struct{}{},
+	target.EventTargetOut:   struct{}{},
+	target.EventTargetInErr: struct{}{},
 }
 
 // buildTargetStatuses builds a list of TargetStepStatus, which represent the status of Targets within a TestStep
-func (jr *JobRunner) buildTargetStatuses(coordinates job.TestStepCoordinates) ([]job.TargetStatus, error) {
-
-	// Fetch all the events associated to Targets routing
-	routingEvents, err := jr.testEvManager.Fetch(
-		testevent.QueryJobID(coordinates.JobID),
-		testevent.QueryTestName(coordinates.TestName),
-		testevent.QueryTestStepLabel(coordinates.TestStepLabel),
-		testevent.QueryEventNames(TargetRoutingEvents),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("could not fetch events associated to target routing: %v", err)
-	}
-
+func (jr *JobRunner) buildTargetStatuses(coordinates job.TestStepCoordinates, targetEvents []testevent.Event) ([]job.TargetStatus, error) {
 	var targetStatuses []job.TargetStatus
-	for _, testEvent := range routingEvents {
+	for _, testEvent := range targetEvents {
 
 		// Update the TargetStatus object associated to the Target. If there is no TargetStatus associated yet, append it
 		var targetStatus *job.TargetStatus
@@ -57,6 +45,10 @@ func (jr *JobRunner) buildTargetStatuses(coordinates job.TestStepCoordinates) ([
 			// There is no TargetStatus associated with this Target, create one
 			targetStatuses = append(targetStatuses, job.TargetStatus{TestStepCoordinates: coordinates, Target: testEvent.Data.Target})
 			targetStatus = &targetStatuses[len(targetStatuses)-1]
+		}
+		// append non-routing events
+		if _, isRoutingEvent := targetRoutingEvents[testEvent.Data.EventName]; !isRoutingEvent {
+			targetStatus.Events = append(targetStatus.Events, testEvent)
 		}
 
 		evName := testEvent.Data.EventName
@@ -99,20 +91,25 @@ func (jr *JobRunner) buildTestStepStatus(coordinates job.TestStepCoordinates) (*
 		return nil, fmt.Errorf("could not fetch events associated to test step %s: %v", coordinates.TestStepLabel, err)
 	}
 
-	// Build a map of events that should not be rendered as part of the status (e.g. routing events)
-	skipEvents := make(map[event.Name]struct{})
-	for _, eventName := range TargetRoutingEvents {
-		skipEvents[eventName] = struct{}{}
-	}
-	filteredTestEvents := []testevent.Event{}
+	var stepEvents, targetEvents []testevent.Event
 	for _, event := range testEvents {
-		if _, skip := skipEvents[event.Data.EventName]; !skip {
-			filteredTestEvents = append(filteredTestEvents, event)
+		if event.Data.Target == nil {
+			// we don't want target routing events in step events, but we want
+			// them in target events below
+			if _, skip := targetRoutingEvents[event.Data.EventName]; skip {
+				log.Warningf("Found routing event '%s' with no target associated, this could indicate a bug", event.Data.EventName)
+				continue
+			}
+			// this goes into TestStepStatus.Events
+			stepEvents = append(stepEvents, event)
+		} else {
+			// this goes into TargetStatus.Events
+			targetEvents = append(targetEvents, event)
 		}
 	}
 
-	testStepStatus.Events = filteredTestEvents
-	targetStatuses, err := jr.buildTargetStatuses(coordinates)
+	testStepStatus.Events = stepEvents
+	targetStatuses, err := jr.buildTargetStatuses(coordinates, targetEvents)
 	if err != nil {
 		return nil, fmt.Errorf("could not build target status for test step %s: %v", coordinates.TestStepLabel, err)
 	}
