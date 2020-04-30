@@ -6,8 +6,6 @@
 package noop
 
 import (
-	"time"
-
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/job"
 )
@@ -42,11 +40,7 @@ func (n *Noop) RunReport(cancel <-chan struct{}, parameters interface{}, runStat
 
 // FinalReport calculates the final report to be associated to a job.
 func (n *Noop) FinalReport(cancel <-chan struct{}, parameters interface{}, runStatuses []job.RunStatus, ev testevent.Fetcher) (bool, interface{}, error) {
-	return false, &job.Report{
-		Success:    true,
-		ReportTime: time.Now(),
-		Data:       "I did nothing at the end, all good",
-	}, nil
+	return true, "I did nothing at the end, all good", nil
 }
 
 // New builds a new TargetSuccessReporter
