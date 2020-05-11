@@ -355,15 +355,38 @@ func (tr *TestRunner) RunTestStep(cancel, pause <-chan struct{}, jobID types.Job
 		}
 	}()
 
-	// Run the TestStep and defer to the return path the handling of panic
-	// conditions. If multiple error conditions occur, send downstream only
-	// the first error encountered.
-	channels := test.TestStepChannels{
-		In:  stepCh.stepIn,
-		Out: stepCh.stepOut,
-		Err: stepCh.stepErr,
+	// We should not run a test step if there're no targets in stepCh.stepIn
+	// First we check if there's at least one incoming target, and only
+	// then we call `bundle.TestStep.Run()`.
+	//
+	// ITS: https://github.com/facebookincubator/contest/issues/101
+	stepIn, onFirstTargetChan, onNoTargetsChan := waitForFirstTarget(stepCh.stepIn, cancel, pause)
+
+	haveTargets := false
+	select {
+	case <-onFirstTargetChan:
+		log.Debugf("first target")
+		haveTargets = true
+	case <-cancel:
+		log.Debugf("cancel")
+	case <-pause:
+		log.Debugf("pause")
+	case <-onNoTargetsChan:
+		log.Debugf("no targets")
 	}
-	err := bundle.TestStep.Run(cancel, pause, channels, bundle.Parameters, ev)
+
+	var err error
+	if haveTargets {
+		// Run the TestStep and defer to the return path the handling of panic
+		// conditions. If multiple error conditions occur, send downstream only
+		// the first error encountered.
+		channels := test.TestStepChannels{
+			In:  stepIn,
+			Out: stepCh.stepOut,
+			Err: stepCh.stepErr,
+		}
+		err = bundle.TestStep.Run(cancel, pause, channels, bundle.Parameters, ev)
+	}
 
 	var (
 		cancellationAsserted bool
@@ -416,13 +439,13 @@ func (tr *TestRunner) RunTestStep(cancel, pause <-chan struct{}, jobID types.Job
 		// stepCh.stepIn is not closed, but the TestStep returned, which is a violation
 		// of the API. Record the error if no other error condition has been seen.
 		if err == nil {
-			err = fmt.Errorf("step returned, but input channel is not closed (api violation)")
+			err = fmt.Errorf("step returned, but input channel is not closed (api violation; case 0)")
 		}
 	default:
 		// stepCh.stepIn is not closed, and a read operation would block. The TestStep
 		// does not comply with the API (see above).
 		if err == nil {
-			err = fmt.Errorf("step returned, but input channel is not closed (api violation)")
+			err = fmt.Errorf("step returned, but input channel is not closed (api violation; case 1)")
 		}
 	}
 

@@ -29,6 +29,8 @@ import (
 	"github.com/facebookincubator/contest/plugins/teststeps/echo"
 	"github.com/facebookincubator/contest/plugins/teststeps/example"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/channels"
+	"github.com/facebookincubator/contest/tests/plugins/teststeps/crash"
+	"github.com/facebookincubator/contest/tests/plugins/teststeps/fail"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/hanging"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/noreturn"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/panicstep"
@@ -50,6 +52,8 @@ var testSteps = map[string]test.TestStepFactory{
 	hanging.Name:   hanging.New,
 	channels.Name:  channels.New,
 	cmd.Name:       cmd.New,
+	crash.Name:     crash.New,
+	fail.Name:      fail.New,
 }
 
 var testStepsEvents = map[string][]event.Name{
@@ -60,6 +64,8 @@ var testStepsEvents = map[string][]event.Name{
 	hanging.Name:   hanging.Events,
 	channels.Name:  channels.Events,
 	cmd.Name:       cmd.Events,
+	crash.Name:     crash.Events,
+	fail.Name:      fail.Events,
 }
 
 func TestMain(m *testing.M) {
@@ -351,5 +357,40 @@ func TestCmdPlugin(t *testing.T) {
 	case <-errCh:
 	case <-time.After(successTimeout):
 		t.Errorf("test should return within timeout: %+v", successTimeout)
+	}
+}
+
+func TestNoRunTestStepIfNoTargets(t *testing.T) {
+
+	jobID := types.JobID(1)
+	runID := types.RunID(1)
+
+	ts1, err := pluginRegistry.NewTestStep("Fail")
+	require.NoError(t, err)
+	ts2, err := pluginRegistry.NewTestStep("Crash")
+	require.NoError(t, err)
+
+	params := make(test.TestStepParameters)
+	testSteps := []test.TestStepBundle{
+		{TestStep: ts1, TestStepLabel: "StageOne", Parameters: params},
+		{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
+	}
+
+	cancel := make(chan struct{})
+	pause := make(chan struct{})
+
+	errCh := make(chan error)
+	go func() {
+		tr := runner.NewTestRunner()
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		errCh <- err
+	}()
+
+	testTimeout := 2 * time.Second
+	select {
+	case err = <-errCh:
+		assert.Nil(t, err, "the Crash TestStep shouldn't be ran")
+	case <-time.After(testTimeout):
+		assert.FailNow(t, "TestRunner should not time out")
 	}
 }
