@@ -64,6 +64,13 @@ func eventJobMatch(queryJobID types.JobID, jobID types.JobID) bool {
 	return true
 }
 
+func eventRunMatch(queryRunID, runID types.RunID) bool {
+	if queryRunID != 0 && runID != queryRunID {
+		return false
+	}
+	return true
+}
+
 func eventNameMatch(queryEventNames []event.Name, eventName event.Name) bool {
 	if len(queryEventNames) == 0 {
 		// If no criteria was specified for matching the name of the event,
@@ -115,6 +122,7 @@ func (m *Memory) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, 
 
 	for _, event := range m.testEvents {
 		if eventJobMatch(eventQuery.JobID, event.Header.JobID) &&
+			eventRunMatch(eventQuery.RunID, event.Header.RunID) &&
 			eventNameMatch(eventQuery.EventNames, event.Data.EventName) &&
 			eventTimeMatch(eventQuery.EmittedStartTime, eventQuery.EmittedEndTime, event.EmitTime) &&
 			eventTestMatch(eventQuery.TestName, event.Header.TestName) &&
