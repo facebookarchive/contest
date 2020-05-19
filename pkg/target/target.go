@@ -39,5 +39,8 @@ type Target struct {
 }
 
 func (t *Target) String() string {
+	if t == nil {
+		return "(*Target)(nil)"
+	}
 	return fmt.Sprintf("Target{Name: \"%s\", ID: \"%s\", FQDN: \"%s\"}", t.Name, t.ID, t.FQDN)
 }
