@@ -44,6 +44,10 @@ func Disable() {
 	log.SetOutput(ioutil.Discard)
 }
 
+func Debug() {
+	log.SetLevel(logrus.DebugLevel)
+}
+
 func init() {
 	log = logrus.New()
 	log.SetFormatter(&log_prefixed.TextFormatter{
