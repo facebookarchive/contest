@@ -9,7 +9,6 @@ package tests
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -69,8 +68,8 @@ var testStepsEvents = map[string][]event.Name{
 }
 
 func TestMain(m *testing.M) {
-	log := logging.GetLogger("tests/integ")
-	log.Logger.Out = ioutil.Discard
+	logging.GetLogger("tests/integ")
+	logging.Disable()
 
 	pluginRegistry = pluginregistry.NewPluginRegistry()
 	// Setup the PluginRegistry by registering TestSteps
@@ -184,8 +183,8 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 
 	params := make(test.TestStepParameters)
 	testSteps := []test.TestStepBundle{
-		test.TestStepBundle{TestStep: ts1, Parameters: params},
-		test.TestStepBundle{TestStep: ts2, Parameters: params},
+		test.TestStepBundle{TestStep: ts1, Parameters: params, TestStepLabel: "NoReturn"},
+		test.TestStepBundle{TestStep: ts2, Parameters: params, TestStepLabel: "Example"},
 	}
 
 	cancel := make(chan struct{})

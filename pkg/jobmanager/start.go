@@ -55,6 +55,7 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 		start := time.Now()
 		runReports, finalReports, err := jm.jobRunner.Run(j)
 		duration := time.Since(start)
+		log.Debugf("job %d terminated", j.ID)
 		// If the Job was cancelled, the error returned by JobRunner indicates whether
 		// the cancellatioon has been successful or failed
 		if j.IsCancelled() {
@@ -85,7 +86,11 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 				log.Infof("Job %+v completed after %s", j, duration)
 				eventToEmit = EventJobCompleted
 			}
-			_ = jm.emitEvent(jobID, eventToEmit)
+			log.Debugf("emitting: %v", eventToEmit)
+			err = jm.emitEvent(jobID, eventToEmit)
+			if err != nil {
+				log.Warningf("event emission failed: %v", err)
+			}
 		}
 		jobReport := job.JobReport{
 			JobID:        j.ID,
