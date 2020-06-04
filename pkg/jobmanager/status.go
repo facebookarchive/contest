@@ -6,6 +6,7 @@
 package jobmanager
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -74,12 +75,34 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 	}
 
 	state := "Unknown"
+	var stateErrMsg string
 	if len(jobEvents) > 0 {
-		eventName := jobEvents[len(jobEvents)-1].EventName
-		state = string(eventName)
+		je := jobEvents[len(jobEvents)-1]
+		state = string(je.EventName)
+		if je.EventName == EventJobFailed {
+			// if there was a framework failure, retrieve the failure event and
+			// the associated error message, so it can be exposed in the status.
+			if je.Payload == nil {
+				stateErrMsg = "internal error: EventJobFailed's payload is nil"
+			} else {
+				var ep ErrorEventPayload
+				if err := json.Unmarshal(*je.Payload, &ep); err != nil {
+					stateErrMsg = fmt.Sprintf("internal error: EventJobFailed's payload cannot be unmarshalled. Raw payload: %s, Error: %v", *je.Payload, err)
+				} else {
+					stateErrMsg = ep.Err
+				}
+			}
+		}
 	}
 
-	jobStatus := job.Status{Name: currentJob.Name, StartTime: startTime, EndTime: endTime, State: state, JobReport: report}
+	jobStatus := job.Status{
+		Name:        currentJob.Name,
+		StartTime:   startTime,
+		EndTime:     endTime,
+		State:       state,
+		StateErrMsg: stateErrMsg,
+		JobReport:   report,
+	}
 
 	// Fetch the ID of the last run that was started
 	runID, err := jm.jobRunner.GetCurrentRun(jobID)
