@@ -83,6 +83,9 @@ type Status struct {
 	// State represents the last recorded state of a job
 	State string
 
+	// StateErrMsg is an optional error message associated to the job state
+	StateErrMsg string
+
 	// StartTime indicates when the job started. A value of 0 indicates "not
 	// started yet"
 	StartTime time.Time

@@ -31,8 +31,8 @@ var log = logging.GetLogger("pkg/jobmanager")
 
 var cancellationTimeout = 60 * time.Second
 
-// errorPayload represents the payload carried by a failure event (e.g. JobStateFailed, JobStateCancelled, etc.)
-type errorPayload struct {
+// ErrorEventPayload represents the payload carried by a failure event (e.g. JobStateFailed, JobStateCancelled, etc.)
+type ErrorEventPayload struct {
 	Err string
 }
 
@@ -386,7 +386,7 @@ func (jm *JobManager) emitErrEvent(jobID types.JobID, eventName event.Name, err 
 	)
 	if err != nil {
 		log.Errorf(err.Error())
-		payload := errorPayload{Err: err.Error()}
+		payload := ErrorEventPayload{Err: err.Error()}
 		payloadJSON, err := json.Marshal(payload)
 		if err != nil {
 			log.Warningf("Could not serialize payload for event %s: %v", eventName, err)
