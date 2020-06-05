@@ -11,16 +11,16 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 )
 
-// EventTargetIn indicates that a target has entered a TestStep
+// EventTargetIn indicates that a target has entered a Step
 var EventTargetIn = event.Name("TargetIn")
 
-// EventTargetInErr indicates that a target has encountered an error while entering a TestStep
+// EventTargetInErr indicates that a target has encountered an error while entering a Step
 var EventTargetInErr = event.Name("TargetInErr")
 
-// EventTargetOut indicates that a target has left a TestStep
+// EventTargetOut indicates that a target has left a Step
 var EventTargetOut = event.Name("TargetOut")
 
-// EventTargetErr indicates that a target has encountered an error in a TestStep
+// EventTargetErr indicates that a target has encountered an error in a Step
 var EventTargetErr = event.Name("TargetErr")
 
 // EventTargetAcquired indicates that a target has been acquired for a Test

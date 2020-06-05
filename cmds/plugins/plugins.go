@@ -39,7 +39,7 @@ var testFetchers = []test.TestFetcherLoader{
 	literal.Load,
 }
 
-var testSteps = []test.TestStepLoader{
+var testSteps = []test.StepLoader{
 	echo.Load,
 	slowecho.Load,
 	example.Load,
@@ -77,7 +77,7 @@ func Init(pluginRegistry *pluginregistry.PluginRegistry, log *logrus.Entry) {
 
 	// Register TestStep plugins
 	for _, tsloader := range testSteps {
-		if err := pluginRegistry.RegisterTestStep(tsloader()); err != nil {
+		if err := pluginRegistry.RegisterStep(tsloader()); err != nil {
 			log.Fatal(err)
 
 		}

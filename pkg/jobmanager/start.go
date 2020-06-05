@@ -6,6 +6,7 @@
 package jobmanager
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -16,19 +17,25 @@ import (
 
 func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 	msg := ev.Msg.(api.EventStartMsg)
-	j, err := NewJob(jm.pluginRegistry, msg.JobDescriptor)
+
+	var jd *job.Descriptor
+	if err := json.Unmarshal([]byte(msg.JobDescriptor), &jd); err != nil {
+		return &api.EventResponse{Err: err}
+	}
+
+	j, err := NewJobFromDescriptor(jm.pluginRegistry, jd)
 	if err != nil {
 		return &api.EventResponse{Err: err}
 	}
+
 	// The job descriptor has been validated correctly, now use the JobRequestEmitter
 	// interface to obtain a JobRequest object with a valid id
 	request := job.Request{
-		JobName:         j.Name,
-		Requestor:       string(ev.Msg.Requestor()),
-		ServerID:        ev.ServerID,
-		RequestTime:     time.Now(),
-		JobDescriptor:   msg.JobDescriptor,
-		TestDescriptors: j.TestDescriptors,
+		JobName:            j.Name,
+		ExtendedDescriptor: j.ExtendedDescriptor,
+		Requestor:          string(ev.Msg.Requestor()),
+		ServerID:           ev.ServerID,
+		RequestTime:        time.Now(),
 	}
 	jobID, err := jm.jobStorageManager.StoreJobRequest(&request)
 	if err != nil {

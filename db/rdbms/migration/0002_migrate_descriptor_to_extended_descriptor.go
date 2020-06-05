@@ -13,6 +13,7 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/tools/migration/rdbms/migrate"
 
 	"github.com/facebookincubator/contest/cmds/plugins"
@@ -23,11 +24,28 @@ import (
 
 const shardSize = uint64(50)
 
+// Core Contest data structures for migration from v1 to v2. These data structures
+// have been migrated in the core framework so they need to be preserved in the
+// migration package.
+
+// Request represent the v1 job request layout
+type Request struct {
+	JobID         types.JobID
+	JobName       string
+	Requestor     string
+	ServerID      string
+	RequestTime   time.Time
+	JobDescriptor string
+	// TestDescriptors are the fetched test steps as per the test fetcher
+	// defined in the JobDescriptor above.
+	TestDescriptors string
+}
+
 // DescriptorMigration represents a migration which moves steps description in jobs tables from old to new
 // schema. The migration consists in the following:
 //
 //
-// In v0001, job.Request object was structured as follows:
+// In v0001, Request object was structured as follows:
 //
 // type Request struct {
 //		JobID         types.JobID
@@ -65,7 +83,7 @@ func ms(d time.Duration) float64 {
 }
 
 // fetchJobs fetches job requests based on limit and offset
-func fetchJobs(tx *sql.Tx, limit, offset uint64, log *logrus.Entry) ([]job.Request, error) {
+func fetchJobs(tx *sql.Tx, limit, offset uint64, log *logrus.Entry) ([]Request, error) {
 
 	log.Debugf("fetching shard limit: %d, offset: %d", limit, offset)
 	selectStatement := "select job_id, name, requestor, server_id, request_time, descriptor, teststeps from jobs limit ? offset ?"
@@ -84,11 +102,11 @@ func fetchJobs(tx *sql.Tx, limit, offset uint64, log *logrus.Entry) ([]job.Reque
 		_ = rows.Close()
 	}()
 
-	var jobs []job.Request
+	var jobs []Request
 
 	start = time.Now()
 	for rows.Next() {
-		job := job.Request{}
+		job := Request{}
 		err := rows.Scan(
 			&job.JobID,
 			&job.JobName,
@@ -115,7 +133,7 @@ func fetchJobs(tx *sql.Tx, limit, offset uint64, log *logrus.Entry) ([]job.Reque
 	return jobs, nil
 }
 
-func migrateJobs(tx *sql.Tx, requests []job.Request, registry *pluginregistry.PluginRegistry, log *logrus.Entry) error {
+func migrateJobs(tx *sql.Tx, requests []Request, registry *pluginregistry.PluginRegistry, log *logrus.Entry) error {
 
 	log.Debugf("migrating %d jobs", len(requests))
 	start := time.Now()
@@ -143,7 +161,7 @@ func migrateJobs(tx *sql.Tx, requests []job.Request, registry *pluginregistry.Pl
 		// name, TestFetcher name, etc.). So ExtendedDescriptor refers instead to
 		// StepsDescriptors and TestDescriptors field is removed from request object.
 
-		var jobDesc job.JobDescriptor
+		var jobDesc job.Descriptor
 		if err := json.Unmarshal([]byte(request.JobDescriptor), &jobDesc); err != nil {
 			return fmt.Errorf("failed to unmarshal job descriptor (%+v): %w", jobDesc, err)
 		}
@@ -153,7 +171,7 @@ func migrateJobs(tx *sql.Tx, requests []job.Request, registry *pluginregistry.Pl
 			return fmt.Errorf("failed to unmarshal test step descriptors from request object (%+v): %w", request.TestDescriptors, err)
 		}
 
-		extendedDescriptor := job.ExtendedDescriptor{JobDescriptor: jobDesc}
+		extendedDescriptor := job.ExtendedDescriptor{Descriptor: jobDesc}
 		if len(stepDescs) != len(jobDesc.TestDescriptors) {
 			return fmt.Errorf("number of tests described in JobDescriptor does not match steps stored in db")
 		}
@@ -173,12 +191,12 @@ func migrateJobs(tx *sql.Tx, requests []job.Request, registry *pluginregistry.Pl
 			// TestFetcher accordingly and retrieve the name of the test
 			td := jobDesc.TestDescriptors[index]
 
-			tfb, err := registry.NewTestFetcherBundle(td)
+			tfb, err := registry.NewTestFetcherBundle(&td)
 			if err != nil {
 				return fmt.Errorf("could not instantiate test fetcher for jobID %d based on descriptor %+v: %w", request.JobID, td, err)
 			}
 
-			name, stepDescFetched, err := tfb.TestFetcher.Fetch(tfb.FetchParameters)
+			stepsDescriptors, err := tfb.TestFetcher.Fetch(tfb.FetchParameters)
 			if err != nil {
 				return fmt.Errorf("could not retrieve test description from fetcher for jobID %d: %w", request.JobID, err)
 			}
@@ -186,9 +204,9 @@ func migrateJobs(tx *sql.Tx, requests []job.Request, registry *pluginregistry.Pl
 			// Check that the serialization of the steps retrieved by the test fetcher matches the steps
 			// stored in the DB. If that's not the case, then, just print a warning: the underlying test
 			/// might have changed.We go ahead anyway assuming assume the test name is still relevant.
-			stepDescFetchedJSON, err := json.Marshal(stepDescFetched)
+			stepDescFetchedJSON, err := json.Marshal(stepsDescriptors.Test)
 			if err != nil {
-				log.Warningf("steps description (`%v`) fetched by test fetcher for job %d cannot be serialized: %v", stepDescFetched, request.JobID, err)
+				log.Warningf("steps description (`%v`) fetched by test fetcher for job %d cannot be serialized: %v", stepsDescriptors.Test, request.JobID, err)
 			}
 
 			stepDescDBJSON, err := json.Marshal(stepDesc)
@@ -200,7 +218,7 @@ func migrateJobs(tx *sql.Tx, requests []job.Request, registry *pluginregistry.Pl
 				log.Warningf("steps retrieved by test fetcher and from database do not match (`%v` != `%v`), test description might have changed", string(stepDescDBJSON), string(stepDescFetchedJSON))
 			}
 
-			newStepsDesc.TestName = name
+			newStepsDesc.TestName = stepsDescriptors.TestName
 			extendedDescriptor.StepsDescriptors = append(extendedDescriptor.StepsDescriptors, newStepsDesc)
 		}
 

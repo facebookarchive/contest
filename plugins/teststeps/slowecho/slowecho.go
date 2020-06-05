@@ -25,21 +25,21 @@ var Name = "SlowEcho"
 
 var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
-// Events defines the events that a TestStep is allow to emit
+// Events defines the events that a Step is allow to emit
 var Events = []event.Name{}
 
 // Step implements an echo-style printing plugin.
 type Step struct {
 }
 
-// New initializes and returns a new EchoStep. It implements the TestStepFactory
+// New initializes and returns a new EchoStep. It implements the StepFactory
 // interface.
-func New() test.TestStep {
+func New() test.Step {
 	return &Step{}
 }
 
 // Load returns the name, factory and events which are needed to register the step.
-func Load() (string, test.TestStepFactory, []event.Name) {
+func Load() (string, test.StepFactory, []event.Name) {
 	return Name, New, Events
 }
 
@@ -62,7 +62,7 @@ func sleepTime(secStr string) (time.Duration, error) {
 
 // ValidateParameters validates the parameters that will be passed to the Run
 // and Resume methods of the test step.
-func (e *Step) ValidateParameters(params test.TestStepParameters) error {
+func (e *Step) ValidateParameters(params test.StepParameters) error {
 	if t := params.GetOne("text"); t.IsEmpty() {
 		return errors.New("missing 'text' field in slowecho parameters")
 	}
@@ -79,7 +79,7 @@ func (e *Step) ValidateParameters(params test.TestStepParameters) error {
 }
 
 // Run executes the step
-func (e *Step) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (e *Step) Run(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.Emitter) error {
 	sleep, err := sleepTime(params.GetOne("sleep").String())
 	if err != nil {
 		return err
@@ -140,6 +140,6 @@ func (e Step) CanResume() bool {
 
 // Resume tries to resume a previously interrupted test step. EchoStep cannot
 // resume.
-func (e Step) Resume(cancel, pause <-chan struct{}, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (e Step) Resume(cancel, pause <-chan struct{}, _ test.StepChannels, _ test.StepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }

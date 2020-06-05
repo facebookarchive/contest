@@ -70,21 +70,17 @@ func (suite *JobSuite) TearDownTest() {
 func (suite *JobSuite) TestGetJobRequest() {
 
 	jobRequestFirst := job.Request{
-		JobName:         "AName",
-		Requestor:       "AIntegrationTest",
-		RequestTime:     time.Now(),
-		JobDescriptor:   jobDescriptorFirst,
-		TestDescriptors: testDescs,
+		JobName:     "AName",
+		Requestor:   "AIntegrationTest",
+		RequestTime: time.Now(),
 	}
 	jobIDa, err := suite.txStorage.StoreJobRequest(&jobRequestFirst)
 	require.NoError(suite.T(), err)
 
 	jobRequestSecond := job.Request{
-		JobName:         "BName",
-		Requestor:       "BIntegrationTest",
-		RequestTime:     time.Now(),
-		JobDescriptor:   jobDescriptorSecond,
-		TestDescriptors: testDescs,
+		JobName:     "BName",
+		Requestor:   "BIntegrationTest",
+		RequestTime: time.Now(),
 	}
 	jobIDb, err := suite.txStorage.StoreJobRequest(&jobRequestSecond)
 	require.NoError(suite.T(), err)
@@ -93,7 +89,7 @@ func (suite *JobSuite) TestGetJobRequest() {
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), types.JobID(jobIDa), request.JobID)
 	require.Equal(suite.T(), request.Requestor, "AIntegrationTest")
-	require.Equal(suite.T(), request.JobDescriptor, jobDescriptorFirst)
+	// TODO Implement checking of extended job descriptor
 
 	// Creation timestamp corresponds to the timestamp of the insertion into the
 	// database. Assert that the timestamp retrieved from the database is within
@@ -109,7 +105,8 @@ func (suite *JobSuite) TestGetJobRequest() {
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), types.JobID(jobIDb), request.JobID)
 	require.Equal(suite.T(), request.Requestor, "BIntegrationTest")
-	require.Equal(suite.T(), request.JobDescriptor, jobDescriptorSecond)
+
+	// TODO Implement checking of extended job descriptor
 
 	require.True(suite.T(), request.RequestTime.After(time.Now().Add(-2*time.Second)))
 	require.True(suite.T(), request.RequestTime.Before(time.Now().Add(2*time.Second)))

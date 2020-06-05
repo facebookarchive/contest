@@ -28,7 +28,7 @@ type PerTargetFunc func(cancel, pause <-chan struct{}, target *target.Target) er
 // provide an implementation of a per-target function that will be called on
 // each target. The implementation of the per-target function is responsible for
 // handling internal cancellation and pausing.
-func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.TestStepChannels, f PerTargetFunc) error {
+func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.StepChannels, f PerTargetFunc) error {
 	type tgtErr struct {
 		target *target.Target
 		err    error

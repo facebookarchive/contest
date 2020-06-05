@@ -39,6 +39,7 @@ func main() {
 	flag.Parse()
 	log := logging.GetLogger("contest")
 	log.Level = logrus.DebugLevel
+	logging.Debug()
 
 	pluginRegistry := pluginregistry.NewPluginRegistry()
 

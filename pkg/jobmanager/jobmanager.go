@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -24,8 +23,6 @@ import (
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/runner"
 	"github.com/facebookincubator/contest/pkg/storage"
-	"github.com/facebookincubator/contest/pkg/storage/limits"
-	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
@@ -64,188 +61,6 @@ type JobManager struct {
 	apiListener    api.Listener
 	apiCancel      chan struct{}
 	pluginRegistry *pluginregistry.PluginRegistry
-}
-
-// NewJobFromRequest returns a new Job object from a job.Request .
-func NewJobFromRequest(pr *pluginregistry.PluginRegistry, req *job.Request) (*job.Job, error) {
-	var jd *job.JobDescriptor
-	if err := json.Unmarshal([]byte(req.JobDescriptor), &jd); err != nil {
-		return nil, err
-	}
-	j, err := newPartialJobFromDescriptor(pr, jd)
-	if err != nil {
-		return nil, err
-	}
-	// TODO set j.RunReporterBundles and j.FinalReporterBundles
-	return j, nil
-}
-
-func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobDescriptor) (*job.Job, error) {
-
-	if jd == nil {
-		return nil, errors.New("JobDescriptor cannot be nil")
-	}
-	if len(jd.TestDescriptors) == 0 {
-		return nil, errors.New("need at least one TestDescriptor in the JobDescriptor")
-	}
-	if jd.JobName == "" {
-		return nil, errors.New("job name cannot be empty")
-	}
-	if err := limits.NewValidator().ValidateJobName(jd.JobName); err != nil {
-		return nil, err
-	}
-	if jd.RunInterval < 0 {
-		return nil, errors.New("run interval must be non-negative")
-	}
-
-	if len(jd.Reporting.RunReporters) == 0 && len(jd.Reporting.FinalReporters) == 0 {
-		return nil, errors.New("at least one run reporter or one final reporter must be specified in a job")
-	}
-	for _, reporter := range jd.Reporting.RunReporters {
-		if strings.TrimSpace(reporter.Name) == "" {
-			return nil, errors.New("run reporters cannot have empty or all-whitespace names")
-		}
-		if err := limits.NewValidator().ValidateReporterName(reporter.Name); err != nil {
-			return nil, err
-		}
-	}
-
-	tests := make([]*test.Test, 0, len(jd.TestDescriptors))
-	testDescriptors := make([][]*test.TestStepDescriptor, 0, len(jd.TestDescriptors))
-	for _, td := range jd.TestDescriptors {
-		if td == nil {
-			return nil, errors.New("test description is null")
-		}
-		if td.TargetManagerName == "" {
-			return nil, errors.New("target manager name cannot be empty")
-		}
-		if td.TestFetcherName == "" {
-			return nil, errors.New("test fetcher name cannot be empty")
-		}
-		// get an instance of the TargetManager and validate its parameters.
-		tmb, err := pr.NewTargetManagerBundle(td)
-		if err != nil {
-			return nil, err
-		}
-		// get an instance of the TestFetcher and validate its parameters
-		tfb, err := pr.NewTestFetcherBundle(td)
-		if err != nil {
-			return nil, err
-		}
-		name, testStepDescs, err := tfb.TestFetcher.Fetch(tfb.FetchParameters)
-		if err != nil {
-			return nil, err
-		}
-		if err := limits.NewValidator().ValidateTestName(name); err != nil {
-			return nil, err
-		}
-		testDescriptors = append(testDescriptors, testStepDescs)
-
-		// look up test step plugins in the plugin registry
-		var stepBundles []test.TestStepBundle
-		labels := make(map[string]bool)
-		for idx, testStepDesc := range testStepDescs {
-			if testStepDesc == nil {
-				return nil, errors.New("test step description is null")
-			}
-			if err := limits.NewValidator().ValidateTestStepLabel(testStepDesc.Label); err != nil {
-				return nil, err
-			}
-			tse, err := pr.NewTestStepEvents(testStepDesc.Name)
-			if err != nil {
-				return nil, err
-			}
-			// test step index is incremented by 1 so we can use 0 to signal an
-			// anomaly.
-			tsb, err := pr.NewTestStepBundle(*testStepDesc, uint(idx)+1, tse)
-			if err != nil {
-				return nil, fmt.Errorf("NewTestStepBundle for test step '%s' with index %d failed: %w", testStepDesc.Name, idx, err)
-			}
-			if _, ok := labels[tsb.TestStepLabel]; ok {
-				// validate that the label associated to the test step does not clash
-				// with any other label within the test
-				return nil, fmt.Errorf("found duplicated labels in test %s: %s ", name, tsb.TestStepLabel)
-			}
-			labels[tsb.TestStepLabel] = true
-
-			if err != nil {
-				return nil, err
-			}
-			stepBundles = append(stepBundles, *tsb)
-		}
-		test := test.Test{
-			Name:                name,
-			TargetManagerBundle: tmb,
-			TestFetcherBundle:   tfb,
-			TestStepsBundles:    stepBundles,
-		}
-		tests = append(tests, &test)
-	}
-
-	testDescriptorsJSON, err := json.Marshal(testDescriptors)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal test descriptors: %w", err)
-	}
-
-	job := job.Job{
-		ID:          types.JobID(0),
-		Name:        jd.JobName,
-		Tags:        jd.Tags,
-		Runs:        jd.Runs,
-		RunInterval: time.Duration(jd.RunInterval),
-		// reporter bundles must be set externally
-		TestDescriptors:      string(testDescriptorsJSON),
-		Tests:                tests,
-		RunReporterBundles:   nil,
-		FinalReporterBundles: nil,
-	}
-
-	job.Done = make(chan struct{})
-
-	job.CancelCh = make(chan struct{})
-	job.PauseCh = make(chan struct{})
-
-	return &job, nil
-}
-
-// NewJob returns a new Job object and the fetched test descriptors
-func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, error) {
-	var jd *job.JobDescriptor
-	if err := json.Unmarshal([]byte(jobDescriptor), &jd); err != nil {
-		return nil, err
-	}
-	j, err := newPartialJobFromDescriptor(pr, jd)
-	if err != nil {
-		return nil, err
-	}
-
-	var runReporterBundles []*job.ReporterBundle
-	for _, reporter := range jd.Reporting.RunReporters {
-		if strings.TrimSpace(reporter.Name) == "" {
-			return nil, errors.New("invalid empty or all-whitespace run reporter name")
-		}
-		bundle, err := pr.NewRunReporterBundle(reporter.Name, reporter.Parameters)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create bundle for run reporter '%s': %v", reporter.Name, err)
-		}
-		runReporterBundles = append(runReporterBundles, bundle)
-	}
-	var finalReporterBundles []*job.ReporterBundle
-	for _, reporter := range jd.Reporting.FinalReporters {
-		if strings.TrimSpace(reporter.Name) == "" {
-			return nil, errors.New("invalid empty or all-whitespace final reporter name")
-		}
-		bundle, err := pr.NewFinalReporterBundle(reporter.Name, reporter.Parameters)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create bundle for final reporter '%s': %v", reporter.Name, err)
-		}
-		finalReporterBundles = append(finalReporterBundles, bundle)
-	}
-
-	j.RunReporterBundles = runReporterBundles
-	j.FinalReporterBundles = finalReporterBundles
-
-	return j, nil
 }
 
 // New initializes and returns a new JobManager with the given API listener.

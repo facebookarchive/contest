@@ -13,13 +13,13 @@ import (
 
 // Request represents an incoming Job request which should be persisted in storage
 type Request struct {
-	JobID         types.JobID
-	JobName       string
-	Requestor     string
-	ServerID      string
-	RequestTime   time.Time
-	JobDescriptor string
-	// TestDescriptors are the fetched test steps as per the test fetcher
-	// defined in the JobDescriptor above.
-	TestDescriptors string
+	JobID       types.JobID
+	JobName     string
+	Requestor   string
+	ServerID    string
+	RequestTime time.Time
+
+	// Descriptor of the job, extended with with the full description of the
+	// test and cleanup steps obtained from the test fetcher.
+	ExtendedDescriptor *ExtendedDescriptor
 }

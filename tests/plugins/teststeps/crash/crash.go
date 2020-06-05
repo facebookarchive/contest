@@ -17,7 +17,7 @@ import (
 // Name is the name used to look this plugin up.
 var Name = "Crash"
 
-// Events defines the events that a TestStep is allow to emit
+// Events defines the events that a Step is allow to emit
 var Events = []event.Name{}
 
 type crash struct {
@@ -29,18 +29,18 @@ func (ts *crash) Name() string {
 }
 
 // Run executes a step which does never return.
-func (ts *crash) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
-	return fmt.Errorf("TestStep crashed")
+func (ts *crash) Run(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.Emitter) error {
+	return fmt.Errorf("Step crashed")
 }
 
-// ValidateParameters validates the parameters associated to the TestStep
-func (ts *crash) ValidateParameters(params test.TestStepParameters) error {
+// ValidateParameters validates the parameters associated to the Step
+func (ts *crash) ValidateParameters(params test.StepParameters) error {
 	return nil
 }
 
-// Resume tries to resume a previously interrupted test step. ExampleTestStep
+// Resume tries to resume a previously interrupted test step. ExampleStep
 // cannot resume.
-func (ts *crash) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *crash) Resume(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 
@@ -50,6 +50,6 @@ func (ts *crash) CanResume() bool {
 }
 
 // New creates a new noop step
-func New() test.TestStep {
+func New() test.Step {
 	return &crash{}
 }

@@ -242,7 +242,7 @@ The server responded with status 200 OK{
       "TestStatus": [
         {
           "TestName": "Literal test",
-          "TestStepStatus": [
+          "StepStatus": [
             {
               "Events": [],
               "TargetStatus": [
@@ -257,8 +257,8 @@ The server responded with status 200 OK{
                   }
                 }
               ],
-              "TestStepLabel": "cmd",
-              "TestStepName": "Cmd"
+              "StepLabel": "cmd",
+              "StepName": "Cmd"
             }
           ]
         }

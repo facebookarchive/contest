@@ -31,12 +31,12 @@ type PluginRegistry struct {
 	// TestFetchers collects a mapping of Plugin Name <-> TestFetchers constructor
 	TestFetchers map[string]test.TestFetcherFactory
 
-	// TestStep collects a mapping of Plugin Name <-> TestStep constructor
-	TestSteps map[string]test.TestStepFactory
+	// Step collects a mapping of Plugin Name <-> Step constructor
+	Steps map[string]test.StepFactory
 
-	// TestStepEvents collects a mapping between TestStep and list of event.Name
-	// that the TestStep is allowed to emit at runtime
-	TestStepsEvents map[string]map[event.Name]bool
+	// StepEvents collects a mapping between Step and list of event.Name
+	// that the Step is allowed to emit at runtime
+	StepsEvents map[string]map[event.Name]bool
 
 	// Reporters collects a mapping of Plugin Name <-> Reporter constructor
 	Reporters map[string]job.ReporterFactory
@@ -47,8 +47,8 @@ func NewPluginRegistry() *PluginRegistry {
 	pr := PluginRegistry{}
 	pr.TargetManagers = make(map[string]target.TargetManagerFactory)
 	pr.TestFetchers = make(map[string]test.TestFetcherFactory)
-	pr.TestSteps = make(map[string]test.TestStepFactory)
-	pr.TestStepsEvents = make(map[string]map[event.Name]bool)
+	pr.Steps = make(map[string]test.StepFactory)
+	pr.StepsEvents = make(map[string]map[event.Name]bool)
 	pr.Reporters = make(map[string]job.ReporterFactory)
 	return &pr
 }
@@ -79,27 +79,27 @@ func (r *PluginRegistry) RegisterTestFetcher(pluginName string, tff test.TestFet
 	return nil
 }
 
-// RegisterTestStep registers a TestStep within the registry and the associated events
-func (r *PluginRegistry) RegisterTestStep(pluginName string, tsf test.TestStepFactory, stepEvents []event.Name) error {
+// RegisterStep registers a Step within the registry and the associated events
+func (r *PluginRegistry) RegisterStep(pluginName string, tsf test.StepFactory, stepEvents []event.Name) error {
 	pluginName = strings.ToLower(pluginName)
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	log.Infof("Registering test step %s", pluginName)
-	if _, found := r.TestSteps[pluginName]; found {
-		return fmt.Errorf("TestSteps %s already registered", pluginName)
+	if _, found := r.Steps[pluginName]; found {
+		return fmt.Errorf("Steps %s already registered", pluginName)
 	}
-	r.TestSteps[pluginName] = tsf
+	r.Steps[pluginName] = tsf
 
 	// Verify that all the events the test step is associated with validate correctly
 	mapEvents := make(map[event.Name]bool)
 
 	for _, event := range stepEvents {
 		if err := event.Validate(); err != nil {
-			return fmt.Errorf("could not register TestStep %s: %v", pluginName, err)
+			return fmt.Errorf("could not register Step %s: %v", pluginName, err)
 		}
 		mapEvents[event] = true
 	}
-	r.TestStepsEvents[pluginName] = mapEvents
+	r.StepsEvents[pluginName] = mapEvents
 	return nil
 }
 
@@ -152,35 +152,35 @@ func (r *PluginRegistry) NewTestFetcher(pluginName string) (test.TestFetcher, er
 	return testFetcher, nil
 }
 
-// NewTestStep returns a new instance of a TestStep from its corresponding name
-func (r *PluginRegistry) NewTestStep(pluginName string) (test.TestStep, error) {
+// NewStep returns a new instance of a Step from its corresponding name
+func (r *PluginRegistry) NewStep(pluginName string) (test.Step, error) {
 	pluginName = strings.ToLower(pluginName)
 	var (
-		testStepFactory test.TestStepFactory
+		testStepFactory test.StepFactory
 		found           bool
 	)
 	r.lock.RLock()
-	testStepFactory, found = r.TestSteps[pluginName]
+	testStepFactory, found = r.Steps[pluginName]
 	r.lock.RUnlock()
 	if !found {
-		return nil, fmt.Errorf("TestStep %s is not registered", pluginName)
+		return nil, fmt.Errorf("Step %s is not registered", pluginName)
 	}
 	testStep := testStepFactory()
 	return testStep, nil
 }
 
-// NewTestStepEvents returns a map of events.EventName which can be emitted by the TestStep
-func (r *PluginRegistry) NewTestStepEvents(pluginName string) (map[event.Name]bool, error) {
+// NewStepEvents returns a map of events.EventName which can be emitted by the Step
+func (r *PluginRegistry) NewStepEvents(pluginName string) (map[event.Name]bool, error) {
 	pluginName = strings.ToLower(pluginName)
 	var (
 		testStepEvents map[event.Name]bool
 		found          bool
 	)
 	r.lock.RLock()
-	testStepEvents, found = r.TestStepsEvents[pluginName]
+	testStepEvents, found = r.StepsEvents[pluginName]
 	r.lock.RUnlock()
 	if !found {
-		return nil, fmt.Errorf("TestStep %s does not have any event associated", pluginName)
+		return nil, fmt.Errorf("Step %s does not have any event associated", pluginName)
 	}
 	return testStepEvents, nil
 }

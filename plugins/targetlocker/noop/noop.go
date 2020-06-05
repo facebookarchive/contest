@@ -53,7 +53,7 @@ func (tl Noop) RefreshLocks(jobID types.JobID, targets []*target.Target) error {
 	return nil
 }
 
-// New initializes and returns a new ExampleTestStep.
+// New initializes and returns a new ExampleStep.
 func New(_ time.Duration) target.Locker {
 	return &Noop{}
 }

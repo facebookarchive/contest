@@ -25,7 +25,7 @@ type data struct {
 	cancel, pause chan struct{}
 	inCh, outCh   chan *target.Target
 	errCh         chan cerrors.TargetError
-	stepChans     test.TestStepChannels
+	stepChans     test.StepChannels
 }
 
 func newData() data {
@@ -39,7 +39,7 @@ func newData() data {
 		inCh:   inCh,
 		outCh:  outCh,
 		errCh:  errCh,
-		stepChans: test.TestStepChannels{
+		stepChans: test.StepChannels{
 			In:  inCh,
 			Out: outCh,
 			Err: errCh,

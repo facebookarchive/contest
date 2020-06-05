@@ -19,7 +19,7 @@ import (
 )
 
 // targetRoutingEvents gather all event names which track the flow of targets
-// between TestSteps
+// between Steps
 var targetRoutingEvents = map[event.Name]struct{}{
 	target.EventTargetIn:    struct{}{},
 	target.EventTargetErr:   struct{}{},
@@ -27,8 +27,8 @@ var targetRoutingEvents = map[event.Name]struct{}{
 	target.EventTargetInErr: struct{}{},
 }
 
-// buildTargetStatuses builds a list of TargetStepStatus, which represent the status of Targets within a TestStep
-func (jr *JobRunner) buildTargetStatuses(coordinates job.TestStepCoordinates, targetEvents []testevent.Event) ([]job.TargetStatus, error) {
+// buildTargetStatuses builds a list of TargetStepStatus, which represent the status of Targets within a Step
+func (jr *JobRunner) buildTargetStatuses(coordinates job.StepCoordinates, targetEvents []testevent.Event) ([]job.TargetStatus, error) {
 	var targetStatuses []job.TargetStatus
 	for _, testEvent := range targetEvents {
 
@@ -43,7 +43,7 @@ func (jr *JobRunner) buildTargetStatuses(coordinates job.TestStepCoordinates, ta
 
 		if targetStatus == nil {
 			// There is no TargetStatus associated with this Target, create one
-			targetStatuses = append(targetStatuses, job.TargetStatus{TestStepCoordinates: coordinates, Target: testEvent.Data.Target})
+			targetStatuses = append(targetStatuses, job.TargetStatus{StepCoordinates: coordinates, Target: testEvent.Data.Target})
 			targetStatus = &targetStatuses[len(targetStatuses)-1]
 		}
 		// append non-routing events
@@ -75,20 +75,20 @@ func (jr *JobRunner) buildTargetStatuses(coordinates job.TestStepCoordinates, ta
 	return targetStatuses, nil
 }
 
-// buildTestStepStatus builds the status object of a test step belonging to a test
-func (jr *JobRunner) buildTestStepStatus(coordinates job.TestStepCoordinates) (*job.TestStepStatus, error) {
+// buildStepStatus builds the status object of a test step belonging to a test
+func (jr *JobRunner) buildStepStatus(coordinates job.StepCoordinates) (*job.StepStatus, error) {
 
-	testStepStatus := job.TestStepStatus{TestStepCoordinates: coordinates}
+	testStepStatus := job.StepStatus{StepCoordinates: coordinates}
 
-	// Fetch all Events associated to this TestStep
+	// Fetch all Events associated to this Step
 	testEvents, err := jr.testEvManager.Fetch(
 		testevent.QueryJobID(coordinates.JobID),
 		testevent.QueryRunID(coordinates.RunID),
 		testevent.QueryTestName(coordinates.TestName),
-		testevent.QueryTestStepLabel(coordinates.TestStepLabel),
+		testevent.QueryStepLabel(coordinates.StepLabel),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("could not fetch events associated to test step %s: %v", coordinates.TestStepLabel, err)
+		return nil, fmt.Errorf("could not fetch events associated to test step %s: %v", coordinates.StepLabel, err)
 	}
 
 	var stepEvents, targetEvents []testevent.Event
@@ -100,7 +100,7 @@ func (jr *JobRunner) buildTestStepStatus(coordinates job.TestStepCoordinates) (*
 				jobLog.Warningf("Found routing event '%s' with no target associated, this could indicate a bug", event.Data.EventName)
 				continue
 			}
-			// this goes into TestStepStatus.Events
+			// this goes into StepStatus.Events
 			stepEvents = append(stepEvents, event)
 		} else {
 			// this goes into TargetStatus.Events
@@ -111,7 +111,7 @@ func (jr *JobRunner) buildTestStepStatus(coordinates job.TestStepCoordinates) (*
 	testStepStatus.Events = stepEvents
 	targetStatuses, err := jr.buildTargetStatuses(coordinates, targetEvents)
 	if err != nil {
-		return nil, fmt.Errorf("could not build target status for test step %s: %v", coordinates.TestStepLabel, err)
+		return nil, fmt.Errorf("could not build target status for test step %s: %v", coordinates.StepLabel, err)
 	}
 	testStepStatus.TargetStatuses = targetStatuses
 	return &testStepStatus, nil
@@ -133,22 +133,22 @@ func (jr *JobRunner) buildTestStatus(coordinates job.TestCoordinates, currentJob
 		return nil, fmt.Errorf("job with id %d does not include any test named %s", coordinates.JobID, coordinates.TestName)
 	}
 	testStatus := job.TestStatus{
-		TestCoordinates:  coordinates,
-		TestStepStatuses: make([]job.TestStepStatus, len(currentTest.TestStepsBundles)),
+		TestCoordinates: coordinates,
+		StepStatuses:    make([]job.StepStatus, len(currentTest.TestStepBundles)),
 	}
 
-	// Build a TestStepStatus object for each TestStep
-	for index, bundle := range currentTest.TestStepsBundles {
-		testStepCoordinates := job.TestStepCoordinates{
+	// Build a StepStatus object for each Step
+	for index, bundle := range currentTest.TestStepBundles {
+		testStepCoordinates := job.StepCoordinates{
 			TestCoordinates: coordinates,
-			TestStepName:    bundle.TestStep.Name(),
-			TestStepLabel:   bundle.TestStepLabel,
+			StepName:        bundle.Step.Name(),
+			StepLabel:       bundle.StepLabel,
 		}
-		testStepStatus, err := jr.buildTestStepStatus(testStepCoordinates)
+		testStepStatus, err := jr.buildStepStatus(testStepCoordinates)
 		if err != nil {
-			return nil, fmt.Errorf("could not build TestStatus for test %s: %v", bundle.TestStep.Name(), err)
+			return nil, fmt.Errorf("could not build TestStatus for test %s: %v", bundle.Step.Name(), err)
 		}
-		testStatus.TestStepStatuses[index] = *testStepStatus
+		testStatus.StepStatuses[index] = *testStepStatus
 	}
 
 	// Calculate the overall status of the Targets which corresponds to the last TargetStatus
@@ -171,7 +171,7 @@ func (jr *JobRunner) buildTestStatus(coordinates job.TestCoordinates, currentJob
 
 	// Keep track of the last TargetStatus seen for each Target
 	targetMap := make(map[target.Target]job.TargetStatus)
-	for _, testStepStatus := range testStatus.TestStepStatuses {
+	for _, testStepStatus := range testStatus.StepStatuses {
 		for _, targetStatus := range testStepStatus.TargetStatuses {
 			targetMap[*targetStatus.Target] = targetStatus
 		}

@@ -36,10 +36,10 @@ func populateTestEvents(backend storage.Storage, emitTime time.Time) error {
 	testTargetFirst := target.Target{Name: "ATargetName", ID: "ATargetID", FQDN: "AFQDN"}
 	testTargetSecond := target.Target{Name: "BTargetName", ID: "BTargetID", FQDN: "BFQDN"}
 
-	hdrFirst := testevent.Header{JobID: 1, TestName: "ATestName", TestStepLabel: "TestStepLabel"}
+	hdrFirst := testevent.Header{JobID: 1, TestName: "ATestName", StepLabel: "StepLabel"}
 	dataFirst := testevent.Data{EventName: event.Name("AEventName"), Target: &testTargetFirst, Payload: payload}
 
-	hdrSecond := testevent.Header{JobID: 2, TestName: "BTestName", TestStepLabel: "TestStepLabel"}
+	hdrSecond := testevent.Header{JobID: 2, TestName: "BTestName", StepLabel: "StepLabel"}
 	dataSecond := testevent.Data{EventName: event.Name("BEventName"), Target: &testTargetSecond, Payload: payload}
 
 	eventFirst := testevent.Event{Header: &hdrFirst, Data: &dataFirst, EmitTime: emitTime}
@@ -59,7 +59,7 @@ func assertTestEvents(t *testing.T, ev []testevent.Event, emitTime time.Time) {
 
 	assert.Equal(t, types.JobID(1), ev[0].Header.JobID)
 	assert.Equal(t, "ATestName", ev[0].Header.TestName)
-	assert.Equal(t, "TestStepLabel", ev[0].Header.TestStepLabel)
+	assert.Equal(t, "StepLabel", ev[0].Header.StepLabel)
 	assert.Equal(t, event.Name("AEventName"), ev[0].Data.EventName)
 	assert.Equal(t, "ATargetName", ev[0].Data.Target.Name)
 	assert.Equal(t, "ATargetID", ev[0].Data.Target.ID)
@@ -69,7 +69,7 @@ func assertTestEvents(t *testing.T, ev []testevent.Event, emitTime time.Time) {
 	if len(ev) == 2 {
 		assert.Equal(t, types.JobID(2), ev[1].Header.JobID)
 		assert.Equal(t, "BTestName", ev[1].Header.TestName)
-		assert.Equal(t, "TestStepLabel", ev[1].Header.TestStepLabel)
+		assert.Equal(t, "StepLabel", ev[1].Header.StepLabel)
 		assert.Equal(t, event.Name("BEventName"), ev[1].Data.EventName)
 		assert.Equal(t, "BTargetName", ev[1].Data.Target.Name)
 		assert.Equal(t, "BTargetID", ev[1].Data.Target.ID)
@@ -120,7 +120,7 @@ func (suite *TestEventsSuite) TestRetrieveMultipleTestEvents() {
 	err := populateTestEvents(suite.txStorage, emitTime)
 	require.NoError(suite.T(), err)
 
-	testEventQuery := mustBuildQuery(suite.T(), testevent.QueryTestStepLabel("TestStepLabel"))
+	testEventQuery := mustBuildQuery(suite.T(), testevent.QueryStepLabel("StepLabel"))
 	results, err := suite.txStorage.GetTestEvents(testEventQuery)
 
 	require.NoError(suite.T(), err)

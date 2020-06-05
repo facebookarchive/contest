@@ -15,7 +15,7 @@ import (
 // Name is the name used to look this plugin up.
 var Name = "Noop"
 
-// Events defines the events that a TestStep is allow to emit
+// Events defines the events that a Step is allow to emit
 var Events = []event.Name{}
 
 type noop struct {
@@ -27,7 +27,7 @@ func (ts *noop) Name() string {
 }
 
 // Run executes a step which does never return.
-func (ts *noop) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *noop) Run(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.Emitter) error {
 	for {
 		select {
 		case target := <-ch.In:
@@ -43,14 +43,14 @@ func (ts *noop) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, par
 	}
 }
 
-// ValidateParameters validates the parameters associated to the TestStep
-func (ts *noop) ValidateParameters(params test.TestStepParameters) error {
+// ValidateParameters validates the parameters associated to the Step
+func (ts *noop) ValidateParameters(params test.StepParameters) error {
 	return nil
 }
 
-// Resume tries to resume a previously interrupted test step. ExampleTestStep
+// Resume tries to resume a previously interrupted test step. ExampleStep
 // cannot resume.
-func (ts *noop) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *noop) Resume(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 
@@ -60,6 +60,6 @@ func (ts *noop) CanResume() bool {
 }
 
 // New creates a new noop step
-func New() test.TestStep {
+func New() test.Step {
 	return &noop{}
 }

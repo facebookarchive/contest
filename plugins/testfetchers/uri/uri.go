@@ -83,10 +83,10 @@ func (tf URI) ValidateFetchParameters(params []byte) (interface{}, error) {
 // * Name of the test
 // * list of step definitions
 // * an error if any
-func (tf *URI) Fetch(params interface{}) (string, []*test.TestStepDescriptor, error) {
+func (tf *URI) Fetch(params interface{}) (*test.StepsDescriptors, error) {
 	fetchParams, ok := params.(FetchParameters)
 	if !ok {
-		return "", nil, fmt.Errorf("Fetch expects uri.FetchParameters object")
+		return nil, fmt.Errorf("Fetch expects uri.FetchParameters object")
 	}
 	log.Printf("Fetching tests with params %+v", fetchParams)
 	scheme := strings.ToLower(strings.ToLower(fetchParams.URI.Scheme))
@@ -99,30 +99,36 @@ func (tf *URI) Fetch(params interface{}) (string, []*test.TestStepDescriptor, er
 		// naively assume that it's OK to read the whole file in memory.
 		buf, err = ioutil.ReadFile(fetchParams.URI.Path)
 		if err != nil {
-			return "", nil, err
+			return nil, err
 		}
 	case "http", "https":
 		resp, err := http.Get(fetchParams.URI.String())
 		if err != nil {
-			return "", nil, err
+			return nil, err
 		}
 		buf, err = ioutil.ReadAll(resp.Body)
 		if err != nil {
-			return "", nil, err
+			return nil, err
 		}
 	default:
-		return "", nil, fmt.Errorf("unsupported scheme '%s'", scheme)
+		return nil, fmt.Errorf("unsupported scheme '%s'", scheme)
 	}
 	type doc struct {
-		Steps []*test.TestStepDescriptor
+		Steps   []test.StepDescriptor
+		Cleanup []test.StepDescriptor
 	}
 	var d doc
 	if err := json.Unmarshal(buf, &d); err != nil {
-		return "", nil, fmt.Errorf("cannot decode JSON test description: %v", err)
+		return nil, fmt.Errorf("cannot decode JSON test description: %v", err)
 	}
 	// TODO do something with the Report object (or factor it out from the step
 	//      definition)
-	return fetchParams.TestName, d.Steps, nil
+	descriptors := test.StepsDescriptors{
+		TestName: fetchParams.TestName,
+		Test:     d.Steps,
+		Cleanup:  d.Cleanup,
+	}
+	return &descriptors, nil
 }
 
 // New initializes the TestFetcher object

@@ -19,10 +19,10 @@ import (
 
 var (
 	header = testevent.Header{
-		JobID:         types.JobID(123),
-		RunID:         types.RunID(456),
-		TestName:      "TestStep",
-		TestStepLabel: "TestLabel",
+		JobID: types.JobID(123),
+		RunID: types.RunID(456),
+		TestName: "TestStep",
+		StepLabel: "TestLabel",
 	}
 	allowedEvents = []event.Name{
 		"TestEventAllowed1",

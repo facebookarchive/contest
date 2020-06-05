@@ -46,7 +46,7 @@ func emptyFrameworkEventQuery(eventQuery *frameworkevent.Query) bool {
 // values. If so, the Query is considered "empty" and doesn't result in
 // any lookup in the database
 func emptyTestEventQuery(eventQuery *testevent.Query) bool {
-	return emptyEventQuery(&eventQuery.Query) && eventQuery.TestName == "" && eventQuery.TestStepLabel == ""
+	return emptyEventQuery(&eventQuery.Query) && eventQuery.TestName == "" && eventQuery.StepLabel == ""
 }
 
 // StoreTestEvent stores a test event into the database
@@ -102,8 +102,8 @@ func eventTestMatch(queryTestName, testName string) bool {
 	return true
 }
 
-func eventTestStepMatch(queryTestStepLabel, testStepLabel string) bool {
-	if queryTestStepLabel != "" && queryTestStepLabel != testStepLabel {
+func eventStepMatch(queryStepLabel, testStepLabel string) bool {
+	if queryStepLabel != "" && queryStepLabel != testStepLabel {
 		return false
 	}
 	return true
@@ -126,7 +126,7 @@ func (m *Memory) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, 
 			eventNameMatch(eventQuery.EventNames, event.Data.EventName) &&
 			eventTimeMatch(eventQuery.EmittedStartTime, eventQuery.EmittedEndTime, event.EmitTime) &&
 			eventTestMatch(eventQuery.TestName, event.Header.TestName) &&
-			eventTestStepMatch(eventQuery.TestStepLabel, event.Header.TestStepLabel) {
+			eventStepMatch(eventQuery.StepLabel, event.Header.StepLabel) {
 			matchingTestEvents = append(matchingTestEvents, event)
 		}
 	}

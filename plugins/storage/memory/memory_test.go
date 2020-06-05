@@ -20,10 +20,10 @@ func TestMemory_GetTestEvents(t *testing.T) {
 	ev0 := testevent.Event{
 		EmitTime: time.Now(),
 		Header: &testevent.Header{
-			JobID:         1,
-			RunID:         2,
-			TestName:      "3",
-			TestStepLabel: "4",
+			JobID:     1,
+			RunID:     2,
+			TestName:  "3",
+			StepLabel: "4",
 		},
 		Data: &testevent.Data{},
 	}
@@ -33,10 +33,10 @@ func TestMemory_GetTestEvents(t *testing.T) {
 	ev1 := testevent.Event{
 		EmitTime: time.Now(),
 		Header: &testevent.Header{
-			JobID:         1,
-			RunID:         5,
-			TestName:      "3",
-			TestStepLabel: "4",
+			JobID:     1,
+			RunID:     5,
+			TestName:  "3",
+			StepLabel: "4",
 		},
 		Data: &testevent.Data{},
 	}

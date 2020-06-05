@@ -70,7 +70,7 @@ func (ts SSHCmd) Name() string {
 }
 
 // Run executes the cmd step.
-func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.Emitter) error {
 	// XXX: Dragons ahead! The target (%t) substitution, and function
 	// expression evaluations are done at run-time, so they may still fail
 	// despite passing at early validation time.
@@ -258,7 +258,7 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 	return teststeps.ForEachTarget(Name, cancel, pause, ch, f)
 }
 
-func (ts *SSHCmd) validateAndPopulate(params test.TestStepParameters) error {
+func (ts *SSHCmd) validateAndPopulate(params test.StepParameters) error {
 	var err error
 	ts.Host = params.GetOne("host")
 	if ts.Host.IsEmpty() {
@@ -304,15 +304,15 @@ func (ts *SSHCmd) validateAndPopulate(params test.TestStepParameters) error {
 	return nil
 }
 
-// ValidateParameters validates the parameters associated to the TestStep
-func (ts *SSHCmd) ValidateParameters(params test.TestStepParameters) error {
+// ValidateParameters validates the parameters associated to the Step
+func (ts *SSHCmd) ValidateParameters(params test.StepParameters) error {
 	log.Printf("Params %+v", params)
 	return ts.validateAndPopulate(params)
 }
 
 // Resume tries to resume a previously interrupted test step. SSHCmd cannot
 // resume.
-func (ts *SSHCmd) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *SSHCmd) Resume(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 
@@ -322,11 +322,11 @@ func (ts *SSHCmd) CanResume() bool {
 }
 
 // New initializes and returns a new SSHCmd test step.
-func New() test.TestStep {
+func New() test.Step {
 	return &SSHCmd{}
 }
 
 // Load returns the name, factory and events which are needed to register the step.
-func Load() (string, test.TestStepFactory, []event.Name) {
+func Load() (string, test.StepFactory, []event.Name) {
 	return Name, New, Events
 }

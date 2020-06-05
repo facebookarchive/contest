@@ -208,11 +208,11 @@ func (suite *TestJobManagerSuite) SetupTest() {
 	pluginRegistry.RegisterTargetManager(targetlist.Name, targetlist.New)
 	pluginRegistry.RegisterTestFetcher(literal.Name, literal.New)
 	pluginRegistry.RegisterReporter(targetsuccess.Name, targetsuccess.New)
-	pluginRegistry.RegisterTestStep(noop.Name, noop.New, noop.Events)
-	pluginRegistry.RegisterTestStep(fail.Name, fail.New, fail.Events)
-	pluginRegistry.RegisterTestStep(crash.Name, crash.New, crash.Events)
-	pluginRegistry.RegisterTestStep(noreturn.Name, noreturn.New, noreturn.Events)
-	pluginRegistry.RegisterTestStep(slowecho.Name, slowecho.New, slowecho.Events)
+	pluginRegistry.RegisterStep(noop.Name, noop.New, noop.Events)
+	pluginRegistry.RegisterStep(fail.Name, fail.New, fail.Events)
+	pluginRegistry.RegisterStep(crash.Name, crash.New, crash.Events)
+	pluginRegistry.RegisterStep(noreturn.Name, noreturn.New, noreturn.Events)
+	pluginRegistry.RegisterStep(slowecho.Name, slowecho.New, slowecho.Events)
 
 	jm, err := jobmanager.New(&testListener, pluginRegistry)
 	require.NoError(suite.T(), err)
@@ -445,7 +445,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCrash() {
 	ev, err := pollForEvent(suite.eventManager, jobmanager.EventJobFailed, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
-	require.Equal(suite.T(), "{\"Err\":\"TestStep crashed\"}", string(*ev[0].Payload))
+	require.Equal(suite.T(), "{\"Err\":\"Step crashed\"}", string(*ev[0].Payload))
 	jobReport, err := suite.jobStorageManager.GetJobReport(types.JobID(jobID))
 
 	require.NoError(suite.T(), err)
@@ -491,7 +491,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCancellationFailure() {
 
 }
 
-func (suite *TestJobManagerSuite) TestTestStepNoLabel() {
+func (suite *TestJobManagerSuite) StepNoLabel() {
 	go func() {
 		suite.jm.Start(suite.sigs)
 		close(suite.jobManagerCh)
@@ -502,7 +502,7 @@ func (suite *TestJobManagerSuite) TestTestStepNoLabel() {
 	require.True(suite.T(), errors.As(err, &pluginregistry.ErrStepLabelIsMandatory{}))
 }
 
-func (suite *TestJobManagerSuite) TestTestStepLabelDuplication() {
+func (suite *TestJobManagerSuite) StepLabelDuplication() {
 	go func() {
 		suite.jm.Start(suite.sigs)
 		close(suite.jobManagerCh)

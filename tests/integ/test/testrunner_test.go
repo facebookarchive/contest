@@ -43,7 +43,7 @@ var (
 	successTimeout = 5 * time.Second
 )
 
-var testSteps = map[string]test.TestStepFactory{
+var testSteps = map[string]test.StepFactory{
 	echo.Name:      echo.New,
 	example.Name:   example.New,
 	panicstep.Name: panicstep.New,
@@ -72,14 +72,14 @@ func TestMain(m *testing.M) {
 	logging.Disable()
 
 	pluginRegistry = pluginregistry.NewPluginRegistry()
-	// Setup the PluginRegistry by registering TestSteps
+	// Setup the PluginRegistry by registering Steps
 	for name, tsfactory := range testSteps {
 		if _, ok := testStepsEvents[name]; !ok {
-			err := fmt.Errorf("TestStep %s does not define any associated event", name)
+			err := fmt.Errorf("Step %s does not define any associated event", name)
 			panic(err)
 		}
-		if err := pluginRegistry.RegisterTestStep(name, tsfactory, testStepsEvents[name]); err != nil {
-			panic(fmt.Sprintf("could not register TestStep: %+v", err))
+		if err := pluginRegistry.RegisterStep(name, tsfactory, testStepsEvents[name]); err != nil {
+			panic(fmt.Sprintf("could not register Step: %+v", err))
 		}
 	}
 	// Setup test Targets and empty parameters
@@ -107,18 +107,18 @@ func TestSuccessfulCompletion(t *testing.T) {
 	jobID := types.JobID(1)
 	runID := types.RunID(1)
 
-	ts1, err := pluginRegistry.NewTestStep("Example")
+	ts1, err := pluginRegistry.NewStep("Example")
 	require.NoError(t, err)
-	ts2, err := pluginRegistry.NewTestStep("Example")
+	ts2, err := pluginRegistry.NewStep("Example")
 	require.NoError(t, err)
-	ts3, err := pluginRegistry.NewTestStep("Example")
+	ts3, err := pluginRegistry.NewStep("Example")
 	require.NoError(t, err)
 
-	params := make(test.TestStepParameters)
-	testSteps := []test.TestStepBundle{
-		test.TestStepBundle{TestStep: ts1, TestStepLabel: "FirstStage", Parameters: params},
-		test.TestStepBundle{TestStep: ts2, TestStepLabel: "SecondStage", Parameters: params},
-		test.TestStepBundle{TestStep: ts3, TestStepLabel: "ThirdStage", Parameters: params},
+	params := make(test.StepParameters)
+	testSteps := []test.StepBundle{
+		test.StepBundle{Step: ts1, StepLabel: "FirstStage", Parameters: params},
+		test.StepBundle{Step: ts2, StepLabel: "SecondStage", Parameters: params},
+		test.StepBundle{Step: ts3, StepLabel: "ThirdStage", Parameters: params},
 	}
 
 	errCh := make(chan error)
@@ -127,7 +127,7 @@ func TestSuccessfulCompletion(t *testing.T) {
 
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
@@ -143,15 +143,15 @@ func TestPanicStep(t *testing.T) {
 	jobID := types.JobID(1)
 	runID := types.RunID(1)
 
-	ts1, err := pluginRegistry.NewTestStep("Panic")
+	ts1, err := pluginRegistry.NewStep("Panic")
 	require.NoError(t, err)
-	ts2, err := pluginRegistry.NewTestStep("Example")
+	ts2, err := pluginRegistry.NewStep("Example")
 	require.NoError(t, err)
 
-	params := make(test.TestStepParameters)
-	testSteps := []test.TestStepBundle{
-		test.TestStepBundle{TestStep: ts1, TestStepLabel: "StageOne", Parameters: params},
-		test.TestStepBundle{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
+	params := make(test.StepParameters)
+	testSteps := []test.StepBundle{
+		test.StepBundle{Step: ts1, StepLabel: "StageOne", Parameters: params},
+		test.StepBundle{Step: ts2, StepLabel: "StageTwo", Parameters: params},
 	}
 
 	cancel := make(chan struct{})
@@ -160,7 +160,7 @@ func TestPanicStep(t *testing.T) {
 	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
@@ -176,15 +176,15 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 	jobID := types.JobID(1)
 	runID := types.RunID(1)
 
-	ts1, err := pluginRegistry.NewTestStep("NoReturn")
+	ts1, err := pluginRegistry.NewStep("NoReturn")
 	require.NoError(t, err)
-	ts2, err := pluginRegistry.NewTestStep("Example")
+	ts2, err := pluginRegistry.NewStep("Example")
 	require.NoError(t, err)
 
-	params := make(test.TestStepParameters)
-	testSteps := []test.TestStepBundle{
-		test.TestStepBundle{TestStep: ts1, Parameters: params, TestStepLabel: "NoReturn"},
-		test.TestStepBundle{TestStep: ts2, Parameters: params, TestStepLabel: "Example"},
+	params := make(test.StepParameters)
+	testSteps := []test.StepBundle{
+		test.StepBundle{Step: ts1, Parameters: params, StepLabel: "NoReturn"},
+		test.StepBundle{Step: ts2, Parameters: params, StepLabel: "Example"},
 	}
 
 	cancel := make(chan struct{})
@@ -199,17 +199,17 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 	}
 	go func() {
 		tr := runner.NewTestRunnerWithTimeouts(timeouts)
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
 	case err = <-errCh:
 		require.Error(t, err)
-		if _, ok := err.(*cerrors.ErrTestStepsNeverReturned); !ok {
-			errString := fmt.Sprintf("Error returned by TestRunner should be of type ErrTestStepsNeverReturned: %v", err)
+		if _, ok := err.(*cerrors.ErrStepsNeverReturned); !ok {
+			errString := fmt.Sprintf("Error returned by TestRunner should be of type ErrStepsNeverReturned: %v", err)
 			assert.FailNow(t, errString)
 		}
-		assert.NotNil(t, err.(*cerrors.ErrTestStepsNeverReturned))
+		assert.NotNil(t, err.(*cerrors.ErrStepsNeverReturned))
 	case <-time.After(successTimeout):
 		t.Errorf("test should return within timeout: %+v", successTimeout)
 	}
@@ -220,15 +220,15 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 	jobID := types.JobID(1)
 	runID := types.RunID(1)
 
-	ts1, err := pluginRegistry.NewTestStep("Hanging")
+	ts1, err := pluginRegistry.NewStep("Hanging")
 	require.NoError(t, err)
-	ts2, err := pluginRegistry.NewTestStep("Example")
+	ts2, err := pluginRegistry.NewStep("Example")
 	require.NoError(t, err)
 
-	params := make(test.TestStepParameters)
-	testSteps := []test.TestStepBundle{
-		test.TestStepBundle{TestStep: ts1, TestStepLabel: "StageOne", Parameters: params},
-		test.TestStepBundle{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
+	params := make(test.StepParameters)
+	testSteps := []test.StepBundle{
+		test.StepBundle{Step: ts1, StepLabel: "StageOne", Parameters: params},
+		test.StepBundle{Step: ts2, StepLabel: "StageTwo", Parameters: params},
 	}
 
 	cancel := make(chan struct{})
@@ -251,7 +251,7 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 
 	go func() {
 		tr := runner.NewTestRunnerWithTimeouts(timeouts)
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
@@ -269,8 +269,8 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 		case err = <-errCh:
 			// The test timed out, which is an error from the perspective of the JobManager
 			require.Error(t, err)
-			if _, ok := err.(*cerrors.ErrTestStepsNeverReturned); !ok {
-				errString := fmt.Sprintf("Error returned by TestRunner should be of type ErrTestStepsNeverReturned: %v", err)
+			if _, ok := err.(*cerrors.ErrStepsNeverReturned); !ok {
+				errString := fmt.Sprintf("Error returned by TestRunner should be of type ErrStepsNeverReturned: %v", err)
 				assert.FailNow(t, errString)
 			}
 		case <-time.After(testShutdownTimeout):
@@ -279,20 +279,20 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 	}
 }
 
-func TestStepClosesChannels(t *testing.T) {
+func StepClosesChannels(t *testing.T) {
 
 	jobID := types.JobID(1)
 	runID := types.RunID(1)
 
-	ts1, err := pluginRegistry.NewTestStep("Channels")
+	ts1, err := pluginRegistry.NewStep("Channels")
 	require.NoError(t, err)
-	ts2, err := pluginRegistry.NewTestStep("Example")
+	ts2, err := pluginRegistry.NewStep("Example")
 	require.NoError(t, err)
 
-	params := make(test.TestStepParameters)
-	testSteps := []test.TestStepBundle{
-		test.TestStepBundle{TestStep: ts1, TestStepLabel: "StageOne", Parameters: params},
-		test.TestStepBundle{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
+	params := make(test.StepParameters)
+	testSteps := []test.StepBundle{
+		test.StepBundle{Step: ts1, StepLabel: "StageOne", Parameters: params},
+		test.StepBundle{Step: ts2, StepLabel: "StageTwo", Parameters: params},
 	}
 
 	cancel := make(chan struct{})
@@ -301,15 +301,15 @@ func TestStepClosesChannels(t *testing.T) {
 	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
 	testTimeout := 2 * time.Second
 	select {
 	case err = <-errCh:
-		if _, ok := err.(*cerrors.ErrTestStepClosedChannels); !ok {
-			errString := fmt.Sprintf("Error returned by TestRunner should be of type ErrTestStepClosedChannels, got %T(%v)", err, err)
+		if _, ok := err.(*cerrors.ErrStepClosedChannels); !ok {
+			errString := fmt.Sprintf("Error returned by TestRunner should be of type ErrStepClosedChannels, got %T(%v)", err, err)
 			assert.FailNow(t, errString)
 		}
 	case <-time.After(testTimeout):
@@ -322,10 +322,10 @@ func TestCmdPlugin(t *testing.T) {
 	jobID := types.JobID(1)
 	runID := types.RunID(1)
 
-	ts1, err := pluginRegistry.NewTestStep("cmd")
+	ts1, err := pluginRegistry.NewStep("cmd")
 	require.NoError(t, err)
 
-	params := make(test.TestStepParameters)
+	params := make(test.StepParameters)
 	params["executable"] = []test.Param{
 		*test.NewParam("sleep"),
 	}
@@ -333,8 +333,8 @@ func TestCmdPlugin(t *testing.T) {
 		*test.NewParam("5"),
 	}
 
-	testSteps := []test.TestStepBundle{
-		test.TestStepBundle{TestStep: ts1, Parameters: params},
+	testSteps := []test.StepBundle{
+		test.StepBundle{Step: ts1, Parameters: params},
 	}
 
 	cancel := make(chan struct{})
@@ -343,7 +343,7 @@ func TestCmdPlugin(t *testing.T) {
 	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
@@ -359,20 +359,20 @@ func TestCmdPlugin(t *testing.T) {
 	}
 }
 
-func TestNoRunTestStepIfNoTargets(t *testing.T) {
+func TestNoRunStepIfNoTargets(t *testing.T) {
 
 	jobID := types.JobID(1)
 	runID := types.RunID(1)
 
-	ts1, err := pluginRegistry.NewTestStep("Fail")
+	ts1, err := pluginRegistry.NewStep("Fail")
 	require.NoError(t, err)
-	ts2, err := pluginRegistry.NewTestStep("Crash")
+	ts2, err := pluginRegistry.NewStep("Crash")
 	require.NoError(t, err)
 
-	params := make(test.TestStepParameters)
-	testSteps := []test.TestStepBundle{
-		{TestStep: ts1, TestStepLabel: "StageOne", Parameters: params},
-		{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
+	params := make(test.StepParameters)
+	testSteps := []test.StepBundle{
+		{Step: ts1, StepLabel: "StageOne", Parameters: params},
+		{Step: ts2, StepLabel: "StageTwo", Parameters: params},
 	}
 
 	cancel := make(chan struct{})
@@ -381,14 +381,14 @@ func TestNoRunTestStepIfNoTargets(t *testing.T) {
 	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
 	testTimeout := 2 * time.Second
 	select {
 	case err = <-errCh:
-		assert.Nil(t, err, "the Crash TestStep shouldn't be ran")
+		assert.Nil(t, err, "the Crash Step shouldn't be ran")
 	case <-time.After(testTimeout):
 		assert.FailNow(t, "TestRunner should not time out")
 	}

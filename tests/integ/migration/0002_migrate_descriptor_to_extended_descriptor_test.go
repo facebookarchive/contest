@@ -105,6 +105,11 @@ func (suite *TestDescriptorMigrationSuite) TestUpMigratesToExtendedDescriptor() 
 	err = json.Unmarshal([]byte(extendedDescriptorJSON), &extendedDescriptor)
 	require.NoError(suite.T(), err)
 
+	// Assertions on the content of ExtendedDescriptor.Descriptor
+	require.Equal(suite.T(), extendedDescriptor.Descriptor.JobName, "test job")
+	require.Equal(suite.T(), extendedDescriptor.Descriptor.Runs, uint(3))
+
+	// Assertions on the content of StepsDescriptors
 	stepDescriptors := extendedDescriptor.StepsDescriptors
 	require.Equal(suite.T(), 1, len(stepDescriptors), fmt.Sprintf("len(%s) != 1", stepDescriptors))
 

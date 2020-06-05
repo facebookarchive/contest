@@ -27,7 +27,7 @@ import (
 type pipeline struct {
 	log *logrus.Entry
 
-	bundles []test.TestStepBundle
+	bundles []test.StepBundle
 
 	jobID types.JobID
 	runID types.RunID
@@ -48,23 +48,23 @@ type pipeline struct {
 	numIngress uint64
 }
 
-// runStep runs synchronously a TestStep and peforms sanity checks on the status
-// of the input/output channels on the defer control path. When the TestStep returns,
+// runStep runs synchronously a Step and peforms sanity checks on the status
+// of the input/output channels on the defer control path. When the Step returns,
 // the associated output channels are closed. This signals to the routing subsytem
 // that this step of the pipeline will not be producing any more targets. The API
-// dictates that the TestStep can only return if its input channel has been closed,
+// dictates that the Step can only return if its input channel has been closed,
 // which indicates that no more targets will be submitted to that step. If the
-// TestStep does not comply with this rule, an error is sent downstream to the pipeline
-// runner, which will in turn shutdown the whole pipeline and flag the TestStep
-// as misbehaving. All attempts to send downstream a result after a TestStep complete
+// Step does not comply with this rule, an error is sent downstream to the pipeline
+// runner, which will in turn shutdown the whole pipeline and flag the Step
+// as misbehaving. All attempts to send downstream a result after a Step complete
 // are protected by a timeout and fail open. This because it's not guaranteed that
-// the TestRunner will still be listening on the result channels. If the TestStep hangs
+// the TestRunner will still be listening on the result channels. If the Step hangs
 // indefinitely and does not respond to cancellation signals, the TestRunner will
-// flag it as misbehaving and return. If the TestStep returns once the TestRunner
+// flag it as misbehaving and return. If the Step returns once the TestRunner
 // has completed, it will timeout trying to write on the result channel.
-func (p *pipeline) runStep(cancel, pause <-chan struct{}, jobID types.JobID, runID types.RunID, bundle test.TestStepBundle, stepCh stepCh, resultCh chan<- stepResult, ev testevent.EmitterFetcher) {
+func (p *pipeline) runStep(cancel, pause <-chan struct{}, jobID types.JobID, runID types.RunID, bundle test.StepBundle, stepCh stepCh, resultCh chan<- stepResult, ev testevent.EmitterFetcher) {
 
-	stepLabel := bundle.TestStepLabel
+	stepLabel := bundle.StepLabel
 	log := logging.AddField(p.log, "step", stepLabel)
 	log = logging.AddField(log, "phase", "runStep")
 
@@ -85,7 +85,7 @@ func (p *pipeline) runStep(cancel, pause <-chan struct{}, jobID types.JobID, run
 
 	// We should not run a test step if there're no targets in stepCh.stepIn
 	// First we check if there's at least one incoming target, and only
-	// then we call `bundle.TestStep.Run()`.
+	// then we call `bundle.Step.Run()`.
 	//
 	// ITS: https://github.com/facebookincubator/contest/issues/101
 	stepIn, onFirstTargetChan, onNoTargetsChan := waitForFirstTarget(stepCh.stepIn, cancel, pause)
@@ -105,24 +105,24 @@ func (p *pipeline) runStep(cancel, pause <-chan struct{}, jobID types.JobID, run
 
 	var err error
 	if haveTargets {
-		// Run the TestStep and defer to the return path the handling of panic
+		// Run the Step and defer to the return path the handling of panic
 		// conditions. If multiple error conditions occur, send downstream only
 		// the first error encountered.
-		channels := test.TestStepChannels{
+		channels := test.StepChannels{
 			In:  stepIn,
 			Out: stepCh.stepOut,
 			Err: stepCh.stepErr,
 		}
-		err = bundle.TestStep.Run(cancel, pause, channels, bundle.Parameters, ev)
+		err = bundle.Step.Run(cancel, pause, channels, bundle.Parameters, ev)
 	}
 
-	log.Debugf("step %s returned", bundle.TestStepLabel)
+	log.Debugf("step %s returned", bundle.StepLabel)
 	var (
 		cancellationAsserted bool
 		pauseAsserted        bool
 	)
 	// Check if we are shutting down. If so, do not perform sanity checks on the
-	// channels but return immediately as the TestStep itself probably returned
+	// channels but return immediately as the Step itself probably returned
 	// because it honored the termination signal.
 	select {
 	case <-cancel:
@@ -141,12 +141,12 @@ func (p *pipeline) runStep(cancel, pause <-chan struct{}, jobID types.JobID, run
 		select {
 		case resultCh <- stepResult{jobID: jobID, runID: runID, bundle: bundle, err: err}:
 		case <-time.After(timeout):
-			log.Warningf("sending error back from TestStep runner timed out after %v: %v", timeout, err)
+			log.Warningf("sending error back from Step runner timed out after %v: %v", timeout, err)
 		}
 		return
 	}
 
-	// If the TestStep has crashed with an error, return immediately the result to the TestRunner
+	// If the Step has crashed with an error, return immediately the result to the TestRunner
 	// which in turn will issue a cancellation signal to the pipeline
 	if err != nil {
 		select {
@@ -157,22 +157,22 @@ func (p *pipeline) runStep(cancel, pause <-chan struct{}, jobID types.JobID, run
 		return
 	}
 
-	// Perform sanity checks on the status of the channels. The TestStep API
+	// Perform sanity checks on the status of the channels. The Step API
 	// mandates that output and error channels shall not be closed by the
-	// TestStep itself. If the TestStep does not comply with the API, it is
+	// Step itself. If the Step does not comply with the API, it is
 	// flagged as misbehaving.
 	select {
 	case _, ok := <-stepCh.stepIn:
 		if !ok {
 			break
 		}
-		// stepCh.stepIn is not closed, but the TestStep returned, which is a violation
+		// stepCh.stepIn is not closed, but the Step returned, which is a violation
 		// of the API. Record the error if no other error condition has been seen.
 		if err == nil {
 			err = fmt.Errorf("step %s returned, but input channel is not closed (api violation; case 0)", stepLabel)
 		}
 	default:
-		// stepCh.stepIn is not closed, and a read operation would block. The TestStep
+		// stepCh.stepIn is not closed, and a read operation would block. The Step
 		// does not comply with the API (see above).
 		if err == nil {
 			err = fmt.Errorf("step %s returned, but input channel is not closed (api violation; case 1)", stepLabel)
@@ -185,7 +185,7 @@ func (p *pipeline) runStep(cancel, pause <-chan struct{}, jobID types.JobID, run
 			// stepOutCh has been closed. This is a violation of the API. Record the error
 			// if no other error condition has been seen.
 			if err == nil {
-				err = &cerrors.ErrTestStepClosedChannels{StepName: stepLabel}
+				err = &cerrors.ErrStepClosedChannels{StepName: stepLabel}
 			}
 		}
 	default:
@@ -200,7 +200,7 @@ func (p *pipeline) runStep(cancel, pause <-chan struct{}, jobID types.JobID, run
 			// stepErrCh has been closed. This is a violation of the API. Record the error
 			// if no other error condition has been seen.
 			if err == nil {
-				err = &cerrors.ErrTestStepClosedChannels{StepName: stepLabel}
+				err = &cerrors.ErrStepClosedChannels{StepName: stepLabel}
 			}
 		}
 	default:
@@ -219,7 +219,7 @@ func (p *pipeline) runStep(cancel, pause <-chan struct{}, jobID types.JobID, run
 
 // waitTargets reads results coming from results channels until all Targets
 // have completed or an error occurs. If all Targets complete successfully, it checks
-// whether TestSteps and routing blocks have completed as well. If not, returns an
+// whether Steps and routing blocks have completed as well. If not, returns an
 // error. Termination is signalled via terminate channel.
 func (p *pipeline) waitTargets(terminate <-chan struct{}, completedCh chan<- *target.Target) error {
 
@@ -250,7 +250,7 @@ func (p *pipeline) waitTargets(terminate <-chan struct{}, completedCh chan<- *ta
 			return nil
 		case res := <-p.ctrlChannels.routingResultCh:
 			err = res.err
-			p.state.SetRouting(res.bundle.TestStepLabel, res.err)
+			p.state.SetRouting(res.bundle.StepLabel, res.err)
 		case res := <-p.ctrlChannels.stepResultCh:
 			err = res.err
 			if err != nil {
@@ -261,10 +261,10 @@ func (p *pipeline) waitTargets(terminate <-chan struct{}, completedCh chan<- *ta
 				}
 				rm := json.RawMessage(payload)
 				header := testevent.Header{
-					JobID:         res.jobID,
-					RunID:         res.runID,
-					TestName:      p.test.Name,
-					TestStepLabel: res.bundle.TestStepLabel,
+					JobID:     res.jobID,
+					RunID:     res.runID,
+					TestName:  p.test.Name,
+					StepLabel: res.bundle.StepLabel,
 				}
 				ev := storage.NewTestEventEmitterFetcher(header)
 				// this event is not associated to any target, e.g. a plugin has returned an error.
@@ -274,7 +274,7 @@ func (p *pipeline) waitTargets(terminate <-chan struct{}, completedCh chan<- *ta
 					log.Warningf("could not emit completion error event %v", errEv)
 				}
 			}
-			p.state.SetStep(res.bundle.TestStepLabel, res.err)
+			p.state.SetStep(res.bundle.StepLabel, res.err)
 
 		case targetErr := <-p.ctrlChannels.targetErr:
 			completedTarget = targetErr.Target
@@ -308,19 +308,19 @@ func (p *pipeline) waitTargets(terminate <-chan struct{}, completedCh chan<- *ta
 			break
 		}
 	}
-	// The test run completed, we have collected all Targets. TestSteps might have already
+	// The test run completed, we have collected all Targets. Steps might have already
 	// closed `ch.out`, in which case the pipeline terminated correctly (channels are closed
 	// in a "domino" sequence, so seeing the last channel closed indicates that the
 	// sequence of close operations has completed). If `ch.out` is still open,
-	// there are still TestSteps that might have not returned. Wait for all
-	// TestSteps to complete or `StepShutdownTimeout` to occur.
+	// there are still Steps that might have not returned. Wait for all
+	// Steps to complete or `StepShutdownTimeout` to occur.
 	log.Infof("waiting for all steps to complete")
 	return p.waitSteps()
 }
 
 // waitTermination reads results coming from result channels waiting
 // for the pipeline to completely shutdown before `ShutdownTimeout` occurs. A
-// "complete shutdown" means that all TestSteps and routing blocks have sent
+// "complete shutdown" means that all Steps and routing blocks have sent
 // downstream their results.
 func (p *pipeline) waitTermination() error {
 
@@ -345,19 +345,19 @@ func (p *pipeline) waitTermination() error {
 		case <-time.After(p.timeouts.ShutdownTimeout):
 			incompleteSteps := p.state.IncompleteSteps(p.bundles)
 			if len(incompleteSteps) > 0 {
-				return &cerrors.ErrTestStepsNeverReturned{StepNames: incompleteSteps}
+				return &cerrors.ErrStepsNeverReturned{StepNames: incompleteSteps}
 			}
 			return fmt.Errorf("pipeline did not return but all test steps completed")
 		case res := <-p.ctrlChannels.routingResultCh:
-			p.state.SetRouting(res.bundle.TestStepLabel, res.err)
+			p.state.SetRouting(res.bundle.StepLabel, res.err)
 		case res := <-p.ctrlChannels.stepResultCh:
-			p.state.SetStep(res.bundle.TestStepLabel, res.err)
+			p.state.SetStep(res.bundle.StepLabel, res.err)
 		}
 	}
 }
 
 // waitSteps reads results coming from result channels until `StepShutdownTimeout`
-// occurs or an error is encountered. It then checks whether TestSteps and routing
+// occurs or an error is encountered. It then checks whether Steps and routing
 // blocks have all returned correctly. If not, it returns an error.
 func (p *pipeline) waitSteps() error {
 
@@ -376,19 +376,19 @@ func (p *pipeline) waitSteps() error {
 			log.Warningf("timed out waiting for steps to complete after %v", p.timeouts.StepShutdownTimeout)
 			incompleteSteps := p.state.IncompleteSteps(p.bundles)
 			if len(incompleteSteps) > 0 {
-				err = &cerrors.ErrTestStepsNeverReturned{StepNames: incompleteSteps}
+				err = &cerrors.ErrStepsNeverReturned{StepNames: incompleteSteps}
 				break
 			}
 			if len(p.state.CompletedRouting()) != len(p.bundles) {
 				err = fmt.Errorf("not all routing completed: %d!=%d", len(p.state.CompletedRouting()), len(p.bundles))
 			}
 		case res := <-p.ctrlChannels.routingResultCh:
-			log.Debugf("received routing block result for %s", res.bundle.TestStepLabel)
-			p.state.SetRouting(res.bundle.TestStepLabel, res.err)
+			log.Debugf("received routing block result for %s", res.bundle.StepLabel)
+			p.state.SetRouting(res.bundle.StepLabel, res.err)
 			err = res.err
 		case res := <-p.ctrlChannels.stepResultCh:
-			log.Debugf("received step result for %s", res.bundle.TestStepLabel)
-			p.state.SetStep(res.bundle.TestStepLabel, res.err)
+			log.Debugf("received step result for %s", res.bundle.StepLabel)
+			p.state.SetStep(res.bundle.StepLabel, res.err)
 			err = res.err
 		}
 		if err != nil {
@@ -435,7 +435,7 @@ func (p *pipeline) init(cancel, pause <-chan struct{}) (routeInFirst chan *targe
 	routeIn = make(chan *target.Target)
 	for position, testStepBundle := range p.bundles {
 
-		// Input and output channels for the TestStep
+		// Input and output channels for the Step
 		stepInCh := make(chan *target.Target)
 		stepOutCh := make(chan *target.Target)
 		stepErrCh := make(chan cerrors.TargetError)
@@ -470,12 +470,12 @@ func (p *pipeline) init(cancel, pause <-chan struct{}) (routeInFirst chan *targe
 			targetErr: targetErrCh,
 		}
 
-		// Build the Header that the the TestStep will be using for emitting events
+		// Build the Header that the the Step will be using for emitting events
 		Header := testevent.Header{
-			JobID:         p.jobID,
-			RunID:         p.runID,
-			TestName:      p.test.Name,
-			TestStepLabel: testStepBundle.TestStepLabel,
+			JobID:     p.jobID,
+			RunID:     p.runID,
+			TestName:  p.test.Name,
+			StepLabel: testStepBundle.StepLabel,
 		}
 		ev := storage.NewTestEventEmitterFetcherWithAllowedEvents(Header, &testStepBundle.AllowedEvents)
 
@@ -508,7 +508,7 @@ func (p *pipeline) run(cancel, pause <-chan struct{}, completedTargetsCh chan<- 
 		p.log.Panicf("pipeline is not initialized, control channels are not available")
 	}
 
-	// Wait for the pipeline to complete. If an error occurrs, cancel all TestSteps
+	// Wait for the pipeline to complete. If an error occurrs, cancel all Steps
 	// and routing blocks and wait again for completion until shutdown timeout occurrs.
 	p.log.Infof("waiting for pipeline to complete")
 
@@ -585,7 +585,7 @@ func (p *pipeline) run(cancel, pause <-chan struct{}, completedTargetsCh chan<- 
 
 }
 
-func newPipeline(log *logrus.Entry, bundles []test.TestStepBundle, test *test.Test, jobID types.JobID, runID types.RunID, timeouts TestRunnerTimeouts) *pipeline {
+func newPipeline(log *logrus.Entry, bundles []test.StepBundle, test *test.Test, jobID types.JobID, runID types.RunID, timeouts TestRunnerTimeouts) *pipeline {
 	p := pipeline{log: log, bundles: bundles, jobID: jobID, runID: runID, test: test, timeouts: timeouts}
 	p.state = NewState()
 	return &p
