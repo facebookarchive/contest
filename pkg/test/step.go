@@ -16,9 +16,9 @@ import (
 	"github.com/facebookincubator/contest/pkg/target"
 )
 
-// TestStepParameters represents the parameters that a TestStep should consume
+// StepParameters represents the parameters that a Step should consume
 // according to the Test descriptor fetched by the TestFetcher
-type TestStepParameters map[string][]Param
+type StepParameters map[string][]Param
 
 // ParameterFunc is a function type called on parameters that need further
 // validation or manipulation. It is currently used by GetFunc and GetOneFunc.
@@ -27,13 +27,13 @@ type ParameterFunc func(string) string
 // Get returns the value of the requested parameter. A missing item is not
 // distinguishable from an empty value. For this you need to use the regular map
 // accessor.
-func (t TestStepParameters) Get(k string) []Param {
+func (t StepParameters) Get(k string) []Param {
 	return t[k]
 }
 
 // GetOne returns the first value of the requested parameter. If the parameter
 // is missing, an empty string is returned.
-func (t TestStepParameters) GetOne(k string) *Param {
+func (t StepParameters) GetOne(k string) *Param {
 	v, ok := t[k]
 	if !ok || len(v) == 0 {
 		return &Param{}
@@ -43,7 +43,7 @@ func (t TestStepParameters) GetOne(k string) *Param {
 
 // GetInt works like GetOne, but also tries to convert the string to an int64,
 // and returns an error if this fails.
-func (t TestStepParameters) GetInt(k string) (int64, error) {
+func (t StepParameters) GetInt(k string) (int64, error) {
 	v := t.GetOne(k)
 	if v.String() == "" {
 		return 0, errors.New("expected an integer string, got an empty string")
@@ -55,57 +55,63 @@ func (t TestStepParameters) GetInt(k string) (int64, error) {
 	return n, nil
 }
 
-// TestStepStatus represent a blob containing status information that the TestStep
+// StepStatus represent a blob containing status information that the Step
 // can persist into storage to support resuming the test.
-type TestStepStatus string
+type StepStatus string
 
-// TestStepFactory is a type representing a function which builds a TestStep.
-// TestStep factories are registered in the plugin registry.
-type TestStepFactory func() TestStep
+// StepFactory is a type representing a function which builds a Step.
+// Step factories are registered in the plugin registry.
+type StepFactory func() Step
 
-// TestStepLoader is a type representing a function which returns all the
-// needed things to be able to load a TestStep.
-type TestStepLoader func() (string, TestStepFactory, []event.Name)
+// StepLoader is a type representing a function which returns all the
+// needed things to be able to load a Step.
+type StepLoader func() (string, StepFactory, []event.Name)
 
-// TestStepDescriptor is the definition of a test step matching a test step
+// StepDescriptor is the definition of a test step matching a test step
 // configuration.
-type TestStepDescriptor struct {
+type StepDescriptor struct {
 	Name       string
 	Label      string
-	Parameters TestStepParameters
+	Parameters StepParameters
 }
 
-// TestStepBundle bundles the selected TestStep together with its parameters as
-// specified in the Test descriptor fetched by the TestFetcher
-type TestStepBundle struct {
-	TestStep      TestStep
-	TestStepLabel string
-	Parameters    TestStepParameters
+// StepsDescriptors bundles together Test and Cleanup descriptions
+type StepsDescriptors struct {
+	TestName string
+	Test     []StepDescriptor
+	Cleanup  []StepDescriptor
+}
+
+// StepBundle contains the instantiation
+type StepBundle struct {
+	Step          Step
+	StepLabel     string
+	Parameters    StepParameters
 	AllowedEvents map[event.Name]bool
 }
 
-// TestStepChannels represents the input and output  channels used by a TestStep
+// StepChannels represents the input and output  channels used by a Step
 // to communicate with the TestRunner
-type TestStepChannels struct {
+type StepChannels struct {
 	In  <-chan *target.Target
 	Out chan<- *target.Target
 	Err chan<- cerrors.TargetError
 }
 
-// TestStep is the interface that all steps need to implement to be executed
+// Step is the interface that all steps need to implement to be executed
 // by the TestRunner
-type TestStep interface {
+type Step interface {
 	// Name returns the name of the step
 	Name() string
 	// Run runs the test step. The test step is expected to be synchronous.
-	Run(cancel, pause <-chan struct{}, ch TestStepChannels, params TestStepParameters, ev testevent.Emitter) error
+	Run(cancel, pause <-chan struct{}, ch StepChannels, params StepParameters, ev testevent.Emitter) error
 	// CanResume signals whether a test step can be resumed.
 	CanResume() bool
 	// Resume is called if a test step resume is requested, and CanResume
 	// returns true. If resume is not supported, this method should return
 	// ErrResumeNotSupported.
-	Resume(cancel, pause <-chan struct{}, ch TestStepChannels, params TestStepParameters, ev testevent.EmitterFetcher) error
+	Resume(cancel, pause <-chan struct{}, ch StepChannels, params StepParameters, ev testevent.EmitterFetcher) error
 	// ValidateParameters checks that the parameters are correct before passing
 	// them to Run.
-	ValidateParameters(params TestStepParameters) error
+	ValidateParameters(params StepParameters) error
 }

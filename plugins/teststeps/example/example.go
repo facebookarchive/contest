@@ -31,11 +31,11 @@ const (
 	FailedEvent   = event.Name("ExampleFailedEvent")
 )
 
-// Events defines the events that a TestStep is allow to emit. Emitting an event
+// Events defines the events that a Step is allow to emit. Emitting an event
 // that is not registered here will cause the plugin to terminate with an error.
 var Events = []event.Name{StartedEvent, FinishedEvent, FailedEvent}
 
-// Step is an example implementation of a TestStep which simply
+// Step is an example implementation of a Step which simply
 // consumes Targets in input and pipes them to the output channel with intermediate
 // buffering. It randomly decides if a Target has failed and forwards it on
 // the err channel.
@@ -48,7 +48,7 @@ func (ts Step) Name() string {
 }
 
 // Run executes the example step.
-func (ts *Step) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *Step) Run(cancel, pause <-chan struct{}, ch test.StepChannels, _ test.StepParameters, ev testevent.Emitter) error {
 	for {
 
 		r := rand.Intn(3)
@@ -93,14 +93,14 @@ func (ts *Step) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, _ t
 	}
 }
 
-// ValidateParameters validates the parameters associated to the TestStep
-func (ts *Step) ValidateParameters(_ test.TestStepParameters) error {
+// ValidateParameters validates the parameters associated to the Step
+func (ts *Step) ValidateParameters(_ test.StepParameters) error {
 	return nil
 }
 
-// Resume tries to resume a previously interrupted test step. ExampleTestStep
+// Resume tries to resume a previously interrupted test step. ExampleStep
 // cannot resume.
-func (ts *Step) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *Step) Resume(cancel, pause <-chan struct{}, ch test.StepChannels, _ test.StepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 
@@ -109,12 +109,12 @@ func (ts *Step) CanResume() bool {
 	return false
 }
 
-// New initializes and returns a new ExampleTestStep.
-func New() test.TestStep {
+// New initializes and returns a new ExampleStep.
+func New() test.Step {
 	return &Step{}
 }
 
 // Load returns the name, factory and events which are needed to register the step.
-func Load() (string, test.TestStepFactory, []event.Name) {
+func Load() (string, test.StepFactory, []event.Name) {
 	return Name, New, Events
 }

@@ -28,17 +28,17 @@ type TestRunnerTimeouts struct {
 }
 
 // routingCh represents a set of unidirectional channels used by the routing subsystem.
-// There is a routing block for each TestStep of the pipeline, which is responsible for
+// There is a routing block for each Step of the pipeline, which is responsible for
 // the following actions:
 // * Targets in egress from the previous routing block are injected into the
-// current TestStep
-// * Targets in egress from the current TestStep are injected into the next
+// current Step
+// * Targets in egress from the current Step are injected into the next
 // routing block
 type routingCh struct {
 	// routeIn and routeOut connect the routing block to other routing blocks
 	routeIn  <-chan *target.Target
 	routeOut chan<- *target.Target
-	// Channels that connect the routing block to the TestStep
+	// Channels that connect the routing block to the Step
 	stepIn  chan<- *target.Target
 	stepOut <-chan *target.Target
 	stepErr <-chan cerrors.TargetError
@@ -47,9 +47,9 @@ type routingCh struct {
 	targetErr chan<- cerrors.TargetError
 }
 
-// stepCh represents a set of bidirectional channels that a TestStep and its associated
+// stepCh represents a set of bidirectional channels that a Step and its associated
 // routing block use to communicate. The TestRunner forces the direction of each
-// channel when connecting the TestStep to the routing block.
+// channel when connecting the Step to the routing block.
 type stepCh struct {
 	stepIn  chan *target.Target
 	stepOut chan *target.Target
@@ -69,15 +69,15 @@ type injectionResult struct {
 
 // routeResult represents the result of routing block, possibly carrying error information
 type routeResult struct {
-	bundle test.TestStepBundle
+	bundle test.StepBundle
 	err    error
 }
 
-// stepResult represents the result of a TestStep, possibly carrying error information
+// stepResult represents the result of a Step, possibly carrying error information
 type stepResult struct {
 	jobID  types.JobID
 	runID  types.RunID
-	bundle test.TestStepBundle
+	bundle test.StepBundle
 	err    error
 }
 
@@ -97,7 +97,7 @@ type pipelineCtrlCh struct {
 	pauseStepsCh chan struct{}
 }
 
-// TestRunner is the main runner of TestSteps in ConTest. `results` collects
+// TestRunner is the main runner of Steps in ConTest. `results` collects
 // the results of the run. It is not safe to access `results` concurrently.
 type TestRunner struct {
 	timeouts TestRunnerTimeouts
@@ -153,10 +153,10 @@ func newTargetWriter(log *logrus.Entry, timeouts TestRunnerTimeouts) *targetWrit
 }
 
 // Run implements the main logic of the TestRunner, i.e. the instantiation and
-// connection of the TestSteps, routing blocks and pipeline runner.
+// connection of the Steps, routing blocks and pipeline runner.
 func (tr *TestRunner) Run(cancel, pause <-chan struct{}, test *test.Test, targets []*target.Target, jobID types.JobID, runID types.RunID) error {
 
-	if len(test.TestStepsBundles) == 0 {
+	if len(test.TestStepBundles) == 0 {
 		return fmt.Errorf("no steps to run for test")
 	}
 
@@ -168,7 +168,7 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, test *test.Test, target
 	rootLog = logging.AddFields(rootLog, fields)
 
 	log := logging.AddField(rootLog, "phase", "run")
-	testPipeline := newPipeline(logging.AddField(rootLog, "entity", "test_pipeline"), test.TestStepsBundles, test, jobID, runID, tr.timeouts)
+	testPipeline := newPipeline(logging.AddField(rootLog, "entity", "test_pipeline"), test.TestStepBundles, test, jobID, runID, tr.timeouts)
 
 	log.Infof("setting up pipeline")
 	completedTargets := make(chan *target.Target)
@@ -285,11 +285,11 @@ func (r *State) SetStep(testStepLabel string, err error) {
 }
 
 // IncompleteSteps returns a slice of step names for which the result hasn't been set yet
-func (r *State) IncompleteSteps(bundles []test.TestStepBundle) []string {
+func (r *State) IncompleteSteps(bundles []test.StepBundle) []string {
 	var incompleteSteps []string
 	for _, bundle := range bundles {
-		if _, ok := r.completedSteps[bundle.TestStepLabel]; !ok {
-			incompleteSteps = append(incompleteSteps, bundle.TestStepLabel)
+		if _, ok := r.completedSteps[bundle.StepLabel]; !ok {
+			incompleteSteps = append(incompleteSteps, bundle.StepLabel)
 		}
 	}
 	return incompleteSteps

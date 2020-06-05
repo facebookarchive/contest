@@ -8,7 +8,7 @@
             "TargetManagerName": "CSVFileTargetManager",
             "TargetManagerAcquireParameters": {
                 "FileURI": "hosts02.csv",
-                "MinNumberDevices": 2,
+                "MinNumberDevices": 1,
                 "MaxNumberDevices": 4,
                 "HostPrefixes": [
                 ]
@@ -18,23 +18,6 @@
             "TestFetcherName": "URI",
             "TestFetcherFetchParameters": {
                 "TestName": "RackSwitchProvisioning",
-                "URI": "test_samples/randecho.json"
-            }
-        },
-        {
-            "TargetManagerName": "CSVFileTargetManager",
-            "TargetManagerAcquireParameters": {
-                "FileURI": "hosts02.csv",
-                "MinNumberDevices": 2,
-                "MaxNumberDevices": 4,
-                "HostPrefixes": [
-                ]
-            },
-            "TargetManagerReleaseParameters": {
-            },
-            "TestFetcherName": "URI",
-            "TestFetcherFetchParameters": {
-                "TestName": "RackProvisioning",
                 "URI": "test_samples/randecho.json"
             }
         }

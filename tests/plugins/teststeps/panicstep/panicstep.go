@@ -15,7 +15,7 @@ import (
 // Name is the name used to look this plugin up.
 var Name = "Panic"
 
-// Events defines the events that a TestStep is allow to emit
+// Events defines the events that a Step is allow to emit
 var Events = []event.Name{}
 
 type panicStep struct {
@@ -27,18 +27,18 @@ func (ts *panicStep) Name() string {
 }
 
 // Run executes the example step.
-func (ts *panicStep) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *panicStep) Run(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.Emitter) error {
 	panic("panic step")
 }
 
-// ValidateParameters validates the parameters associated to the TestStep
-func (ts *panicStep) ValidateParameters(params test.TestStepParameters) error {
+// ValidateParameters validates the parameters associated to the Step
+func (ts *panicStep) ValidateParameters(params test.StepParameters) error {
 	return nil
 }
 
-// Resume tries to resume a previously interrupted test step. ExampleTestStep
+// Resume tries to resume a previously interrupted test step. ExampleStep
 // cannot resume.
-func (ts *panicStep) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *panicStep) Resume(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 
@@ -48,6 +48,6 @@ func (ts *panicStep) CanResume() bool {
 }
 
 // New creates a new panicStep
-func New() test.TestStep {
+func New() test.Step {
 	return &panicStep{}
 }

@@ -6,6 +6,8 @@
 package job
 
 import (
+	"errors"
+	"strings"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/test"
@@ -14,21 +16,58 @@ import (
 	"github.com/insomniacslk/xjson"
 )
 
-// JobDescriptor models the JSON encoded blob which is given as input to the
-// job creation request. A JobDescriptor embeds a list of TestDescriptor.
-type JobDescriptor struct {
+// Descriptor models the deserialized version of the JSON text given as
+// input to the job creation request.
+type Descriptor struct {
 	JobName         string
 	Tags            []string
 	Runs            uint
 	RunInterval     xjson.Duration
-	TestDescriptors []*test.TestDescriptor
+	TestDescriptors []test.Descriptor
 	Reporting       Reporting
+}
+
+// Validate performs sanity checks on the job descriptor
+func (d *Descriptor) Validate() error {
+
+	if len(d.TestDescriptors) == 0 {
+		return errors.New("need at least one TestDescriptor in the JobDescriptor")
+	}
+	if d.JobName == "" {
+		return errors.New("job name cannot be empty")
+	}
+	if d.RunInterval < 0 {
+		return errors.New("run interval must be non-negative")
+	}
+
+	if len(d.Reporting.RunReporters) == 0 && len(d.Reporting.FinalReporters) == 0 {
+		return errors.New("at least one run reporter or one final reporter must be specified in a job")
+	}
+	for _, reporter := range d.Reporting.RunReporters {
+		if strings.TrimSpace(reporter.Name) == "" {
+			return errors.New("run reporters cannot have empty or all-whitespace names")
+		}
+	}
+	return nil
+}
+
+// ExtendedDescriptor is a job descriptor which has been extended with the full
+// description of the test and cleanup steps obtained from the test fetcher.
+type ExtendedDescriptor struct {
+	Descriptor
+	StepsDescriptors []test.StepsDescriptors
 }
 
 // Job is used to run a type of test job on a given set of targets.
 type Job struct {
-	ID   types.JobID
+	ID types.JobID
+
+	// ExtendedDescriptor represents the descriptor that resulted in the
+	// creation of this ConTest job.
+	ExtendedDescriptor *ExtendedDescriptor
+
 	Name string
+
 	// a freeform list of strings that the user can provide to tag a job, and
 	// subsequently use to search and aggregate.
 	Tags []string
@@ -54,11 +93,9 @@ type Job struct {
 	// unlimited, are specified.
 	RunInterval time.Duration
 
-	// TestDescriptors is the string form of the fetched test step
-	// descriptors.
-	TestDescriptors string
-	// Tests is the parsed form of the above TestDescriptors
+	// Tests represents the compiled description of the tests
 	Tests []*test.Test
+
 	// RunReporterBundles and FinalReporterBundles wrap the reporter instances
 	// chosen for the Job and its associated parameters, which have already
 	// gone through validation

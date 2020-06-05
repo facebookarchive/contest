@@ -14,22 +14,22 @@ import (
 	"github.com/facebookincubator/contest/pkg/test"
 )
 
-// NewTestStepBundle creates a TestStepBundle from a TestStepDescriptor
-func (r *PluginRegistry) NewTestStepBundle(testStepDescriptor test.TestStepDescriptor, stepIndex uint, allowedEvents map[event.Name]bool) (*test.TestStepBundle, error) {
-	testStep, err := r.NewTestStep(testStepDescriptor.Name)
+// NewStepBundle creates a StepBundle from a StepDescriptor
+func (r *PluginRegistry) NewStepBundle(testStepDescriptor *test.StepDescriptor, stepIndex uint, allowedEvents map[event.Name]bool) (*test.StepBundle, error) {
+	testStep, err := r.NewStep(testStepDescriptor.Name)
 	if err != nil {
-		return nil, fmt.Errorf("could not get the desired TestStep (%s): %v", testStepDescriptor.Name, err)
+		return nil, fmt.Errorf("could not get the desired Step (%s): %v", testStepDescriptor.Name, err)
 	}
 	if err := testStep.ValidateParameters(testStepDescriptor.Parameters); err != nil {
 		return nil, fmt.Errorf("could not validate parameters for test step %s: %v", testStepDescriptor.Name, err)
 	}
 	label := testStepDescriptor.Label
 	if label == "" {
-		return nil, ErrStepLabelIsMandatory{TestStepDescriptor: testStepDescriptor}
+		return nil, ErrStepLabelIsMandatory{StepDescriptor: *testStepDescriptor}
 	}
-	testStepBundle := test.TestStepBundle{
-		TestStep:      testStep,
-		TestStepLabel: label,
+	testStepBundle := test.StepBundle{
+		Step:          testStep,
+		StepLabel:     label,
 		Parameters:    testStepDescriptor.Parameters,
 		AllowedEvents: allowedEvents,
 	}
@@ -38,7 +38,7 @@ func (r *PluginRegistry) NewTestStepBundle(testStepDescriptor test.TestStepDescr
 
 // NewTestFetcherBundle creates a TestFetcher and associated parameters based on
 // the content of the job descriptor
-func (r *PluginRegistry) NewTestFetcherBundle(testDescriptor *test.TestDescriptor) (*test.TestFetcherBundle, error) {
+func (r *PluginRegistry) NewTestFetcherBundle(testDescriptor *test.Descriptor) (*test.TestFetcherBundle, error) {
 	// Initialization and validation of the TestFetcher and its parameters
 	testFetcher, err := r.NewTestFetcher(testDescriptor.TestFetcherName)
 	if err != nil {
@@ -59,7 +59,7 @@ func (r *PluginRegistry) NewTestFetcherBundle(testDescriptor *test.TestDescripto
 
 // NewTargetManagerBundle creates a TargetManager and associated parameters based on
 // the content of the test descriptor
-func (r *PluginRegistry) NewTargetManagerBundle(testDescriptor *test.TestDescriptor) (*target.TargetManagerBundle, error) {
+func (r *PluginRegistry) NewTargetManagerBundle(testDescriptor *test.Descriptor) (*target.TargetManagerBundle, error) {
 	targetManager, err := r.NewTargetManager(testDescriptor.TargetManagerName)
 	if err != nil {
 		return nil, fmt.Errorf("could not get TargetManager (%s): %v", testDescriptor.TargetManagerName, err)

@@ -16,18 +16,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Definition of two dummy TestSteps to be used to test the PluginRegistry
+// Definition of two dummy Steps to be used to test the PluginRegistry
 
-// AStep implements a dummy TestStep
+// AStep implements a dummy Step
 type AStep struct{}
 
 // NewAStep initializes a new AStep
-func NewAStep() test.TestStep {
+func NewAStep() test.Step {
 	return &AStep{}
 }
 
 // ValidateParameters validates the parameters for the AStep
-func (e AStep) ValidateParameters(params test.TestStepParameters) error {
+func (e AStep) ValidateParameters(params test.StepParameters) error {
 	return nil
 }
 
@@ -37,7 +37,7 @@ func (e AStep) Name() string {
 }
 
 // Run executes the AStep
-func (e AStep) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (e AStep) Run(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.Emitter) error {
 	return nil
 }
 
@@ -47,18 +47,18 @@ func (e AStep) CanResume() bool {
 }
 
 // Resume tries to resume AStep
-func (e AStep) Resume(cancel, pause <-chan struct{}, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (e AStep) Resume(cancel, pause <-chan struct{}, _ test.StepChannels, _ test.StepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: "AStep"}
 }
 
-func TestRegisterTestStep(t *testing.T) {
+func TestRegisterStep(t *testing.T) {
 	pr := NewPluginRegistry()
-	err := pr.RegisterTestStep("AStep", NewAStep, []event.Name{event.Name("AStepEventName")})
+	err := pr.RegisterStep("AStep", NewAStep, []event.Name{event.Name("AStepEventName")})
 	require.NoError(t, err)
 }
 
-func TestRegisterTestStepDoesNotValidate(t *testing.T) {
+func TestRegisterStepDoesNotValidate(t *testing.T) {
 	pr := NewPluginRegistry()
-	err := pr.RegisterTestStep("AStep", NewAStep, []event.Name{event.Name("Event which does not validate")})
+	err := pr.RegisterStep("AStep", NewAStep, []event.Name{event.Name("Event which does not validate")})
 	require.Error(t, err)
 }

@@ -27,7 +27,7 @@ var Name = "TerminalExpect"
 
 var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
-// Events defines the events that a TestStep is allow to emit
+// Events defines the events that a Step is allow to emit
 var Events = []event.Name{}
 
 // TerminalExpect reads from a terminal and returns when the given Match string
@@ -56,7 +56,7 @@ func match(match string) termhook.LineHandler {
 }
 
 // Run executes the terminal step.
-func (ts *TerminalExpect) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *TerminalExpect) Run(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.Emitter) error {
 	if err := ts.validateAndPopulate(params); err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func (ts *TerminalExpect) Run(cancel, pause <-chan struct{}, ch test.TestStepCha
 	return teststeps.ForEachTarget(Name, cancel, pause, ch, f)
 }
 
-func (ts *TerminalExpect) validateAndPopulate(params test.TestStepParameters) error {
+func (ts *TerminalExpect) validateAndPopulate(params test.StepParameters) error {
 	// no expression expansion for these parameters
 	port := params.GetOne("port")
 	if port.IsEmpty() {
@@ -115,14 +115,14 @@ func (ts *TerminalExpect) validateAndPopulate(params test.TestStepParameters) er
 	return nil
 }
 
-// ValidateParameters validates the parameters associated to the TestStep
-func (ts *TerminalExpect) ValidateParameters(params test.TestStepParameters) error {
+// ValidateParameters validates the parameters associated to the Step
+func (ts *TerminalExpect) ValidateParameters(params test.StepParameters) error {
 	return ts.validateAndPopulate(params)
 }
 
 // Resume tries to resume a previously interrupted test step. TerminalExpect cannot
 // resume.
-func (ts *TerminalExpect) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *TerminalExpect) Resume(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 
@@ -132,11 +132,11 @@ func (ts *TerminalExpect) CanResume() bool {
 }
 
 // New initializes and returns a new TerminalExpect test step.
-func New() test.TestStep {
+func New() test.Step {
 	return &TerminalExpect{}
 }
 
 // Load returns the name, factory and events which are needed to register the step.
-func Load() (string, test.TestStepFactory, []event.Name) {
+func Load() (string, test.StepFactory, []event.Name) {
 	return Name, New, Events
 }

@@ -12,9 +12,9 @@ import (
 )
 
 type ErrStepLabelIsMandatory struct {
-	TestStepDescriptor test.TestStepDescriptor
+	StepDescriptor test.StepDescriptor
 }
 
 func (err ErrStepLabelIsMandatory) Error() string {
-	return fmt.Sprintf("step has no label, but it is mandatory (step: %+v)", err.TestStepDescriptor)
+	return fmt.Sprintf("step has no label, but it is mandatory (step: %+v)", err.StepDescriptor)
 }

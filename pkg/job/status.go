@@ -16,7 +16,7 @@ import (
 // The hierarchy of status objects is the following
 // (jobID,)                                -> []RunStatus [within a job, there might be multiple runs]
 // (jobID, runID)                          -> []TestStatus [within a run, there might be multiple tests]
-// (jobID, runID, testName)                -> []TestStepStatus [within a test there might be multiple steps]
+// (jobID, runID, testName)                -> []StepStatus [within a test there might be multiple steps]
 // (jobID, runID, testName, testStepLabel) -> []TargetStepStatus [within a step, multiple targets have been tested]
 
 // RunCoordinates collects information to identify the run for which we want to rebuild the status
@@ -31,40 +31,40 @@ type TestCoordinates struct {
 	TestName string
 }
 
-// TestStepCoordinates collects information to identify the test step for which we want to rebuild the status
-type TestStepCoordinates struct {
+// StepCoordinates collects information to identify the test step for which we want to rebuild the status
+type StepCoordinates struct {
 	TestCoordinates
-	TestStepName  string
-	TestStepLabel string
+	StepName  string
+	StepLabel string
 }
 
-// TargetStatus represents the status of a Target within a TestStep
+// TargetStatus represents the status of a Target within a Step
 type TargetStatus struct {
-	TestStepCoordinates
+	StepCoordinates
 	Target  *target.Target
 	InTime  time.Time
 	OutTime time.Time
 	Error   string
 	// these are events that have an associated target. For events
-	// that are not associated to a target, see TestStepStatus.Events .
+	// that are not associated to a target, see StepStatus.Events .
 	Events []testevent.Event
 }
 
-// TestStepStatus bundles together all the TargetStatus for a specific TestStep (represented via
+// StepStatus bundles together all the TargetStatus for a specific Step (represented via
 // its name and label)
-type TestStepStatus struct {
-	TestStepCoordinates
+type StepStatus struct {
+	StepCoordinates
 	// these are events that have no target associated. For events
 	// associated to a target, see TargetStatus.TargetEvents .
 	Events         []testevent.Event
 	TargetStatuses []TargetStatus
 }
 
-// TestStatus bundles together all TestStepStatus for a specific Test within the run
+// TestStatus bundles together all StepStatus for a specific Test within the run
 type TestStatus struct {
 	TestCoordinates
-	TestStepStatuses []TestStepStatus
-	TargetStatuses   []TargetStatus
+	StepStatuses   []StepStatus
+	TargetStatuses []TargetStatus
 }
 
 // RunStatus bundles together all TestStatus for a specific run within the job

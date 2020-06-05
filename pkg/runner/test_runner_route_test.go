@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-var testSteps = map[string]test.TestStepFactory{
+var testSteps = map[string]test.StepFactory{
 	example.Name: example.New,
 }
 
@@ -58,19 +58,19 @@ func (suite *TestRunnerSuite) SetupTest() {
 	log := logging.GetLogger("TestRunnerSuite")
 
 	pluginRegistry := pluginregistry.NewPluginRegistry()
-	// Setup the PluginRegistry by registering TestSteps
+	// Setup the PluginRegistry by registering Steps
 	for name, tsfactory := range testSteps {
 		if _, ok := testStepsEvents[name]; !ok {
 			suite.T().Errorf("test step %s does not define any associated event", name)
 		}
-		err := pluginRegistry.RegisterTestStep(name, tsfactory, testStepsEvents[name])
+		err := pluginRegistry.RegisterStep(name, tsfactory, testStepsEvents[name])
 		require.NoError(suite.T(), err)
 	}
-	ts1, err := pluginRegistry.NewTestStep("Example")
+	ts1, err := pluginRegistry.NewStep("Example")
 	require.NoError(suite.T(), err)
 
-	params := make(test.TestStepParameters)
-	bundle := test.TestStepBundle{TestStep: ts1, TestStepLabel: "FirstStage", Parameters: params}
+	params := make(test.StepParameters)
+	bundle := test.StepBundle{Step: ts1, StepLabel: "FirstStage", Parameters: params}
 
 	routeInCh := make(chan *target.Target)
 	routeOutCh := make(chan *target.Target)
@@ -100,10 +100,10 @@ func (suite *TestRunnerSuite) SetupTest() {
 	storage.SetStorage(s)
 
 	header := testevent.Header{
-		JobID:         1,
-		RunID:         1,
-		TestName:      "TestRunnerSuite",
-		TestStepLabel: "TestRunnerSuite",
+		JobID:     1,
+		RunID:     1,
+		TestName:  "TestRunnerSuite",
+		StepLabel: "TestRunnerSuite",
 	}
 	ev := storage.NewTestEventEmitterFetcher(header)
 
@@ -213,7 +213,7 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllSuccessfulTargets() {
 
 	go func() {
 		// start routing
-		_, _  = suite.router.routeOut(terminate)
+		_, _ = suite.router.routeOut(terminate)
 	}()
 
 	stepResult := make(chan error)

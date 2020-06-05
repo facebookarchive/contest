@@ -15,7 +15,7 @@ import (
 // Name is the name used to look this plugin up.
 var Name = "Channels"
 
-// Events defines the events that a TestStep is allow to emit
+// Events defines the events that a Step is allow to emit
 var Events = []event.Name{}
 
 type channels struct {
@@ -27,7 +27,7 @@ func (ts *channels) Name() string {
 }
 
 // Run executes a step which does never return.s
-func (ts *channels) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *channels) Run(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.Emitter) error {
 	for target := range ch.In {
 		ch.Out <- target
 	}
@@ -35,14 +35,14 @@ func (ts *channels) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels,
 	return nil
 }
 
-// ValidateParameters validates the parameters associated to the TestStep
-func (ts *channels) ValidateParameters(params test.TestStepParameters) error {
+// ValidateParameters validates the parameters associated to the Step
+func (ts *channels) ValidateParameters(params test.StepParameters) error {
 	return nil
 }
 
 // Resume tries to resume a previously interrupted test step. Channels test step
 // cannot resume.
-func (ts *channels) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *channels) Resume(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 
@@ -52,6 +52,6 @@ func (ts *channels) CanResume() bool {
 }
 
 // New creates a new Channels step
-func New() test.TestStep {
+func New() test.Step {
 	return &channels{}
 }

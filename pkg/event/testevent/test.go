@@ -18,22 +18,22 @@ import (
 
 // Header models the header of a test event, which consists in metadatat hat defines the
 // emitter of the events. The Header is under ConTest control and cannot be manipulated
-// by the TestStep
+// by the Step
 type Header struct {
-	JobID         types.JobID
-	RunID         types.RunID
-	TestName      string
-	TestStepLabel string
+	JobID     types.JobID
+	RunID     types.RunID
+	TestName  string
+	StepLabel string
 }
 
-// Data models the data of a test event. It is populated by the TestStep
+// Data models the data of a test event. It is populated by the Step
 type Data struct {
 	EventName event.Name
 	Target    *target.Target
 	Payload   *json.RawMessage
 }
 
-// Event models an event object that can be emitted by a TestStep
+// Event models an event object that can be emitted by a Step
 type Event struct {
 	EmitTime time.Time
 	Header   *Header
@@ -49,9 +49,9 @@ func New(header *Header, data *Data) Event {
 // test events, on top of the common EventQuery fields
 type Query struct {
 	event.Query
-	RunID         types.RunID
-	TestName      string
-	TestStepLabel string
+	RunID     types.RunID
+	TestName  string
+	StepLabel string
 }
 
 // QueryField defines a function type used to set a field's value on Query objects
@@ -85,7 +85,7 @@ type queryFieldEventNames []event.Name
 type queryFieldEmittedStartTime time.Time
 type queryFieldEmittedEndTime time.Time
 type queryFieldTestName string
-type queryFieldTestStepLabel string
+type queryFieldStepLabel string
 type queryFieldRunID types.RunID
 
 // QueryJobID sets the JobID field of the Query object
@@ -123,12 +123,12 @@ func QueryTestName(testName string) QueryField {
 }
 func (value queryFieldTestName) queryFieldPointer(query *Query) interface{} { return &query.TestName }
 
-// QueryTestStepLabel sets the TestStepLabel field of the Query object
-func QueryTestStepLabel(testStepLabel string) QueryField {
-	return queryFieldTestStepLabel(testStepLabel)
+// QueryStepLabel sets the StepLabel field of the Query object
+func QueryStepLabel(testStepLabel string) QueryField {
+	return queryFieldStepLabel(testStepLabel)
 }
-func (value queryFieldTestStepLabel) queryFieldPointer(query *Query) interface{} {
-	return &query.TestStepLabel
+func (value queryFieldStepLabel) queryFieldPointer(query *Query) interface{} {
+	return &query.StepLabel
 }
 
 // QueryRunID sets the RunID field of the Query object
