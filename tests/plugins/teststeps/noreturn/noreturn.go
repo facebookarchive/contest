@@ -15,7 +15,7 @@ import (
 // Name is the name used to look this plugin up.
 var Name = "NoReturn"
 
-// Events defines the events that a TestStep is allow to emit
+// Events defines the events that a Step is allow to emit
 var Events = []event.Name{}
 
 type noreturnStep struct {
@@ -27,7 +27,7 @@ func (ts *noreturnStep) Name() string {
 }
 
 // Run executes a step which does never return.
-func (ts *noreturnStep) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *noreturnStep) Run(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.Emitter) error {
 	for target := range ch.In {
 		ch.Out <- target
 	}
@@ -36,14 +36,14 @@ func (ts *noreturnStep) Run(cancel, pause <-chan struct{}, ch test.TestStepChann
 	return nil
 }
 
-// ValidateParameters validates the parameters associated to the TestStep
-func (ts *noreturnStep) ValidateParameters(params test.TestStepParameters) error {
+// ValidateParameters validates the parameters associated to the Step
+func (ts *noreturnStep) ValidateParameters(params test.StepParameters) error {
 	return nil
 }
 
-// Resume tries to resume a previously interrupted test step. ExampleTestStep
+// Resume tries to resume a previously interrupted test step. ExampleStep
 // cannot resume.
-func (ts *noreturnStep) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *noreturnStep) Resume(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 
@@ -53,6 +53,6 @@ func (ts *noreturnStep) CanResume() bool {
 }
 
 // New creates a new noreturnStep which forwards targets before hanging
-func New() test.TestStep {
+func New() test.Step {
 	return &noreturnStep{}
 }

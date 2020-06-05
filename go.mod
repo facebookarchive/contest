@@ -37,7 +37,6 @@ require (
 	golang.org/x/crypto v0.0.0-20200128174031-69ecbb4d6d5d
 	golang.org/x/sys v0.0.0-20200317113312-5766fd39f98d // indirect
 	golang.org/x/tools v0.0.0-20200317184713-827390e9012e // indirect
-	google.golang.org/appengine v1.4.0 // indirect
 	gopkg.in/ini.v1 v1.55.0 // indirect
 	mvdan.cc/unparam v0.0.0-20200314162735-0ac8026f7d06 // indirect
 	sourcegraph.com/sqs/pbtypes v1.0.0 // indirect

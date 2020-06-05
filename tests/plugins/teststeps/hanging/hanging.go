@@ -15,7 +15,7 @@ import (
 // Name is the name used to look this plugin up.
 var Name = "Hanging"
 
-// Events defines the events that a TestStep is allow to emit
+// Events defines the events that a Step is allow to emit
 var Events = []event.Name{}
 
 type hanging struct {
@@ -27,20 +27,20 @@ func (ts *hanging) Name() string {
 }
 
 // Run executes a step which does never return.
-func (ts *hanging) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *hanging) Run(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.Emitter) error {
 	channel := make(chan struct{})
 	<-channel
 	return nil
 }
 
-// ValidateParameters validates the parameters associated to the TestStep
-func (ts *hanging) ValidateParameters(params test.TestStepParameters) error {
+// ValidateParameters validates the parameters associated to the Step
+func (ts *hanging) ValidateParameters(params test.StepParameters) error {
 	return nil
 }
 
-// Resume tries to resume a previously interrupted test step. ExampleTestStep
+// Resume tries to resume a previously interrupted test step. ExampleStep
 // cannot resume.
-func (ts *hanging) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *hanging) Resume(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 
@@ -50,6 +50,6 @@ func (ts *hanging) CanResume() bool {
 }
 
 // New creates a new hanging step
-func New() test.TestStep {
+func New() test.Step {
 	return &hanging{}
 }

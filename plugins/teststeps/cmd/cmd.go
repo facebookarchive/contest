@@ -35,7 +35,7 @@ const (
 	EventCmdEnd   = event.Name("CmdEnd")
 )
 
-// Events defines the events that a TestStep is allow to emit
+// Events defines the events that a Step is allow to emit
 var Events = []event.Name{
 	EventCmdStart,
 	EventCmdEnd,
@@ -60,7 +60,7 @@ func (ts Cmd) Name() string {
 }
 
 // Run executes the cmd step.
-func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.Emitter) error {
 	if err := ts.validateAndPopulate(params); err != nil {
 		return err
 	}
@@ -123,7 +123,7 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 	return teststeps.ForEachTarget(Name, cancel, pause, ch, f)
 }
 
-func (ts *Cmd) validateAndPopulate(params test.TestStepParameters) error {
+func (ts *Cmd) validateAndPopulate(params test.StepParameters) error {
 	param := params.GetOne("executable")
 	if param.IsEmpty() {
 		return errors.New("invalid or missing 'executable' parameter, must be exactly one string")
@@ -144,14 +144,14 @@ func (ts *Cmd) validateAndPopulate(params test.TestStepParameters) error {
 	return nil
 }
 
-// ValidateParameters validates the parameters associated to the TestStep
-func (ts *Cmd) ValidateParameters(params test.TestStepParameters) error {
+// ValidateParameters validates the parameters associated to the Step
+func (ts *Cmd) ValidateParameters(params test.StepParameters) error {
 	return ts.validateAndPopulate(params)
 }
 
 // Resume tries to resume a previously interrupted test step. Cmd cannot
 // resume.
-func (ts *Cmd) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *Cmd) Resume(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 
@@ -161,11 +161,11 @@ func (ts *Cmd) CanResume() bool {
 }
 
 // New initializes and returns a new Cmd test step.
-func New() test.TestStep {
+func New() test.Step {
 	return &Cmd{}
 }
 
 // Load returns the name, factory and events which are needed to register the step.
-func Load() (string, test.TestStepFactory, []event.Name) {
+func Load() (string, test.StepFactory, []event.Name) {
 	return Name, New, Events
 }

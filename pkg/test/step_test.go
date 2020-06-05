@@ -18,7 +18,7 @@ type paramSubStructure struct {
 	More_nesting map[string]string
 }
 
-func TestTestStepParametersUnmarshalNested(t *testing.T) {
+func TestStepParametersUnmarshalNested(t *testing.T) {
 	descriptor := `{
 		"str": ["some string"],
 		"num": [12],
@@ -31,7 +31,7 @@ func TestTestStepParametersUnmarshalNested(t *testing.T) {
 		}]
 	}`
 
-	var params TestStepParameters
+	var params StepParameters
 	err := json.Unmarshal([]byte(descriptor), &params)
 	require.NoError(t, err)
 	require.Equal(t, "some string", params.GetOne("str").String())

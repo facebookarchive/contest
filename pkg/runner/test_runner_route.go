@@ -26,7 +26,7 @@ type router struct {
 	log *logrus.Entry
 
 	routingChannels routingCh
-	bundle          test.TestStepBundle
+	bundle          test.StepBundle
 	ev              testevent.EmitterFetcher
 
 	timeouts TestRunnerTimeouts
@@ -37,7 +37,7 @@ type router struct {
 // injected into the test step or an error upon failure
 func (r *router) routeIn(terminate <-chan struct{}) (int, error) {
 
-	stepLabel := r.bundle.TestStepLabel
+	stepLabel := r.bundle.StepLabel
 	log := logging.AddField(r.log, "step", stepLabel)
 	log = logging.AddField(log, "phase", "routeIn")
 
@@ -52,7 +52,7 @@ func (r *router) routeIn(terminate <-chan struct{}) (int, error) {
 	terminateTargetWriter := make(chan struct{})
 
 	// `targets` is used to buffer targets coming from the previous routing blocks,
-	// queueing them for injection into the TestStep. The list is accessed
+	// queueing them for injection into the Step. The list is accessed
 	// synchronously by a single goroutine.
 	targets := list.New()
 
@@ -137,7 +137,7 @@ func (r *router) routeIn(terminate <-chan struct{}) (int, error) {
 
 func (r *router) emitOutEvent(t *target.Target, err error) error {
 
-	log := logging.AddField(r.log, "step", r.bundle.TestStepLabel)
+	log := logging.AddField(r.log, "step", r.bundle.StepLabel)
 	log = logging.AddField(log, "phase", "emitOutEvent")
 
 	if err != nil {
@@ -165,7 +165,7 @@ func (r *router) emitOutEvent(t *target.Target, err error) error {
 // injected into the test step or an error upon failure
 func (r *router) routeOut(terminate <-chan struct{}) (int, error) {
 
-	stepLabel := r.bundle.TestStepLabel
+	stepLabel := r.bundle.StepLabel
 	log := logging.AddField(r.log, "step", stepLabel)
 	log = logging.AddField(log, "phase", "routeOut")
 
@@ -180,7 +180,7 @@ func (r *router) routeOut(terminate <-chan struct{}) (int, error) {
 	for {
 		select {
 		case <-terminate:
-			err = fmt.Errorf("termination requested for routing into %s", r.bundle.TestStepLabel)
+			err = fmt.Errorf("termination requested for routing into %s", r.bundle.StepLabel)
 		case t, chanIsOpen := <-r.routingChannels.stepOut:
 			if !chanIsOpen {
 				log.Debugf("step output closed")
@@ -189,9 +189,9 @@ func (r *router) routeOut(terminate <-chan struct{}) (int, error) {
 			}
 
 			if _, targetPresent := egressTarget[t]; targetPresent {
-				err = fmt.Errorf("step %s returned target %+v multiple times", r.bundle.TestStepLabel, t)
+				err = fmt.Errorf("step %s returned target %+v multiple times", r.bundle.StepLabel, t)
 			} else {
-				// Emit an event signaling that the target has left the TestStep
+				// Emit an event signaling that the target has left the Step
 				if err := r.emitOutEvent(t, nil); err != nil {
 					log.Warningf("could not emit out event for target: %v", *t)
 				}
@@ -209,7 +209,7 @@ func (r *router) routeOut(terminate <-chan struct{}) (int, error) {
 			}
 
 			if _, targetPresent := egressTarget[targetError.Target]; targetPresent {
-				err = fmt.Errorf("step %s returned target %+v multiple times", r.bundle.TestStepLabel, targetError.Target)
+				err = fmt.Errorf("step %s returned target %+v multiple times", r.bundle.StepLabel, targetError.Target)
 			} else {
 				if err := r.emitOutEvent(targetError.Target, targetError.Err); err != nil {
 					log.Warningf("could not emit err event for target: %v", *targetError.Target)
@@ -268,7 +268,7 @@ func (r *router) route(terminate <-chan struct{}, resultCh chan<- routeResult) {
 	}
 
 	if err == nil && inTargets != outTargets {
-		err = fmt.Errorf("step %s completed but did not return all injected Targets (%d!=%d)", r.bundle.TestStepLabel, inTargets, outTargets)
+		err = fmt.Errorf("step %s completed but did not return all injected Targets (%d!=%d)", r.bundle.StepLabel, inTargets, outTargets)
 	}
 
 	// Send the result to the test runner, which is expected to be listening
@@ -281,7 +281,7 @@ func (r *router) route(terminate <-chan struct{}, resultCh chan<- routeResult) {
 	}
 }
 
-func newRouter(log *logrus.Entry, bundle test.TestStepBundle, routingChannels routingCh, ev testevent.EmitterFetcher, timeouts TestRunnerTimeouts) *router {
+func newRouter(log *logrus.Entry, bundle test.StepBundle, routingChannels routingCh, ev testevent.EmitterFetcher, timeouts TestRunnerTimeouts) *router {
 	r := router{log: log, bundle: bundle, routingChannels: routingChannels, ev: ev, timeouts: timeouts}
 	return &r
 }

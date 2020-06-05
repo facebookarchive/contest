@@ -2,25 +2,20 @@
     "steps": [
         {
             "name": "echo",
-            "label": "thefirstrandecho",
-            "parameters": {
-                "text": ["some very random text"]
-            }
-        },
-        {
-            "name": "randecho",
-            "label": "thesecondrandecho",
-            "parameters": {
-                "text": ["some very random text"]
-            }
-        },
-        {
-            "name": "echo",
-            "label": "thethirdrandecho",
+            "label": "thefirstrandecho_test",
             "parameters": {
                 "text": ["some very random text"]
             }
         }
-    ]
+   ],
+   "cleanup": [
+        {
+            "name": "echo",
+            "label": "thefirstrandecho_cleanup",
+            "parameters": {
+                "text": ["some very random text"]
+            }
+        }
+   ]	
 }
 

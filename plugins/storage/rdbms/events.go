@@ -101,9 +101,9 @@ func buildTestEventQuery(baseQuery bytes.Buffer, testEventQuery *testevent.Query
 		selectClauses = append(selectClauses, "test_name=?")
 		fields = append(fields, testEventQuery.TestName)
 	}
-	if testEventQuery.TestStepLabel != "" {
+	if testEventQuery.StepLabel != "" {
 		selectClauses = append(selectClauses, "test_step_label=?")
-		fields = append(fields, testEventQuery.TestStepLabel)
+		fields = append(fields, testEventQuery.StepLabel)
 	}
 	query, err := assembleQuery(baseQuery, selectClauses)
 	if err != nil {
@@ -140,12 +140,12 @@ func TestEventTestName(ev testevent.Event) interface{} {
 	return ev.Header.TestName
 }
 
-// TestEventTestStepLabel returns the test step label from an events.TestEvent object
-func TestEventTestStepLabel(ev testevent.Event) interface{} {
+// TestEventStepLabel returns the test step label from an events.TestEvent object
+func TestEventStepLabel(ev testevent.Event) interface{} {
 	if ev.Header == nil {
 		return nil
 	}
-	return ev.Header.TestStepLabel
+	return ev.Header.StepLabel
 }
 
 // TestEventName returns the event name from an events.TestEvent object
@@ -213,7 +213,7 @@ func (r *RDBMS) flushTestEvents() error {
 			TestEventJobID(event),
 			TestEventRunID(event),
 			TestEventTestName(event),
-			TestEventTestStepLabel(event),
+			TestEventStepLabel(event),
 			TestEventName(event),
 			TestEventTargetName(event),
 			TestEventTargetID(event),
@@ -281,7 +281,7 @@ func (r *RDBMS) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, e
 			&header.JobID,
 			&header.RunID,
 			&header.TestName,
-			&header.TestStepLabel,
+			&header.StepLabel,
 			&data.EventName,
 			&targetName,
 			&targetID,

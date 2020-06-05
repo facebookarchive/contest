@@ -26,7 +26,8 @@ var (
 // structure is populated from a JSON blob.
 type FetchParameters struct {
 	TestName string
-	Steps    []*test.TestStepDescriptor
+	Steps    []test.StepDescriptor
+	Cleanup  []test.StepDescriptor
 }
 
 // Literal implements contest.TestFetcher interface, returning dummy test fetcher
@@ -51,13 +52,18 @@ func (tf Literal) ValidateFetchParameters(params []byte) (interface{}, error) {
 // * Name of the test
 // * list of step definitions
 // * an error if any
-func (tf *Literal) Fetch(params interface{}) (string, []*test.TestStepDescriptor, error) {
+func (tf *Literal) Fetch(params interface{}) (*test.StepsDescriptors, error) {
 	fetchParams, ok := params.(FetchParameters)
 	if !ok {
-		return "", nil, fmt.Errorf("Fetch expects uri.FetchParameters object")
+		return nil, fmt.Errorf("Fetch expects uri.FetchParameters object")
+	}
+	descriptors := test.StepsDescriptors{
+		TestName: fetchParams.TestName,
+		Test:     fetchParams.Steps,
+		Cleanup:  fetchParams.Cleanup,
 	}
 	log.Printf("Returning literal test steps")
-	return fetchParams.TestName, fetchParams.Steps, nil
+	return &descriptors, nil
 }
 
 // New initializes the TestFetcher object

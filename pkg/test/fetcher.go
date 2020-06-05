@@ -17,7 +17,7 @@ type TestFetcherLoader func() (string, TestFetcherFactory)
 // hosts.
 type TestFetcher interface {
 	ValidateFetchParameters([]byte) (interface{}, error)
-	Fetch(interface{}) (string, []*TestStepDescriptor, error)
+	Fetch(interface{}) (*StepsDescriptors, error)
 }
 
 // TestFetcherBundle bundles the selected TestFetcher together with its acquire

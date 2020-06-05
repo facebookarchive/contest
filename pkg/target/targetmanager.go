@@ -12,7 +12,7 @@ import "github.com/facebookincubator/contest/pkg/types"
 type TargetManagerFactory func() TargetManager
 
 // TargetManagerLoader is a type representing a function which returns all the
-// needed things to be able to load a TestStep.
+// needed things to be able to load a Step.
 type TargetManagerLoader func() (string, TargetManagerFactory)
 
 // TargetManager is an interface used to acquire and release the targets to

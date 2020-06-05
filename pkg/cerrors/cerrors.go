@@ -12,7 +12,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/target"
 )
 
-// TargetError is used by TestSteps to indicate that a Target encountered
+// TargetError is used by Steps to indicate that a Target encountered
 // an error while running the test. A Target that encounters a TargetError
 // does not proceed further in the test run.
 type TargetError struct {
@@ -31,25 +31,25 @@ func (e *ErrResumeNotSupported) Error() string {
 	return fmt.Sprintf("test step %s does not support resume", e.StepName)
 }
 
-// ErrTestStepsNeverReturned indicates that one or multiple TestSteps
+// ErrStepsNeverReturned indicates that one or multiple Steps
 //  did not complete when the test terminated or when the pipeline
 // received a cancellation or pause signal
-type ErrTestStepsNeverReturned struct {
+type ErrStepsNeverReturned struct {
 	StepNames []string
 }
 
 // Error returns the error string associated with the error
-func (e *ErrTestStepsNeverReturned) Error() string {
+func (e *ErrStepsNeverReturned) Error() string {
 	return fmt.Sprintf("test step [%s] did not return", strings.Join(e.StepNames, ", "))
 }
 
-// ErrTestStepClosedChannels indicates that the test step returned after
+// ErrStepClosedChannels indicates that the test step returned after
 // closing its output channels, which constitutes an API violation
-type ErrTestStepClosedChannels struct {
+type ErrStepClosedChannels struct {
 	StepName string
 }
 
 // Error returns the error string associated with the error
-func (e *ErrTestStepClosedChannels) Error() string {
+func (e *ErrStepClosedChannels) Error() string {
 	return fmt.Sprintf("test step %v closed output channels (api violation)", e.StepName)
 }

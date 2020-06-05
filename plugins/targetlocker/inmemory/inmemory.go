@@ -191,7 +191,7 @@ func (tl *InMemory) CheckLocks(jobID types.JobID, targets []*target.Target) (boo
 	return len(req.notLocked) != len(targets), req.locked, req.notLocked
 }
 
-// New initializes and returns a new ExampleTestStep.
+// New initializes and returns a new ExampleStep.
 func New(timeout time.Duration) target.Locker {
 	lockRequests := make(chan request)
 	unlockRequests := make(chan request)
