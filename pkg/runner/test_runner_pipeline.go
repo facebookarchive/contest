@@ -282,6 +282,7 @@ func (p *pipeline) waitTargets(terminate <-chan struct{}, completedCh chan<- *ta
 		}
 
 		if err != nil {
+			log.Debugf("waitTargets encountered an error: %v", err)
 			return err
 		}
 
@@ -328,7 +329,6 @@ func (p *pipeline) waitTermination() error {
 	log.Printf("waiting for pipeline to terminate")
 
 	for {
-
 		log.Debugf("steps completed: %d", len(p.state.CompletedSteps()))
 		log.Debugf("routing completed: %d", len(p.state.CompletedRouting()))
 		stepsCompleted := len(p.state.CompletedSteps()) == len(p.bundles)
@@ -438,6 +438,7 @@ func (p *pipeline) init(cancel, pause <-chan struct{}) (routeInFirst chan *targe
 		// going to be used to injects targets into the pipeline from outside. Also
 		// add an intermediate goroutine which keeps track of how many targets have
 		// been injected into the pipeline
+
 		if position == 0 {
 			routeInFirst = make(chan *target.Target)
 			routeInStep := routeIn
@@ -562,9 +563,9 @@ func (p *pipeline) run(cancel, pause <-chan struct{}, completedTargetsCh chan<- 
 		}
 		terminationError = <-errCh
 		if terminationError != nil {
-			p.log.Infof("test did not terminate correctly after %s signal: %v", signal, terminationError)
+			p.log.Infof("pipeline did not terminate correctly after %s signal: %v", signal, terminationError)
 		} else {
-			p.log.Infof("test terminated correctly after %s signal", signal)
+			p.log.Infof("pipeline terminated correctly after %s signal", signal)
 		}
 	} else {
 		p.log.Infof("completed")

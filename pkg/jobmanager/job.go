@@ -56,8 +56,8 @@ func newJob(registry *pluginregistry.PluginRegistry, jobDescriptor *job.Descript
 			Name:                thisTestStepsDescriptors.TestName,
 			TargetManagerBundle: bundlTargetManager,
 			TestFetcherBundle:   bundleTestFetcher,
-			TestStepBundles:     bundleTest,
-			CleanupStepBundles:  bundleCleanup,
+			TestStepsBundles:    bundleTest,
+			CleanupStepsBundles: bundleCleanup,
 		}
 		tests = append(tests, &test)
 	}
