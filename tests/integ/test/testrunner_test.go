@@ -127,7 +127,7 @@ func TestSuccessfulCompletion(t *testing.T) {
 
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
@@ -160,7 +160,7 @@ func TestPanicStep(t *testing.T) {
 	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
@@ -199,17 +199,12 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 	}
 	go func() {
 		tr := runner.NewTestRunnerWithTimeouts(timeouts)
-		err := tr.Run(cancel, pause, &test.Test{TestStepBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
 	case err = <-errCh:
 		require.Error(t, err)
-		if _, ok := err.(*cerrors.ErrStepsNeverReturned); !ok {
-			errString := fmt.Sprintf("Error returned by TestRunner should be of type ErrStepsNeverReturned: %v", err)
-			assert.FailNow(t, errString)
-		}
-		assert.NotNil(t, err.(*cerrors.ErrStepsNeverReturned))
 	case <-time.After(successTimeout):
 		t.Errorf("test should return within timeout: %+v", successTimeout)
 	}
@@ -251,7 +246,7 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 
 	go func() {
 		tr := runner.NewTestRunnerWithTimeouts(timeouts)
-		err := tr.Run(cancel, pause, &test.Test{TestStepBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
@@ -269,10 +264,6 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 		case err = <-errCh:
 			// The test timed out, which is an error from the perspective of the JobManager
 			require.Error(t, err)
-			if _, ok := err.(*cerrors.ErrStepsNeverReturned); !ok {
-				errString := fmt.Sprintf("Error returned by TestRunner should be of type ErrStepsNeverReturned: %v", err)
-				assert.FailNow(t, errString)
-			}
 		case <-time.After(testShutdownTimeout):
 			assert.FailNow(t, "TestRunner should return after cancellation before timeout")
 		}
@@ -301,7 +292,7 @@ func StepClosesChannels(t *testing.T) {
 	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
@@ -343,7 +334,7 @@ func TestCmdPlugin(t *testing.T) {
 	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
@@ -381,7 +372,7 @@ func TestNoRunStepIfNoTargets(t *testing.T) {
 	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 

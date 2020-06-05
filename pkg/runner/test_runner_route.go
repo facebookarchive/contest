@@ -9,7 +9,6 @@ import (
 	"container/list"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -47,11 +46,11 @@ func (r *router) routeIn(terminate <-chan struct{}) (int, error) {
 		err           error
 	)
 
-	// terminateTargetWriter is a control channel used to signal termination to
-	// the writer object which injects a target into the test step
-	terminateTargetWriter := make(chan struct{})
+	// terminateInternal is a control channel used to propagate termination
+	// signal to goroutines internal to routeIn
+	terminateInternal := make(chan struct{})
 
-	// `targets` is used to buffer targets coming from the previous routing blocks,
+	// list used to buffer targets coming from the previous routing blocks,
 	// queueing them for injection into the Step. The list is accessed
 	// synchronously by a single goroutine.
 	targets := list.New()
@@ -59,13 +58,9 @@ func (r *router) routeIn(terminate <-chan struct{}) (int, error) {
 	// `ingressTarget` is used to keep track of ingress times of a target into a test step
 	ingressTarget := make(map[*target.Target]time.Time)
 
-	// Channel that the injection goroutine uses to communicate back with the
-	// main routing logic
-	injectResultCh := make(chan injectionResult)
-
-	// injectionChannels are used to inject targets into test step and return results to the routing
-	// logic
-	injectionChannels := injectionCh{stepIn: r.routingChannels.stepIn, resultCh: injectResultCh}
+	// injectionChannels are used to inject targets into test step and return results to
+	// the routing logic
+	injectionChannels := injectionCh{stepIn: r.routingChannels.stepIn, resultCh: make(chan injectionResult)}
 
 	log.Debugf("initializing routeIn for %s", stepLabel)
 	targetWriter := newTargetWriter(log, r.timeouts)
@@ -74,59 +69,57 @@ func (r *router) routeIn(terminate <-chan struct{}) (int, error) {
 		select {
 		case <-terminate:
 			err = fmt.Errorf("termination requested for routing into %s", stepLabel)
-		case injectionResult := <-injectResultCh:
-			log.Debugf("received injection result for %v", injectionResult.target)
+		case injectionResult := <-injectionChannels.resultCh:
+			t := injectionResult.target
+			log.Debugf("received injection result for %v", t)
 			pendingTarget = nil
 			if injectionResult.err != nil {
 				err = fmt.Errorf("routing failed while injecting target %+v into %s", injectionResult.err, stepLabel)
-				targetInErrEv := testevent.Data{EventName: target.EventTargetInErr, Target: injectionResult.target}
+				targetInErrEv := testevent.Data{EventName: target.EventTargetInErr, Target: t}
 				if err := r.ev.Emit(targetInErrEv); err != nil {
-					log.Warningf("could not emit %v event for target: %+v", targetInErrEv, *injectionResult.target)
+					log.Warningf("could not emit %v event for target: %+v", targetInErrEv, *t)
 				}
 			} else {
-				targetInEv := testevent.Data{EventName: target.EventTargetIn, Target: injectionResult.target}
+				targetInEv := testevent.Data{EventName: target.EventTargetIn, Target: t}
 				if err := r.ev.Emit(targetInEv); err != nil {
-					log.Warningf("could not emit %v event for Target: %+v", targetInEv, *injectionResult.target)
+					log.Warningf("could not emit %v event for Target: %+v", targetInEv, *t)
 				}
 			}
 		case t, chanIsOpen := <-r.routingChannels.routeIn:
 			if !chanIsOpen {
 				log.Debugf("routing input channel closed")
 				r.routingChannels.routeIn = nil
-				break
+			} else {
+				log.Debugf("received target %v in input", t)
+				targets.PushFront(t)
 			}
-			log.Debugf("received target %v in input", t)
-			targets.PushFront(t)
 		}
 
 		if err != nil {
 			break
 		}
-		if pendingTarget == nil {
-			// no targets currently being injected in the test step
-			if targets.Len() > 0 {
-				// At least one more target available to inject to the test step
-				pendingTarget = targets.Back().Value.(*target.Target)
-				ingressTarget[pendingTarget] = time.Now()
-				targets.Remove(targets.Back())
-				injectionWg.Add(1)
-				log.Debugf("writing target %v into test step", pendingTarget)
-				go targetWriter.writeTargetWithResult(terminateTargetWriter, pendingTarget, injectionChannels, &injectionWg)
-			} else {
-				// No more targets available to inject into the teste step
-				if r.routingChannels.routeIn == nil {
-					log.Debugf("input channel is closed and no more targets are available, closing step input channel")
-					close(r.routingChannels.stepIn)
-					break
-				}
-			}
+		if targets.Len() > 0 && pendingTarget == nil {
+			// at least one more target available to inject to the test step
+			pendingTarget = targets.Back().Value.(*target.Target)
+			ingressTarget[pendingTarget] = time.Now()
+			targets.Remove(targets.Back())
+			injectionWg.Add(1)
+			log.Debugf("writing target %v into test step", pendingTarget)
+			go targetWriter.writeTargetWithResult(terminateInternal, pendingTarget, injectionChannels, &injectionWg)
+		}
+		if targets.Len() == 0 && pendingTarget == nil && r.routingChannels.routeIn == nil {
+			// no more targets in the buffer not pending, and input channel is closed
+			// routing logic should return.
+			log.Debugf("input channel is closed and no more targets are available, closing step input channel")
+			close(r.routingChannels.stepIn)
+			break
 		}
 	}
 	// Signal termination to the injection routines regardless of the result of the
 	// routing. If the routing completed successfully, this is a no-op. If there is an
 	// injection goroutine running, wait for it to terminate, as we might have gotten
 	// here after a cancellation signal.
-	close(terminateTargetWriter)
+	close(terminateInternal)
 	injectionWg.Wait()
 
 	if err != nil {
@@ -207,7 +200,6 @@ func (r *router) routeOut(terminate <-chan struct{}) (int, error) {
 				r.routingChannels.stepErr = nil
 				break
 			}
-
 			if _, targetPresent := egressTarget[targetError.Target]; targetPresent {
 				err = fmt.Errorf("step %s returned target %+v multiple times", r.bundle.StepLabel, targetError.Target)
 			} else {
@@ -247,6 +239,8 @@ func (r *router) route(terminate <-chan struct{}, resultCh chan<- routeResult) {
 		routeWg               sync.WaitGroup
 	)
 
+	r.log.Debugf("initializing routing")
+
 	routeWg.Add(1)
 	go func() {
 		defer routeWg.Done()
@@ -277,7 +271,7 @@ func (r *router) route(terminate <-chan struct{}, resultCh chan<- routeResult) {
 	select {
 	case resultCh <- routeResult{bundle: r.bundle, err: err}:
 	case <-time.After(r.timeouts.MessageTimeout):
-		log.Panicf("could not send routing block result")
+		r.log.Panicf("could not send routing block result")
 	}
 }
 

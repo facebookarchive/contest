@@ -134,11 +134,11 @@ func (jr *JobRunner) buildTestStatus(coordinates job.TestCoordinates, currentJob
 	}
 	testStatus := job.TestStatus{
 		TestCoordinates: coordinates,
-		StepStatuses:    make([]job.StepStatus, len(currentTest.TestStepBundles)),
+		StepStatuses:    make([]job.StepStatus, len(currentTest.TestStepsBundles)),
 	}
 
 	// Build a StepStatus object for each Step
-	for index, bundle := range currentTest.TestStepBundles {
+	for index, bundle := range currentTest.TestStepsBundles {
 		testStepCoordinates := job.StepCoordinates{
 			TestCoordinates: coordinates,
 			StepName:        bundle.Step.Name(),

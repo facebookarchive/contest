@@ -1,0 +1,12 @@
+{
+    "steps": [
+        {
+            "name": "echo",
+            "label": "thefirstrandecho_test",
+            "parameters": {
+                "text": ["some very random text"]
+            }
+        }
+   ]
+}
+

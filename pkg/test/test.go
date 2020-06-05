@@ -16,8 +16,8 @@ import (
 type Test struct {
 	Name string
 
-	TestStepBundles    []StepBundle
-	CleanupStepBundles []StepBundle
+	TestStepsBundles    []StepBundle
+	CleanupStepsBundles []StepBundle
 
 	TargetManagerBundle *target.TargetManagerBundle
 	TestFetcherBundle   *TestFetcherBundle
