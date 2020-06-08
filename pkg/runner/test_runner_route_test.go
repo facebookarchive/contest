@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
@@ -47,10 +46,9 @@ type TestRunnerSuite struct {
 	routeOutCh <-chan *target.Target
 
 	stepInCh  <-chan *target.Target
-	stepOutCh chan<- *target.Target
-	stepErrCh chan<- cerrors.TargetError
+	stepOutCh chan<- *target.Result
 
-	targetErrCh <-chan cerrors.TargetError
+	targetResultCh <-chan *target.Result
 }
 
 func (suite *TestRunnerSuite) SetupTest() {
@@ -75,24 +73,21 @@ func (suite *TestRunnerSuite) SetupTest() {
 	routeInCh := make(chan *target.Target)
 	routeOutCh := make(chan *target.Target)
 	stepInCh := make(chan *target.Target)
-	stepOutCh := make(chan *target.Target)
-	stepErrCh := make(chan cerrors.TargetError)
-	targetErrCh := make(chan cerrors.TargetError)
+	stepOutCh := make(chan *target.Result)
+	targetResultCh := make(chan *target.Result)
 
 	suite.routeInCh = routeInCh
 	suite.routeOutCh = routeOutCh
 	suite.stepOutCh = stepOutCh
 	suite.stepInCh = stepInCh
-	suite.stepErrCh = stepErrCh
-	suite.targetErrCh = targetErrCh
+	suite.targetResultCh = targetResultCh
 
 	suite.routingChannels = routingCh{
-		routeIn:   routeInCh,
-		routeOut:  routeOutCh,
-		stepIn:    stepInCh,
-		stepErr:   stepErrCh,
-		stepOut:   stepOutCh,
-		targetErr: targetErrCh,
+		routeIn:      routeInCh,
+		routeOut:     routeOutCh,
+		stepIn:       stepInCh,
+		stepOut:      stepOutCh,
+		targetResult: targetResultCh,
 	}
 
 	s, err := memory.New()
@@ -155,20 +150,21 @@ func (suite *TestRunnerSuite) TestRouteInRoutesAllTargets() {
 		for {
 			select {
 			case t, ok := <-suite.stepInCh:
+				var err error
 				if !ok {
 					if numTargets != len(targets) {
-						stepInResult <- fmt.Errorf("not all targets received by teste step")
-					} else {
-						stepInResult <- nil
+						err = fmt.Errorf("not all targets received by teste step")
 					}
+					stepInResult <- err
 					return
 				}
 				if numTargets+1 > len(targets) {
-					stepInResult <- fmt.Errorf("more targets returned than injected")
-					return
+					err = fmt.Errorf("more targets returned than injected")
+				} else if t.Name != targets[numTargets].Name || t.ID != targets[numTargets].ID {
+					err = fmt.Errorf("targets returned in wrong order")
 				}
-				if t.Name != targets[numTargets].Name || t.ID != targets[numTargets].ID {
-					stepInResult <- fmt.Errorf("targets returned in wrong order")
+				if err != nil {
+					stepInResult <- err
 					return
 				}
 				numTargets++
@@ -224,13 +220,12 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllSuccessfulTargets() {
 	go func() {
 		// it's expected that the step closes both channels
 		defer close(suite.stepOutCh)
-		defer close(suite.stepErrCh)
-		for _, target := range targets {
+		for _, t := range targets {
 			select {
 			case <-time.After(2 * time.Second):
 				stepResult <- fmt.Errorf("target should be accepted by routing block within timeout")
 				return
-			case suite.stepOutCh <- target:
+			case suite.stepOutCh <- &target.Result{Target: t}:
 			}
 		}
 		stepResult <- nil
@@ -242,28 +237,29 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllSuccessfulTargets() {
 		numTargets := 0
 		for {
 			select {
-			case _, ok := <-suite.targetErrCh:
+			case _, ok := <-suite.targetResultCh:
 				if !ok {
-					suite.targetErrCh = nil
+					suite.targetResultCh = nil
 				} else {
 					routeResult <- fmt.Errorf("no targets expected on the error channel")
 					return
 				}
 			case t, ok := <-suite.routeOutCh:
+				var err error
 				if !ok {
 					if numTargets != len(targets) {
-						routeResult <- fmt.Errorf("not all targets have been returned")
-					} else {
-						routeResult <- nil
+						err = fmt.Errorf("not all targets have been returned")
 					}
+					routeResult <- err
 					return
 				}
 				if numTargets+1 > len(targets) {
-					routeResult <- fmt.Errorf("more targets returned than injected")
-					return
+					err = fmt.Errorf("more targets returned than injected")
+				} else if t.Name != targets[numTargets].Name || t.ID != targets[numTargets].ID {
+					err = fmt.Errorf("targets returned in wrong order")
 				}
-				if t.Name != targets[numTargets].Name || t.ID != targets[numTargets].ID {
-					routeResult <- fmt.Errorf("targets returned in wrong order")
+				if err != nil {
+					routeResult <- err
 					return
 				}
 				numTargets++
@@ -320,14 +316,12 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllFailedTargets() {
 	go func() {
 		// it's expected that the step closes both channels
 		defer close(suite.stepOutCh)
-		defer close(suite.stepErrCh)
-		for _, target := range targets {
-			targetErr := cerrors.TargetError{Target: target, Err: fmt.Errorf("test error")}
+		for _, t := range targets {
 			select {
 			case <-time.After(2 * time.Second):
 				stepResult <- fmt.Errorf("target should be accepted by routing block within timeout")
 				return
-			case suite.stepErrCh <- targetErr:
+			case suite.stepOutCh <- &target.Result{Target: t, Err: fmt.Errorf("test error")}:
 			}
 		}
 		stepResult <- nil
@@ -339,21 +333,21 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllFailedTargets() {
 		numTargets := 0
 		for {
 			select {
-			case targetErr, ok := <-suite.targetErrCh:
+			case targetResult, ok := <-suite.targetResultCh:
 				if !ok {
 					routeResult <- fmt.Errorf("target error channel should not be closed by routing block")
 					return
 				}
-				if targetErr.Err == nil {
-					routeResult <- fmt.Errorf("expected error associated to the target")
-					return
+				var err error
+				if targetResult.Err == nil {
+					err = fmt.Errorf("expected error associated to the target")
+				} else if numTargets+1 > len(targets) {
+					err = fmt.Errorf("more targets returned than injected")
+				} else if targetResult.Target.Name != targets[numTargets].Name || targetResult.Target.ID != targets[numTargets].ID {
+					err = fmt.Errorf("targets returned in wrong order")
 				}
-				if numTargets+1 > len(targets) {
-					routeResult <- fmt.Errorf("more targets returned than injected")
-					return
-				}
-				if targetErr.Target.Name != targets[numTargets].Name || targetErr.Target.ID != targets[numTargets].ID {
-					routeResult <- fmt.Errorf("targets returned in wrong order")
+				if err != nil {
+					routeResult <- err
 					return
 				}
 

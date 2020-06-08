@@ -44,3 +44,10 @@ func (t *Target) String() string {
 	}
 	return fmt.Sprintf("Target{Name: \"%s\", ID: \"%s\", FQDN: \"%s\"}", t.Name, t.ID, t.FQDN)
 }
+
+// Result models the result of a test for a specific target.
+// The result might be associated with an error.
+type Result struct {
+	Target *Target
+	Err    error
+}

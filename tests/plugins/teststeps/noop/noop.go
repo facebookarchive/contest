@@ -9,6 +9,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
+	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 )
 
@@ -30,11 +31,11 @@ func (ts *noop) Name() string {
 func (ts *noop) Run(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.Emitter) error {
 	for {
 		select {
-		case target := <-ch.In:
-			if target == nil {
+		case t := <-ch.In:
+			if t == nil {
 				return nil
 			}
-			ch.Out <- target
+			ch.Out <- &target.Result{Target: t}
 		case <-cancel:
 			return nil
 		case <-pause:

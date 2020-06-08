@@ -6,7 +6,6 @@
 package teststeps
 
 import (
-	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
@@ -29,43 +28,35 @@ type PerTargetFunc func(cancel, pause <-chan struct{}, target *target.Target) er
 func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.StepChannels, f PerTargetFunc) error {
 	for {
 		select {
-		case target := <-ch.In:
-			if target == nil {
+		case t := <-ch.In:
+			if t == nil {
 				// no more targets incoming
 				return nil
 			}
-			log.Debugf("%s: ForEachTarget: received target %s", pluginName, target)
+			log.Debugf("%s: ForEachTarget: received target %s", pluginName, t)
 			errCh := make(chan error)
 			go func() {
-				log.Debugf("%s: ForEachTarget: calling function on target %s", pluginName, target)
-				errCh <- f(cancel, pause, target)
+				log.Debugf("%s: ForEachTarget: calling function on target %s", pluginName, t)
+				errCh <- f(cancel, pause, t)
 			}()
 
 			select {
 			case err := <-errCh:
+				result := &target.Result{Target: t}
 				if err != nil {
-					select {
-					case ch.Err <- cerrors.TargetError{Target: target, Err: err}:
-						log.Errorf("%s: ForEachTarget: failed to apply test step function on target %s: %v", pluginName, target, err)
-					case <-cancel:
-						log.Debugf("%s: ForEachTarget: received cancellation signal", pluginName)
-						return nil
-					case <-pause:
-						log.Debugf("%s: ForEachTarget: received pausing signal", pluginName)
-						return nil
-					}
-				} else {
-					select {
-					case ch.Out <- target:
-						log.Debugf("%s: ForEachTarget: target %s completed successfully", pluginName, target)
-					case <-cancel:
-						log.Debugf("%s: ForEachTarget: received cancellation signal", pluginName)
-						return nil
-					case <-pause:
-						log.Debugf("%s: ForEachTarget: received pausing signal", pluginName)
-						return nil
-					}
+					result.Err = err
 				}
+				select {
+				case ch.Out <- result:
+					log.Debugf("%s: ForEachTarget: target %s completed successfully", pluginName, t)
+				case <-cancel:
+					log.Debugf("%s: ForEachTarget: received cancellation signal", pluginName)
+					return nil
+				case <-pause:
+					log.Debugf("%s: ForEachTarget: received pausing signal", pluginName)
+					return nil
+				}
+
 			case <-cancel:
 				return nil
 			case <-pause:

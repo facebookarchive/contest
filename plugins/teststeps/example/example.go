@@ -14,6 +14,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 )
 
@@ -53,36 +54,38 @@ func (ts *Step) Run(cancel, pause <-chan struct{}, ch test.StepChannels, _ test.
 
 		r := rand.Intn(3)
 		select {
-		case target := <-ch.In:
-			if target == nil {
+		case t := <-ch.In:
+			if t == nil {
 				return nil
 			}
-			log.Infof("Executing on target %s", target)
+			log.Infof("Executing on target %s", t)
 			// NOTE: you may want more robust error handling here, possibly just
 			//       logging the error, or a retry mechanism. Returning an error
 			//       here means failing the entire job.
-			if err := ev.Emit(testevent.Data{EventName: StartedEvent, Target: target, Payload: nil}); err != nil {
+			if err := ev.Emit(testevent.Data{EventName: StartedEvent, Target: t, Payload: nil}); err != nil {
 				return fmt.Errorf("failed to emit start event: %v", err)
 			}
+			result := &target.Result{Target: t}
 			if r == 1 {
-				select {
-				case <-cancel:
-				case <-pause:
-					return nil
-				case ch.Err <- cerrors.TargetError{Target: target, Err: fmt.Errorf("target failed")}:
-					if err := ev.Emit(testevent.Data{EventName: FinishedEvent, Target: target, Payload: nil}); err != nil {
-						return fmt.Errorf("failed to emit finished event: %v", err)
+				result.Err = fmt.Errorf("target failed")
+			}
+
+			select {
+			case <-cancel:
+			case <-pause:
+				return nil
+			case ch.Out <- result:
+				if result.Err != nil {
+					log.Infof("target %v failed", result.Target)
+					if err := ev.Emit(testevent.Data{EventName: FailedEvent, Target: t, Payload: nil}); err != nil {
+						log.Warningf("failed to emit failed event: %v", err)
 					}
-				}
-			} else {
-				select {
-				case <-cancel:
-				case <-pause:
-					return nil
-				case ch.Out <- target:
-					if err := ev.Emit(testevent.Data{EventName: FailedEvent, Target: target, Payload: nil}); err != nil {
-						return fmt.Errorf("failed to emit failed event: %v", err)
+				} else {
+					log.Infof("target %v succeded", result.Target)
+					if err := ev.Emit(testevent.Data{EventName: FinishedEvent, Target: t, Payload: nil}); err != nil {
+						log.Warningf("failed to emit finished event: %v", err)
 					}
+
 				}
 			}
 		case <-cancel:

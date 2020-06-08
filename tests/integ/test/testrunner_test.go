@@ -70,6 +70,7 @@ var testStepsEvents = map[string][]event.Name{
 func TestMain(m *testing.M) {
 	logging.GetLogger("tests/integ")
 	logging.Disable()
+	//logging.Debug()
 
 	pluginRegistry = pluginregistry.NewPluginRegistry()
 	// Setup the PluginRegistry by registering Steps

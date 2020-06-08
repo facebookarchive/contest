@@ -7,10 +7,8 @@ package runner
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
-	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/config"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -38,13 +36,14 @@ type routingCh struct {
 	// routeIn and routeOut connect the routing block to other routing blocks
 	routeIn  <-chan *target.Target
 	routeOut chan<- *target.Target
+
 	// Channels that connect the routing block to the Step
 	stepIn  chan<- *target.Target
-	stepOut <-chan *target.Target
-	stepErr <-chan cerrors.TargetError
-	// targetErr connects the routing block directly to the TestRunner. Failing
+	stepOut <-chan *target.Result
+
+	// targetResult connects the routing block directly to the TestRunner. Failing
 	// targets are acquired by the TestRunner via this channel
-	targetErr chan<- cerrors.TargetError
+	targetResult chan<- *target.Result
 }
 
 // stepCh represents a set of bidirectional channels that a Step and its associated
@@ -52,19 +51,7 @@ type routingCh struct {
 // channel when connecting the Step to the routing block.
 type stepCh struct {
 	stepIn  chan *target.Target
-	stepOut chan *target.Target
-	stepErr chan cerrors.TargetError
-}
-
-type injectionCh struct {
-	stepIn   chan<- *target.Target
-	resultCh chan injectionResult
-}
-
-// injectionResult represents the result of an injection goroutine
-type injectionResult struct {
-	target *target.Target
-	err    error
+	stepOut chan *target.Result
 }
 
 // routeResult represents the result of routing block, possibly carrying error information
@@ -87,8 +74,8 @@ type stepResult struct {
 type pipelineCtrlCh struct {
 	routingResultCh <-chan routeResult
 	stepResultCh    <-chan stepResult
-	targetOut       <-chan *target.Target
-	targetErr       <-chan cerrors.TargetError
+	targetResultCh  <-chan *target.Result
+
 	// cancelRouting is a control channel used to cancel routing blocks in the pipeline
 	cancelRoutingCh chan struct{}
 	// cancelStep is a control channel used to cancel the steps of the pipeline
@@ -109,9 +96,10 @@ type targetWriter struct {
 	timeouts TestRunnerTimeouts
 }
 
-func (w *targetWriter) writeTimeout(terminate <-chan struct{}, ch chan<- *target.Target, target *target.Target, timeout time.Duration) error {
+func (w *targetWriter) writeTarget(terminate <-chan struct{}, ch chan<- *target.Target, target *target.Target, timeout time.Duration) error {
 	w.log.Debugf("writing target %+v, timeout %v", target, timeout)
 	start := time.Now()
+
 	select {
 	case <-terminate:
 		w.log.Debugf("terminate requested while writing target %+v", target)
@@ -123,41 +111,15 @@ func (w *targetWriter) writeTimeout(terminate <-chan struct{}, ch chan<- *target
 	return nil
 }
 
-// writeTargetWithResult attempts to deliver a Target on the input channel of a step,
-// returning the result of the operation on the result channel wrapped in the
-// injectionCh argument
-func (w *targetWriter) writeTargetWithResult(terminate <-chan struct{}, target *target.Target, ch injectionCh, wg *sync.WaitGroup) {
-	defer wg.Done()
-	err := w.writeTimeout(terminate, ch.stepIn, target, w.timeouts.StepInjectTimeout)
-	select {
-	case <-terminate:
-		w.log.Debugf("terminate requested while writing result for target target %+v", target)
-	case ch.resultCh <- injectionResult{target: target, err: err}:
-	case <-time.After(w.timeouts.MessageTimeout):
-		w.log.Panicf("timeout while writing result for target %+v after %v", target, w.timeouts.MessageTimeout)
-	}
-}
-
-// writeTargetError writes a TargetError object to a TargetError channel with timeout
-func (w *targetWriter) writeTargetError(terminate <-chan struct{}, ch chan<- cerrors.TargetError, targetError cerrors.TargetError, timeout time.Duration) error {
-	select {
-	case <-terminate:
-	case ch <- targetError:
-	case <-time.After(timeout):
-		return fmt.Errorf("timeout while writing targetError %+v", targetError)
-	}
-	return nil
-}
-
 func newTargetWriter(log *logrus.Entry, timeouts TestRunnerTimeouts) *targetWriter {
 	return &targetWriter{log: log, timeouts: timeouts}
 }
 
-func (tr *TestRunner) injectTargets(terminate <-chan struct{}, targets []*target.Target, writeChannel chan<- *target.Target, log *logrus.Entry) {
+func (tr *TestRunner) writeTargets(terminate <-chan struct{}, targets []*target.Target, writeChannel chan<- *target.Target, log *logrus.Entry) {
 	writer := newTargetWriter(log, tr.timeouts)
 	for _, target := range targets {
 		log.Debugf("injecting %v", target)
-		if err := writer.writeTimeout(terminate, writeChannel, target, tr.timeouts.MessageTimeout); err != nil {
+		if err := writer.writeTarget(terminate, writeChannel, target, tr.timeouts.MessageTimeout); err != nil {
 			log.Panicf("could not inject target %+v into first routing block: %+v", target, err)
 		}
 		select {
@@ -185,12 +147,12 @@ func (tr *TestRunner) pipeChannels(terminate <-chan struct{}, readChannel <-chan
 				return
 			}
 			log.Debugf("received target %v, injecting...", t)
-			tr.injectTargets(terminate, []*target.Target{t}, writeChannel, log)
+			tr.writeTargets(terminate, []*target.Target{t}, writeChannel, log)
 		}
 	}
 }
 
-func (tr *TestRunner) waitTestRunner(cancel, pause <-chan struct{}, cancelInternal, pauseInternal chan struct{}, errTestCh, errCleanupCh chan error, completed <-chan *target.Target, log *logrus.Entry) error {
+func (tr *TestRunner) wait(cancel, pause <-chan struct{}, cancelInternal, pauseInternal chan struct{}, errTestCh, errCleanupCh chan error, completed <-chan *target.Target, log *logrus.Entry) error {
 
 	var (
 		errTest, errCleanup                 error
@@ -297,7 +259,7 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, test *test.Test, target
 	go func(terminate <-chan struct{}, writeChannel chan<- *target.Target) {
 		defer close(writeChannel)
 		log := logging.AddField(log, "step", "test_injection")
-		tr.injectTargets(cancelInjectionCh, targets, writeChannel, log)
+		tr.writeTargets(cancelInjectionCh, targets, writeChannel, log)
 	}(cancelInjectionCh, inputTestPipelineCh)
 
 	if len(test.CleanupStepsBundles) == 0 {
@@ -307,7 +269,6 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, test *test.Test, target
 		}()
 		log.Warningf("no cleanup pipeline defined")
 	} else {
-
 		// setup the cleanup pipeline
 		log.Infof("setting up cleanup pipeline")
 		cleanupLog := logging.AddField(rootLog, "entity", "cleanup_pipeline")
@@ -332,8 +293,8 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, test *test.Test, target
 	// Receive targets from the completed channel controlled by the pipeline, while
 	// waiting for termination signals or fatal errors encountered while running
 	// the pipeline.
-	waitLog := logging.AddField(rootLog, "phase", "waitTestRunner")
-	return tr.waitTestRunner(cancel, pause, cancelInternal, pauseInternal, errTestCh, errCleanupCh, completed, waitLog)
+	waitLog := logging.AddField(rootLog, "phase", "wait")
+	return tr.wait(cancel, pause, cancelInternal, pauseInternal, errTestCh, errCleanupCh, completed, waitLog)
 }
 
 // NewTestRunner initializes and returns a new TestRunner object. This test

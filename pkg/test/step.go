@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -94,8 +93,7 @@ type StepBundle struct {
 // to communicate with the TestRunner
 type StepChannels struct {
 	In  <-chan *target.Target
-	Out chan<- *target.Target
-	Err chan<- cerrors.TargetError
+	Out chan<- *target.Result
 }
 
 // Step is the interface that all steps need to implement to be executed

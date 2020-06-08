@@ -7,7 +7,6 @@ package randecho
 
 import (
 	"errors"
-	"fmt"
 	"math/rand"
 	"strings"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 )
 
@@ -58,31 +58,26 @@ func (e Step) Name() string {
 func (e Step) Run(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.Emitter) error {
 	for {
 		select {
-		case target := <-ch.In:
-			if target == nil {
+		case t := <-ch.In:
+			if t == nil {
 				// no more targets incoming
 				return nil
 			}
 			r := rand.Intn(2)
+
+			result := &target.Result{Target: t}
+			var eventName event.Name
 			if r == 0 {
-				evData := testevent.Data{
-					EventName: event.Name("TargetSucceeded"),
-					Target:    target,
-					Payload:   nil,
-				}
-				_ = ev.Emit(evData)
-				log.Infof("Run: target %s succeeded: %s", target, params.GetOne("text"))
-				ch.Out <- target
+				eventName = event.Name("TargetSucceeded")
+				log.Infof("Run: target %s succeeded: %s", t, params.GetOne("text"))
 			} else {
-				evData := testevent.Data{
-					EventName: event.Name("TargetFailed"),
-					Target:    target,
-					Payload:   nil,
-				}
-				_ = ev.Emit(evData)
-				log.Infof("Run: target %s failed: %s", target, params.GetOne("text"))
-				ch.Err <- cerrors.TargetError{Target: target, Err: fmt.Errorf("target randomly failed")}
+				eventName = event.Name("TargetFailed")
+				log.Infof("Run: target %s failed: %s", t, params.GetOne("text"))
 			}
+			evData := testevent.Data{EventName: eventName, Target: t, Payload: nil}
+			_ = ev.Emit(evData)
+
+			ch.Out <- result
 		case <-cancel:
 			return nil
 		case <-pause:

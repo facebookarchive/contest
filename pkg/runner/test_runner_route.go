@@ -50,17 +50,16 @@ func (r *router) routeIn(terminate <-chan struct{}) (int, error) {
 	// signal to goroutines internal to routeIn
 	terminateInternal := make(chan struct{})
 
-	// list used to buffer targets coming from the previous routing blocks,
+	// targets buffers targets coming from the previous routing blocks,
 	// queueing them for injection into the Step. The list is accessed
 	// synchronously by a single goroutine.
 	targets := list.New()
 
-	// `ingressTarget` is used to keep track of ingress times of a target into a test step
+	// ingressTarget is used to keep track of ingress times of a target into a test step
 	ingressTarget := make(map[*target.Target]time.Time)
 
-	// injectionChannels are used to inject targets into test step and return results to
-	// the routing logic
-	injectionChannels := injectionCh{stepIn: r.routingChannels.stepIn, resultCh: make(chan injectionResult)}
+	// targetResultCh receives results from the goroutine which writes targets into a test step
+	targetResultCh := make(chan *target.Result)
 
 	log.Debugf("initializing routeIn for %s", stepLabel)
 	targetWriter := newTargetWriter(log, r.timeouts)
@@ -69,12 +68,12 @@ func (r *router) routeIn(terminate <-chan struct{}) (int, error) {
 		select {
 		case <-terminate:
 			err = fmt.Errorf("termination requested for routing into %s", stepLabel)
-		case injectionResult := <-injectionChannels.resultCh:
-			t := injectionResult.target
+		case targetResult := <-targetResultCh:
+			t := targetResult.Target
 			log.Debugf("received injection result for %v", t)
 			pendingTarget = nil
-			if injectionResult.err != nil {
-				err = fmt.Errorf("routing failed while injecting target %+v into %s", injectionResult.err, stepLabel)
+			if targetResult.Err != nil {
+				err = fmt.Errorf("routing failed while injecting target %+v into %s", targetResult.Err, stepLabel)
 				targetInErrEv := testevent.Data{EventName: target.EventTargetInErr, Target: t}
 				if err := r.ev.Emit(targetInErrEv); err != nil {
 					log.Warningf("could not emit %v event for target: %+v", targetInErrEv, *t)
@@ -105,7 +104,17 @@ func (r *router) routeIn(terminate <-chan struct{}) (int, error) {
 			targets.Remove(targets.Back())
 			injectionWg.Add(1)
 			log.Debugf("writing target %v into test step", pendingTarget)
-			go targetWriter.writeTargetWithResult(terminateInternal, pendingTarget, injectionChannels, &injectionWg)
+			go func() {
+				defer injectionWg.Done()
+				err := targetWriter.writeTarget(terminateInternal, r.routingChannels.stepIn, pendingTarget, r.timeouts.MessageTimeout)
+				select {
+				case <-terminateInternal:
+				case targetResultCh <- &target.Result{Target: pendingTarget, Err: err}:
+				case <-time.After(r.timeouts.MessageTimeout):
+					log.Panicf("timeout while writing result for target %+v after %v", pendingTarget, r.timeouts.MessageTimeout)
+				}
+			}()
+
 		}
 		if targets.Len() == 0 && pendingTarget == nil && r.routingChannels.routeIn == nil {
 			// no more targets in the buffer not pending, and input channel is closed
@@ -122,6 +131,7 @@ func (r *router) routeIn(terminate <-chan struct{}) (int, error) {
 	close(terminateInternal)
 	injectionWg.Wait()
 
+	r.log.Debugf("route in terminating")
 	if err != nil {
 		return 0, err
 	}
@@ -174,15 +184,32 @@ func (r *router) routeOut(terminate <-chan struct{}) (int, error) {
 		select {
 		case <-terminate:
 			err = fmt.Errorf("termination requested for routing into %s", r.bundle.StepLabel)
-		case t, chanIsOpen := <-r.routingChannels.stepOut:
+		case targetResult, chanIsOpen := <-r.routingChannels.stepOut:
 			if !chanIsOpen {
 				log.Debugf("step output closed")
 				r.routingChannels.stepOut = nil
 				break
 			}
 
+			t := targetResult.Target
 			if _, targetPresent := egressTarget[t]; targetPresent {
 				err = fmt.Errorf("step %s returned target %+v multiple times", r.bundle.StepLabel, t)
+				break
+			}
+
+			if targetResult.Err != nil {
+				if err := r.emitOutEvent(t, targetResult.Err); err != nil {
+					log.Warningf("could not emit err event for target: %v", *t)
+				}
+				egressTarget[t] = time.Now()
+				select {
+				case <-terminate:
+					err = fmt.Errorf("termination requested for routing into %s", r.bundle.StepLabel)
+				case r.routingChannels.targetResult <- targetResult:
+				case <-time.After(r.timeouts.MessageTimeout):
+					log.Panicf("could not forward failed target (%+v) to the test runner: %v", t, targetResult.Err)
+				}
+
 			} else {
 				// Emit an event signaling that the target has left the Step
 				if err := r.emitOutEvent(t, nil); err != nil {
@@ -190,38 +217,22 @@ func (r *router) routeOut(terminate <-chan struct{}) (int, error) {
 				}
 				// Register egress time and forward target to the next routing block
 				egressTarget[t] = time.Now()
-				if err := targetWriter.writeTimeout(terminate, r.routingChannels.routeOut, t, r.timeouts.MessageTimeout); err != nil {
-					log.Panicf("could not forward target to the test runner: %+v", err)
-				}
-			}
-		case targetError, chanIsOpen := <-r.routingChannels.stepErr:
-			if !chanIsOpen {
-				log.Debugf("step error closed")
-				r.routingChannels.stepErr = nil
-				break
-			}
-			if _, targetPresent := egressTarget[targetError.Target]; targetPresent {
-				err = fmt.Errorf("step %s returned target %+v multiple times", r.bundle.StepLabel, targetError.Target)
-			} else {
-				if err := r.emitOutEvent(targetError.Target, targetError.Err); err != nil {
-					log.Warningf("could not emit err event for target: %v", *targetError.Target)
-				}
-				egressTarget[targetError.Target] = time.Now()
-				if err := targetWriter.writeTargetError(terminate, r.routingChannels.targetErr, targetError, r.timeouts.MessageTimeout); err != nil {
-					log.Panicf("could not forward target (%+v) to the test runner: %v", targetError.Target, err)
+				if err := targetWriter.writeTarget(terminate, r.routingChannels.routeOut, t, r.timeouts.MessageTimeout); err != nil {
+					log.Panicf("could not forward successful target to the the next routing block: %+v", err)
 				}
 			}
 		}
 		if err != nil {
 			break
 		}
-		if r.routingChannels.stepErr == nil && r.routingChannels.stepOut == nil {
+		if r.routingChannels.stepOut == nil {
 			log.Debugf("output and error channel from step are closed, routeOut should terminate")
 			close(r.routingChannels.routeOut)
 			break
 		}
 	}
 
+	r.log.Debugf("route out terminating")
 	if err != nil {
 		return 0, err
 	}
@@ -265,6 +276,7 @@ func (r *router) route(terminate <-chan struct{}, resultCh chan<- routeResult) {
 		err = fmt.Errorf("step %s completed but did not return all injected Targets (%d!=%d)", r.bundle.StepLabel, inTargets, outTargets)
 	}
 
+	r.log.Debugf("sending back route result")
 	// Send the result to the test runner, which is expected to be listening
 	// within `MessageTimeout`. If that's not the case, we hit an unrecovrable
 	// condition.

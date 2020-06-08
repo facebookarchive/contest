@@ -13,6 +13,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 )
 
@@ -56,13 +57,13 @@ func (e Step) Name() string {
 func (e Step) Run(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.Emitter) error {
 	for {
 		select {
-		case target := <-ch.In:
-			if target == nil {
+		case t := <-ch.In:
+			if t == nil {
 				// no more targets incoming
 				return nil
 			}
-			log.Infof("Running on target %s with text '%s'", target, params.GetOne("text"))
-			ch.Out <- target
+			log.Infof("Running on target %s with text '%s'", t, params.GetOne("text"))
+			ch.Out <- &target.Result{Target: t}
 		case <-cancel:
 			return nil
 		case <-pause:

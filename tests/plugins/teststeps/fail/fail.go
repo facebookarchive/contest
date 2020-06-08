@@ -11,6 +11,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
+	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 )
 
@@ -32,11 +33,11 @@ func (ts *fail) Name() string {
 func (ts *fail) Run(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.Emitter) error {
 	for {
 		select {
-		case target := <-ch.In:
-			if target == nil {
+		case t := <-ch.In:
+			if t == nil {
 				return nil
 			}
-			ch.Err <- cerrors.TargetError{Target: target, Err: fmt.Errorf("Integration test failure for %v", target)}
+			ch.Out <- &target.Result{Target: t, Err: fmt.Errorf("Integration test failure for %v", t)}
 		case <-cancel:
 			return nil
 		case <-pause:

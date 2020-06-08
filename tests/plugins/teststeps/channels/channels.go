@@ -9,6 +9,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
+	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 )
 
@@ -28,8 +29,8 @@ func (ts *channels) Name() string {
 
 // Run executes a step which does never return.s
 func (ts *channels) Run(cancel, pause <-chan struct{}, ch test.StepChannels, params test.StepParameters, ev testevent.Emitter) error {
-	for target := range ch.In {
-		ch.Out <- target
+	for t := range ch.In {
+		ch.Out <- &target.Result{Target: t}
 	}
 	close(ch.Out)
 	return nil

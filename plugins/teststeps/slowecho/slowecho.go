@@ -121,7 +121,7 @@ processing:
 					log.Debug("Returning because pause is requested")
 					return
 				default:
-					ch.Out <- t
+					ch.Out <- &target.Result{Target: t}
 				}
 			}(t)
 		case <-cancel:
