@@ -127,7 +127,7 @@ func (suite *TestRunnerSuite) TestRouteInRoutesAllTargets() {
 
 	go func() {
 		// start routing
-		_, _ = suite.router.routeIn(terminate)
+		_, _ = suite.router.routeIn(terminate, terminate)
 	}()
 
 	// inject targets
@@ -209,7 +209,7 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllSuccessfulTargets() {
 
 	go func() {
 		// start routing
-		_, _ = suite.router.routeOut(terminate)
+		_, _ = suite.router.routeOut(terminate, terminate)
 	}()
 
 	stepResult := make(chan error)
@@ -305,7 +305,7 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllFailedTargets() {
 
 	go func() {
 		// start routing
-		_, _ = suite.router.routeOut(terminate)
+		_, _ = suite.router.routeOut(terminate, terminate)
 	}()
 
 	stepResult := make(chan error)

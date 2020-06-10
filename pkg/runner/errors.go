@@ -33,3 +33,11 @@ func newErrTestRunnerError(errTestPipeline error, errCleanupPipeline error) erro
 	}
 	return ErrTestRunnerError{errTestPipeline: errTestPipeline, errCleanupPipeline: errCleanupPipeline}
 }
+
+// ErrTerminationRequested is an error which indicates that a termination signal has been asserted
+type ErrTerminationRequested struct {
+}
+
+func (e *ErrTerminationRequested) Error() string {
+	return "termination requested"
+}

@@ -68,22 +68,6 @@ type stepResult struct {
 	err    error
 }
 
-// pipelineCtrlCh represents multiple result and control channels that the pipeline uses
-// to collect results from routing blocks, steps and target completing the test and to
-//  signa cancellation to various pipeline subsystems
-type pipelineCtrlCh struct {
-	routingResultCh <-chan routeResult
-	stepResultCh    <-chan stepResult
-	targetResultCh  <-chan *target.Result
-
-	// cancelRouting is a control channel used to cancel routing blocks in the pipeline
-	cancelRoutingCh chan struct{}
-	// cancelStep is a control channel used to cancel the steps of the pipeline
-	cancelStepsCh chan struct{}
-	// pauseSteps is a control channel used to pause the steps of the pipeline
-	pauseStepsCh chan struct{}
-}
-
 // TestRunner is the main runner of Steps in ConTest. `results` collects
 // the results of the run. It is not safe to access `results` concurrently.
 type TestRunner struct {
@@ -152,7 +136,7 @@ func (tr *TestRunner) pipeChannels(terminate <-chan struct{}, readChannel <-chan
 	}
 }
 
-func (tr *TestRunner) wait(cancel, pause <-chan struct{}, cancelInternal, pauseInternal chan struct{}, errTestCh, errCleanupCh chan error, completed <-chan *target.Target, log *logrus.Entry) error {
+func (tr *TestRunner) wait(cancel, pause <-chan struct{}, cancelPipeline, pausePipeline chan struct{}, errTestCh, errCleanupCh chan error, completed <-chan *target.Target, log *logrus.Entry) error {
 
 	var (
 		errTest, errCleanup                 error
@@ -165,11 +149,11 @@ func (tr *TestRunner) wait(cancel, pause <-chan struct{}, cancelInternal, pauseI
 		case <-cancel:
 			log.Debug("cancellation asserted, propagating internal cancellation signal")
 			cancellationAsserted = true
-			close(cancelInternal)
+			close(cancelPipeline)
 		case <-pause:
 			log.Debug("pause asserted, propagating internal pause signal")
 			pauseAsserted = true
-			close(pauseInternal)
+			close(cancelPipeline)
 		case errTest = <-errTestCh:
 			log.Debugf("test pipeline terminated")
 			testCompleted = true
@@ -192,7 +176,7 @@ func (tr *TestRunner) wait(cancel, pause <-chan struct{}, cancelInternal, pauseI
 
 		if errTest != nil || errCleanup != nil {
 			cancellationAsserted = true
-			close(cancelInternal)
+			close(cancelPipeline)
 		}
 
 		if cancellationAsserted || pauseAsserted {
@@ -229,8 +213,8 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, test *test.Test, target
 	}
 
 	// internal cancellation and pause signals for the pipelines
-	cancelInternal := make(chan struct{})
-	pauseInternal := make(chan struct{})
+	cancelPipeline := make(chan struct{})
+	pausePipeline := make(chan struct{})
 
 	errTestCh := make(chan error)
 	errCleanupCh := make(chan error)
@@ -250,7 +234,7 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, test *test.Test, target
 	completed := completedFromTestCh
 	go func() {
 		log.Infof("running test pipeline")
-		errTestCh <- testPipeline.run(cancelInternal, pauseInternal, completedFromTestCh)
+		errTestCh <- testPipeline.run(cancelPipeline, pausePipeline, completedFromTestCh)
 		close(completedFromTestCh)
 	}()
 
@@ -284,7 +268,7 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, test *test.Test, target
 		completedFromCleanup := make(chan *target.Target)
 		go func() {
 			log.Infof("running cleanup pipeline")
-			errCleanupCh <- cleanupPipeline.run(cancelInternal, pauseInternal, completedFromCleanup)
+			errCleanupCh <- cleanupPipeline.run(cancelPipeline, pausePipeline, completedFromCleanup)
 		}()
 		completed = completedFromCleanup
 	}
@@ -294,7 +278,7 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, test *test.Test, target
 	// waiting for termination signals or fatal errors encountered while running
 	// the pipeline.
 	waitLog := logging.AddField(rootLog, "phase", "wait")
-	return tr.wait(cancel, pause, cancelInternal, pauseInternal, errTestCh, errCleanupCh, completed, waitLog)
+	return tr.wait(cancel, pause, cancelPipeline, pausePipeline, errTestCh, errCleanupCh, completed, waitLog)
 }
 
 // NewTestRunner initializes and returns a new TestRunner object. This test

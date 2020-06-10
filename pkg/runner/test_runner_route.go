@@ -34,7 +34,7 @@ type router struct {
 // routeIn is responsible for accepting a target from the previous routing block
 // and injecting it into the associated test step. Returns the numer of targets
 // injected into the test step or an error upon failure
-func (r *router) routeIn(terminate <-chan struct{}) (int, error) {
+func (r *router) routeIn(terminate, pause <-chan struct{}) (int, error) {
 
 	stepLabel := r.bundle.StepLabel
 	log := logging.AddField(r.log, "step", stepLabel)
@@ -68,6 +68,9 @@ func (r *router) routeIn(terminate <-chan struct{}) (int, error) {
 		select {
 		case <-terminate:
 			err = fmt.Errorf("termination requested for routing into %s", stepLabel)
+		case <-pause:
+			err = fmt.Errorf("pause requested for routing into %s", stepLabel)
+
 		case targetResult := <-targetResultCh:
 			t := targetResult.Target
 			log.Debugf("received injection result for %v", t)
@@ -135,6 +138,7 @@ func (r *router) routeIn(terminate <-chan struct{}) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	return len(ingressTarget), nil
 }
 
@@ -166,7 +170,7 @@ func (r *router) emitOutEvent(t *target.Target, err error) error {
 // routeOut is responsible for accepting a target from the associated test step
 // and forward it to the next routing block. Returns the numer of targets
 // injected into the test step or an error upon failure
-func (r *router) routeOut(terminate <-chan struct{}) (int, error) {
+func (r *router) routeOut(terminate, pause <-chan struct{}) (int, error) {
 
 	stepLabel := r.bundle.StepLabel
 	log := logging.AddField(r.log, "step", stepLabel)
@@ -177,6 +181,7 @@ func (r *router) routeOut(terminate <-chan struct{}) (int, error) {
 	var err error
 
 	log.Debugf("initializing routeOut for %s", stepLabel)
+
 	// `egressTarget` is used to keep track of egress times of a target from a test step
 	egressTarget := make(map[*target.Target]time.Time)
 
@@ -184,6 +189,10 @@ func (r *router) routeOut(terminate <-chan struct{}) (int, error) {
 		select {
 		case <-terminate:
 			err = fmt.Errorf("termination requested for routing into %s", r.bundle.StepLabel)
+
+		case <-pause:
+			err = fmt.Errorf("pause requested for routing into %s", r.bundle.StepLabel)
+
 		case targetResult, chanIsOpen := <-r.routingChannels.stepOut:
 			if !chanIsOpen {
 				log.Debugf("step output closed")
@@ -211,11 +220,9 @@ func (r *router) routeOut(terminate <-chan struct{}) (int, error) {
 				}
 
 			} else {
-				// Emit an event signaling that the target has left the Step
 				if err := r.emitOutEvent(t, nil); err != nil {
 					log.Warningf("could not emit out event for target: %v", *t)
 				}
-				// Register egress time and forward target to the next routing block
 				egressTarget[t] = time.Now()
 				if err := targetWriter.writeTarget(terminate, r.routingChannels.routeOut, t, r.timeouts.MessageTimeout); err != nil {
 					log.Panicf("could not forward successful target to the the next routing block: %+v", err)
@@ -242,7 +249,7 @@ func (r *router) routeOut(terminate <-chan struct{}) (int, error) {
 
 // route implements the routing logic from the previous routing block to the test step
 // and from the test step to the next routing bloxk
-func (r *router) route(terminate <-chan struct{}, resultCh chan<- routeResult) {
+func (r *router) route(terminate <-chan struct{}, pause <-chan struct{}, resultCh chan<- routeResult) {
 
 	var (
 		inTargets, outTargets int
@@ -255,13 +262,13 @@ func (r *router) route(terminate <-chan struct{}, resultCh chan<- routeResult) {
 	routeWg.Add(1)
 	go func() {
 		defer routeWg.Done()
-		inTargets, inErr = r.routeIn(terminate)
+		inTargets, inErr = r.routeIn(terminate, pause)
 	}()
 
 	routeWg.Add(1)
 	go func() {
 		defer routeWg.Done()
-		outTargets, outErr = r.routeOut(terminate)
+		outTargets, outErr = r.routeOut(terminate, pause)
 	}()
 
 	routeWg.Wait()

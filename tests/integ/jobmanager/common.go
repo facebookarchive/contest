@@ -396,7 +396,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCrash() {
 	ev, err := pollForEvent(suite.eventManager, jobmanager.EventJobFailed, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
-	require.Equal(suite.T(), "{\"Err\":\"test pipeline failed: Step crashed\"}", string(*ev[0].Payload))
+	require.Equal(suite.T(), "{\"Err\":\"test pipeline failed: control error: Step crashed\"}", string(*ev[0].Payload))
 	jobReport, err := suite.jobStorageManager.GetJobReport(types.JobID(jobID))
 
 	require.NoError(suite.T(), err)
