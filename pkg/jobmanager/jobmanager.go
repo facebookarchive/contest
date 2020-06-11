@@ -104,6 +104,9 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 	tests := make([]*test.Test, 0, len(jd.TestDescriptors))
 	testDescriptors := make([][]*test.TestStepDescriptor, 0, len(jd.TestDescriptors))
 	for _, td := range jd.TestDescriptors {
+		if td == nil {
+			return nil, errors.New("test description is null")
+		}
 		if td.TargetManagerName == "" {
 			return nil, errors.New("target manager name cannot be empty")
 		}
@@ -130,6 +133,9 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 		var stepBundles []test.TestStepBundle
 		labels := make(map[string]bool)
 		for idx, testStepDesc := range testStepDescs {
+			if testStepDesc == nil {
+				return nil, errors.New("test step description is null")
+			}
 			tse, err := pr.NewTestStepEvents(testStepDesc.Name)
 			if err != nil {
 				return nil, err

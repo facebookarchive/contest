@@ -461,3 +461,23 @@ func (suite *TestJobManagerSuite) TestTestStepLabelDuplication() {
 	_, err := suite.startJob(jobDescriptorLabelDuplication)
 	require.Error(suite.T(), err)
 }
+
+func (suite *TestJobManagerSuite) TestTestStepNull() {
+	go func() {
+		suite.jm.Start(suite.sigs)
+		close(suite.jobManagerCh)
+	}()
+
+	_, err := suite.startJob(jobDescriptorNullStep)
+	require.Error(suite.T(), err)
+}
+
+func (suite *TestJobManagerSuite) TestTestNull() {
+	go func() {
+		suite.jm.Start(suite.sigs)
+		close(suite.jobManagerCh)
+	}()
+
+	_, err := suite.startJob(jobDescriptorNullTest)
+	require.Error(suite.T(), err)
+}

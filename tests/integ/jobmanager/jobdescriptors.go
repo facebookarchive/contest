@@ -156,3 +156,38 @@ var jobDescriptorLabelDuplication = descriptorMust(`
        ],
        "TestName": "IntegrationTest: label_duplication"
    }`)
+
+var jobDescriptorNullStep = descriptorMust(`
+   "TestFetcherFetchParameters": {
+       "Steps": [
+           {
+               "name": "noop",
+               "label": "some_label_here",
+               "parameters": {}
+           },
+           null
+       ],
+       "TestName": "IntegrationTest: null TestStep"
+   }`)
+
+var jobDescriptorNullTest = `
+{
+    "JobName": "test job",
+    "Tags": [
+        "integration_testing"
+    ],
+    "TestDescriptors": [
+        null
+    ],
+    "Reporting": {
+        "RunReporters": [
+            {
+                "Name": "TargetSuccess",
+                "Parameters": {
+                    "SuccessExpression": ">0%"
+                }
+            }
+        ]
+    }
+}
+`
