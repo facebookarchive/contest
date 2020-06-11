@@ -14,6 +14,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/targetmanager"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
 )
@@ -151,11 +152,10 @@ func (jr *JobRunner) buildTestStatus(coordinates job.TestCoordinates, currentJob
 		testStatus.TestStepStatuses[index] = *testStepStatus
 	}
 
-	// Calculate the overall status of the Targets which corresponds to the last TargetStatus
-	// object recorded for each Target.
+	// Processing the events emitted outside of teststeps.
 
-	// Fetch all events signaling that a Target has been acquired. This is the source of truth
-	// indicating which Targets belong to a Test.
+	// Fetch all events signaling that a Target has been acquired.
+	// This is the source of truth indicating which Targets belong to a Test.
 	targetAcquiredEvents, err := jr.testEvManager.Fetch(
 		testevent.QueryJobID(coordinates.JobID),
 		testevent.QueryRunID(coordinates.RunID),
@@ -164,8 +164,11 @@ func (jr *JobRunner) buildTestStatus(coordinates job.TestCoordinates, currentJob
 	)
 
 	if err != nil {
-		return nil, fmt.Errorf("could not fetch events associated to target acquisition")
+		return nil, fmt.Errorf("could not fetch events associated to target acquisition: %w", err)
 	}
+
+	// Calculate the overall status of the Targets which corresponds to the last TargetStatus
+	// object recorded for each Target.
 
 	var targetStatuses []job.TargetStatus
 
@@ -177,8 +180,8 @@ func (jr *JobRunner) buildTestStatus(coordinates job.TestCoordinates, currentJob
 		}
 	}
 
-	for _, targetEvent := range targetAcquiredEvents {
-		t := *targetEvent.Data.Target
+	for _, event := range targetAcquiredEvents {
+		t := *event.Data.Target
 		if _, ok := targetMap[t]; !ok {
 			// This Target is not associated to any TargetStatus, we assume it has not
 			// started the test
@@ -188,6 +191,21 @@ func (jr *JobRunner) buildTestStatus(coordinates job.TestCoordinates, currentJob
 	}
 
 	testStatus.TargetStatuses = targetStatuses
+
+	// Get TargetManager events
+	//
+	// TODO: remove when https://github.com/facebookincubator/contest/issues/123
+	//       will be resolved.
+	testStatus.TargetManagerEvents, err = jr.testEvManager.Fetch(
+		testevent.QueryJobID(coordinates.JobID),
+		testevent.QueryRunID(coordinates.RunID),
+		testevent.QueryTestName(coordinates.TestName),
+		testevent.QueryEventName(targetmanager.EventName),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not fetch events associated to the target manager: %w", err)
+	}
+
 	return &testStatus, nil
 }
 

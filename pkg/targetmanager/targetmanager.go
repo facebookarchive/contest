@@ -3,9 +3,19 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
-package target
+package targetmanager
 
-import "github.com/facebookincubator/contest/pkg/types"
+import (
+	"github.com/facebookincubator/contest/pkg/event"
+	"github.com/facebookincubator/contest/pkg/event/testevent"
+	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/types"
+)
+
+// EventName is the name of events emitted by a target manager
+// TODO: Remove it when https://github.com/facebookincubator/contest/issues/123
+//       will be resolved.
+const EventName = event.Name("TargetManager")
 
 // TargetManagerFactory is a type representing a function which builds
 // a TargetManager.
@@ -20,8 +30,8 @@ type TargetManagerLoader func() (string, TargetManagerFactory)
 type TargetManager interface {
 	ValidateAcquireParameters([]byte) (interface{}, error)
 	ValidateReleaseParameters([]byte) (interface{}, error)
-	Acquire(jobID types.JobID, cancel <-chan struct{}, parameters interface{}, tl Locker) ([]*Target, error)
-	Release(jobID types.JobID, cancel <-chan struct{}, parameters interface{}) error
+	Acquire(jobID types.JobID, cancel <-chan struct{}, parameters interface{}, eventEmitter testevent.Emitter, tl Locker) ([]*target.Target, error)
+	Release(jobID types.JobID, cancel <-chan struct{}, parameters interface{}, eventEmitter testevent.Emitter) error
 }
 
 // TargetManagerBundle bundles the selected TargetManager together with its

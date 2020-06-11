@@ -13,7 +13,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/logging"
-	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/targetmanager"
 	"github.com/facebookincubator/contest/pkg/test"
 )
 
@@ -26,7 +26,7 @@ type PluginRegistry struct {
 	lock sync.RWMutex
 
 	// TargetManagers collects a mapping of Plugin Name <-> TargetManager constructor
-	TargetManagers map[string]target.TargetManagerFactory
+	TargetManagers map[string]targetmanager.TargetManagerFactory
 
 	// TestFetchers collects a mapping of Plugin Name <-> TestFetchers constructor
 	TestFetchers map[string]test.TestFetcherFactory
@@ -45,7 +45,7 @@ type PluginRegistry struct {
 // NewPluginRegistry constructs a new empty plugin registry
 func NewPluginRegistry() *PluginRegistry {
 	pr := PluginRegistry{}
-	pr.TargetManagers = make(map[string]target.TargetManagerFactory)
+	pr.TargetManagers = make(map[string]targetmanager.TargetManagerFactory)
 	pr.TestFetchers = make(map[string]test.TestFetcherFactory)
 	pr.TestSteps = make(map[string]test.TestStepFactory)
 	pr.TestStepsEvents = make(map[string]map[event.Name]bool)
@@ -54,7 +54,7 @@ func NewPluginRegistry() *PluginRegistry {
 }
 
 // RegisterTargetManager register a factory for TargetManager plugins
-func (r *PluginRegistry) RegisterTargetManager(pluginName string, tmf target.TargetManagerFactory) error {
+func (r *PluginRegistry) RegisterTargetManager(pluginName string, tmf targetmanager.TargetManagerFactory) error {
 	pluginName = strings.ToLower(pluginName)
 	r.lock.Lock()
 	defer r.lock.Unlock()
@@ -118,10 +118,10 @@ func (r *PluginRegistry) RegisterReporter(pluginName string, rf job.ReporterFact
 
 // NewTargetManager returns a new instance of TargetManager from its
 // corresponding name
-func (r *PluginRegistry) NewTargetManager(pluginName string) (target.TargetManager, error) {
+func (r *PluginRegistry) NewTargetManager(pluginName string) (targetmanager.TargetManager, error) {
 	pluginName = strings.ToLower(pluginName)
 	var (
-		targetManagerFactory target.TargetManagerFactory
+		targetManagerFactory targetmanager.TargetManagerFactory
 		found                bool
 	)
 	r.lock.RLock()

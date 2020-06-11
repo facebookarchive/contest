@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/storage"
-	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/targetmanager"
 	"github.com/facebookincubator/contest/plugins/storage/rdbms"
 	"github.com/facebookincubator/contest/plugins/targetlocker/inmemory"
 	"github.com/facebookincubator/contest/tests/integ/common"
@@ -36,7 +36,7 @@ func TestJobManagerSuiteRdbmsStorage(t *testing.T) {
 	testSuite.storage = storageLayer
 
 	targetLocker := inmemory.New(10 * time.Second)
-	target.SetLocker(targetLocker)
+	targetmanager.SetLocker(targetLocker)
 
 	suite.Run(t, &testSuite)
 }

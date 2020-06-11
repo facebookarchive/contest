@@ -16,6 +16,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/targetmanager"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/tests/integ/common"
 	"github.com/stretchr/testify/assert"
@@ -42,14 +43,23 @@ func populateTestEvents(backend storage.Storage, emitTime time.Time) error {
 	hdrSecond := testevent.Header{JobID: 2, TestName: "BTestName", TestStepLabel: "TestStepLabel"}
 	dataSecond := testevent.Data{EventName: event.Name("BEventName"), Target: &testTargetSecond, Payload: payload}
 
+	hdrThird := testevent.Header{JobID: 2, TestName: "CTestName", TestStepLabel: ""}
+	dataThird := testevent.Data{EventName: targetmanager.EventName, Payload: payload}
+
 	eventFirst := testevent.Event{Header: &hdrFirst, Data: &dataFirst, EmitTime: emitTime}
 	eventSecond := testevent.Event{Header: &hdrSecond, Data: &dataSecond, EmitTime: emitTime}
+	eventThird := testevent.Event{Header: &hdrThird, Data: &dataThird, EmitTime: emitTime}
 
-	err := backend.StoreTestEvent(eventFirst)
-	if err != nil {
+	if err := backend.StoreTestEvent(eventFirst); err != nil {
 		return err
 	}
-	return backend.StoreTestEvent(eventSecond)
+	if err := backend.StoreTestEvent(eventSecond); err != nil {
+		return err
+	}
+	if err := backend.StoreTestEvent(eventThird); err != nil {
+		return err
+	}
+	return nil
 }
 
 func assertTestEvents(t *testing.T, ev []testevent.Event, emitTime time.Time) {
@@ -143,14 +153,14 @@ func (suite *TestEventsSuite) TestRetrievesSingleTestEventByEmitTime() {
 	results, err := suite.txStorage.GetTestEvents(testEventQuery)
 
 	require.NoError(suite.T(), err)
-	assert.Equal(suite.T(), 2, len(results))
+	assert.Equal(suite.T(), 3, len(results))
 	assertTestEvents(suite.T(), results, emitTime)
 
 	testEventQuery = mustBuildQuery(suite.T(), testevent.QueryEmittedStartTime(emitTime.Add(-delta)))
 	results, err = suite.txStorage.GetTestEvents(testEventQuery)
 
 	require.NoError(suite.T(), err)
-	assert.Equal(suite.T(), 4, len(results))
+	assert.Equal(suite.T(), 6, len(results))
 	err = populateTestEvents(suite.txStorage, emitTime)
 	require.NoError(suite.T(), err)
 
@@ -200,4 +210,33 @@ func (suite *TestEventsSuite) TestRetrieveSingleTestEventsByNameAndJobID() {
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 1, len(results))
 	assertTestEvents(suite.T(), results, emitTime)
+}
+
+type dummyTestEventEmitter struct {}
+
+func (emitter dummyTestEventEmitter) Emit(event testevent.Data) error {
+	return nil
+}
+
+func (suite *TestEventsSuite) TestTargetManagerEvents() {
+	emitter := targetmanager.EventEmitter{
+		TestEventEmitter: dummyTestEventEmitter{},
+	}
+	err := emitter.Emit(testevent.Data{EventName: "not-a-target-manager"})
+	require.Error(suite.T(), err)
+
+	err = emitter.Emit(testevent.Data{EventName: targetmanager.EventName})
+	require.NoError(suite.T(), err)
+
+	err = populateTestEvents(suite.txStorage, time.Now())
+	require.NoError(suite.T(), err)
+
+	testEventQuery := mustBuildQuery(suite.T(),
+		testevent.QueryEventName(targetmanager.EventName),
+	)
+	results, err := suite.txStorage.GetTestEvents(testEventQuery)
+
+	require.NoError(suite.T(), err)
+	assert.Equal(suite.T(), 1, len(results))
+	assert.Equal(suite.T(), targetmanager.EventName, results[0].Data.EventName)
 }

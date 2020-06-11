@@ -12,6 +12,7 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/targetmanager"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
@@ -51,6 +52,6 @@ func (tl Noop) RefreshLocks(jobID types.JobID, targets []*target.Target) error {
 }
 
 // New initializes and returns a new ExampleTestStep.
-func New(_ time.Duration) target.Locker {
+func New(_ time.Duration) targetmanager.Locker {
 	return &Noop{}
 }

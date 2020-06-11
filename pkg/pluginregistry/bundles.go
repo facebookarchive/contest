@@ -10,7 +10,7 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/job"
-	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/targetmanager"
 	"github.com/facebookincubator/contest/pkg/test"
 )
 
@@ -59,7 +59,7 @@ func (r *PluginRegistry) NewTestFetcherBundle(testDescriptor *test.TestDescripto
 
 // NewTargetManagerBundle creates a TargetManager and associated parameters based on
 // the content of the test descriptor
-func (r *PluginRegistry) NewTargetManagerBundle(testDescriptor *test.TestDescriptor) (*target.TargetManagerBundle, error) {
+func (r *PluginRegistry) NewTargetManagerBundle(testDescriptor *test.TestDescriptor) (*targetmanager.TargetManagerBundle, error) {
 	targetManager, err := r.NewTargetManager(testDescriptor.TargetManagerName)
 	if err != nil {
 		return nil, fmt.Errorf("could not get TargetManager (%s): %v", testDescriptor.TargetManagerName, err)
@@ -75,7 +75,7 @@ func (r *PluginRegistry) NewTargetManagerBundle(testDescriptor *test.TestDescrip
 		return nil, fmt.Errorf("could not validate TargetManager release parameters: %v", err)
 	}
 
-	targetManagerBundle := target.TargetManagerBundle{
+	targetManagerBundle := targetmanager.TargetManagerBundle{
 		TargetManager:     targetManager,
 		AcquireParameters: ap,
 		ReleaseParameters: rp,

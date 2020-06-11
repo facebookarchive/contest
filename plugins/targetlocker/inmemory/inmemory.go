@@ -15,6 +15,7 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/targetmanager"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
@@ -192,7 +193,7 @@ func (tl *InMemory) CheckLocks(jobID types.JobID, targets []*target.Target) (boo
 }
 
 // New initializes and returns a new ExampleTestStep.
-func New(timeout time.Duration) target.Locker {
+func New(timeout time.Duration) targetmanager.Locker {
 	lockRequests := make(chan request)
 	unlockRequests := make(chan request)
 	checkLocksRequests := make(chan request)

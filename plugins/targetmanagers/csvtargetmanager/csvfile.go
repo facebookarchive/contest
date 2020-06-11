@@ -23,7 +23,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/targetmanager"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/insomniacslk/xjson"
 )
@@ -90,7 +92,7 @@ func (tf CSVFileTargetManager) ValidateReleaseParameters(params []byte) (interfa
 
 // Acquire implements contest.TargetManager.Acquire, reading one entry per line
 // from a text file. Each input record has a hostname, a space, and a host ID.
-func (tf *CSVFileTargetManager) Acquire(jobID types.JobID, cancel <-chan struct{}, parameters interface{}, tl target.Locker) ([]*target.Target, error) {
+func (tf *CSVFileTargetManager) Acquire(jobID types.JobID, cancel <-chan struct{}, parameters interface{}, eventEmitter testevent.Emitter, tl targetmanager.Locker) ([]*target.Target, error) {
 	acquireParameters, ok := parameters.(AcquireParameters)
 	if !ok {
 		return nil, fmt.Errorf("Acquire expects %T object, got %T", acquireParameters, parameters)
@@ -155,17 +157,17 @@ func (tf *CSVFileTargetManager) Acquire(jobID types.JobID, cancel <-chan struct{
 }
 
 // Release releases the acquired resources.
-func (tf *CSVFileTargetManager) Release(jobID types.JobID, cancel <-chan struct{}, params interface{}) error {
+func (tf *CSVFileTargetManager) Release(jobID types.JobID, cancel <-chan struct{}, params interface{}, eventEmitter testevent.Emitter) error {
 	return nil
 }
 
 // New builds a CSVFileTargetManager
-func New() target.TargetManager {
+func New() targetmanager.TargetManager {
 	return &CSVFileTargetManager{}
 }
 
 // Load returns the name and factory which are needed to register the
 // TargetManager.
-func Load() (string, target.TargetManagerFactory) {
+func Load() (string, targetmanager.TargetManagerFactory) {
 	return Name, New
 }

@@ -13,16 +13,18 @@ import (
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/event"
-	"github.com/stretchr/testify/assert"
-
 	. "github.com/facebookincubator/contest/pkg/event/testevent"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestBuildQuery_Positive(t *testing.T) {
 	_, err := QueryFields{
 		QueryJobID(1),
+		QueryEventNames([]event.Name{"unit-test"}),
+		QueryTestStepLabel("unit-test"),
 		QueryEmittedStartTime(time.Now()),
 		QueryEmittedEndTime(time.Now()),
+		QueryRunID(1),
 	}.BuildQuery()
 	assert.NoError(t, err)
 }

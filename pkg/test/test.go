@@ -8,14 +8,14 @@ package test
 import (
 	"encoding/json"
 
-	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/targetmanager"
 )
 
 // Test describes a test definition.
 type Test struct {
 	Name                string
 	TestStepsBundles    []TestStepBundle
-	TargetManagerBundle *target.TargetManagerBundle
+	TargetManagerBundle *targetmanager.TargetManagerBundle
 	TestFetcherBundle   *TestFetcherBundle
 }
 

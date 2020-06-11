@@ -3,11 +3,12 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
-package target
+package targetmanager
 
 import (
 	"time"
 
+	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
@@ -28,19 +29,19 @@ type Locker interface {
 	// The job ID is the owner of the lock.
 	// The underlying implementation is responsible for using the job ID as lock
 	// owner, and for unlocking the already-locked ones in case of errors.
-	Lock(types.JobID, []*Target) error
+	Lock(types.JobID, []*target.Target) error
 	// Unlock unlocks the specified targets, with the specified job ID as owner.
 	// The underlying implementation is responsible of rejecting the operation if
 	// the lock owner is not matching the job ID.
-	Unlock(types.JobID, []*Target) error
+	Unlock(types.JobID, []*target.Target) error
 	// RefreshLocks extends the lock. The amount of time the lock is extended
 	// should be handled by the plugin, and configured at initialization time.
 	// The request is rejected if the job ID does not match the one of the lock
 	// owner.
-	RefreshLocks(types.JobID, []*Target) error
+	RefreshLocks(types.JobID, []*target.Target) error
 	// CheckLocks returns whether all the targets are locked by the given job ID,
 	// an array of locked targets, and an array of not-locked targets.
-	CheckLocks(types.JobID, []*Target) (bool, []*Target, []*Target)
+	CheckLocks(types.JobID, []*target.Target) (bool, []*target.Target, []*target.Target)
 }
 
 // SetLocker sets the desired lock engine for targets.

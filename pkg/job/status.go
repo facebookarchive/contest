@@ -65,6 +65,13 @@ type TestStatus struct {
 	TestCoordinates
 	TestStepStatuses []TestStepStatus
 	TargetStatuses   []TargetStatus
+
+	// TargetManagerEvents is events emitter by a TargetManager
+	// (a TargetManager should emit only events with event name
+	// targetmanager.EventName).
+	// TODO: remove when https://github.com/facebookincubator/contest/issues/123
+	//       will be resolved
+	TargetManagerEvents []testevent.Event
 }
 
 // RunStatus bundles together all TestStatus for a specific run within the job

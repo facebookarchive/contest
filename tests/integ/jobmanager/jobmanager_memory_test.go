@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/storage"
-	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/targetmanager"
 	"github.com/facebookincubator/contest/plugins/storage/memory"
 	"github.com/facebookincubator/contest/plugins/targetlocker/inmemory"
 
@@ -33,7 +33,7 @@ func TestJobManagerSuiteMemoryStorage(t *testing.T) {
 	storage.SetStorage(storagelayer)
 
 	targetLocker := inmemory.New(10 * time.Second)
-	target.SetLocker(targetLocker)
+	targetmanager.SetLocker(targetLocker)
 
 	suite.Run(t, &testSuite)
 }

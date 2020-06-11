@@ -33,8 +33,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/targetmanager"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
@@ -86,7 +88,7 @@ func (t TargetList) ValidateReleaseParameters(params []byte) (interface{}, error
 
 // Acquire implements contest.TargetManager.Acquire, reading one entry per line
 // from a text file. Each input record has a hostname, a space, and a host ID.
-func (t *TargetList) Acquire(jobID types.JobID, cancel <-chan struct{}, parameters interface{}, tl target.Locker) ([]*target.Target, error) {
+func (t *TargetList) Acquire(jobID types.JobID, cancel <-chan struct{}, parameters interface{}, eventEmitter testevent.Emitter, tl targetmanager.Locker) ([]*target.Target, error) {
 	acquireParameters, ok := parameters.(AcquireParameters)
 	if !ok {
 		return nil, fmt.Errorf("Acquire expects %T object, got %T", acquireParameters, parameters)
@@ -102,18 +104,18 @@ func (t *TargetList) Acquire(jobID types.JobID, cancel <-chan struct{}, paramete
 }
 
 // Release releases the acquired resources.
-func (t *TargetList) Release(jobID types.JobID, cancel <-chan struct{}, params interface{}) error {
+func (t *TargetList) Release(jobID types.JobID, cancel <-chan struct{}, params interface{}, eventEmitter testevent.Emitter) error {
 	log.Infof("Released %d targets", len(t.targets))
 	return nil
 }
 
 // New builds a new TargetList object.
-func New() target.TargetManager {
+func New() targetmanager.TargetManager {
 	return &TargetList{}
 }
 
 // Load returns the name and factory which are needed to register the
 // TargetManager.
-func Load() (string, target.TargetManagerFactory) {
+func Load() (string, targetmanager.TargetManagerFactory) {
 	return Name, New
 }

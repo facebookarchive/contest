@@ -102,7 +102,7 @@ func eventTestMatch(queryTestName, testName string) bool {
 	return true
 }
 
-func eventTestStepMatch(queryTestStepLabel, testStepLabel string) bool {
+func eventTestStepMatch(queryTestStepLabel string, testStepLabel string) bool {
 	if queryTestStepLabel != "" && queryTestStepLabel != testStepLabel {
 		return false
 	}

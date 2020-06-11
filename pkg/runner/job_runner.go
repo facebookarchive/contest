@@ -19,6 +19,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/targetmanager"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
@@ -64,7 +65,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 	} else {
 		jobLog.Infof("Running job '%s' %d times", j.Name, j.Runs)
 	}
-	tl := target.GetLocker()
+	tl := targetmanager.GetLocker()
 	ev := storage.NewTestEventFetcher()
 
 	var (
@@ -95,15 +96,21 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			jobLog.Infof("Run #%d: fetching targets for test '%s'", run+1, t.Name)
 			bundle := t.TargetManagerBundle
 			var (
-				targets   []*target.Target
-				targetsCh = make(chan []*target.Target, 1)
-				errCh     = make(chan error, 1)
+				targets                   []*target.Target
+				targetsCh                 = make(chan []*target.Target, 1)
+				errCh                     = make(chan error, 1)
+				targetManagerEventEmitter = storage.NewTestEventEmitter(testevent.Header{
+					JobID:    j.ID,
+					RunID:    types.RunID(run + 1),
+					TestName: t.Name,
+				})
 			)
 			go func() {
+
 				// the Acquire semantic is synchronous, so that the implementation
 				// is simpler on the user's side. We run it in a goroutine in
 				// order to use a timeout for target acquisition.
-				targets, err := bundle.TargetManager.Acquire(j.ID, j.CancelCh, bundle.AcquireParameters, tl)
+				targets, err := bundle.TargetManager.Acquire(j.ID, j.CancelCh, bundle.AcquireParameters, targetmanager.EventEmitter{TestEventEmitter: targetManagerEventEmitter}, tl)
 				if err != nil {
 					errCh <- err
 					targetsCh <- nil
@@ -143,7 +150,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			// instance or upgrading it), the locks are not released, because we
 			// may want to resume once the new ConTest instance starts.
 			done := make(chan struct{})
-			go func(j *job.Job, tl target.Locker, targets []*target.Target, lockTimeout time.Duration) {
+			go func(j *job.Job, tl targetmanager.Locker, targets []*target.Target, lockTimeout time.Duration) {
 				for {
 					select {
 					case <-j.CancelCh:
@@ -173,10 +180,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			}(j, tl, targets, config.LockTimeout)
 
 			// Emit events tracking targets acquisition
-			header := testevent.Header{JobID: j.ID, RunID: types.RunID(run + 1), TestName: t.Name}
-			testEventEmitter := storage.NewTestEventEmitter(header)
-
-			if runErr = jr.emitAcquiredTargets(testEventEmitter, targets); runErr == nil {
+			if runErr = jr.emitAcquiredTargets(targetManagerEventEmitter, targets); runErr == nil {
 				jobLog.Infof("Run #%d: running test #%d for job '%s' (job ID: %d) on %d targets", run+1, idx, j.Name, j.ID, len(targets))
 				testRunner := NewTestRunner()
 				runErr = testRunner.Run(j.CancelCh, j.PauseCh, t, targets, j.ID, types.RunID(run+1))
@@ -188,7 +192,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				// is simpler on the user's side. We run it in a goroutine in
 				// order to use a timeout for target acquisition. If Release fails, whether
 				// due to an error or for a timeout, the whole Job is considered failed
-				errCh <- bundle.TargetManager.Release(j.ID, j.CancelCh, bundle.ReleaseParameters)
+				errCh <- bundle.TargetManager.Release(j.ID, j.CancelCh, bundle.ReleaseParameters, targetmanager.EventEmitter{TestEventEmitter: targetManagerEventEmitter})
 				// signal that we are done to the goroutine that refreshes the
 				// locks.
 				done <- struct{}{}

@@ -19,7 +19,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/storage"
-	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/targetmanager"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/plugins/listeners/httplistener"
 	"github.com/facebookincubator/contest/plugins/reporters/noop"
@@ -47,7 +47,7 @@ var (
 	flagServerID = flag.String("serverID", "", "Set a static server ID, e.g. the host name or another unique identifier. If unset, will use the listener's default")
 )
 
-var targetManagers = []target.TargetManagerLoader{
+var targetManagers = []targetmanager.TargetManagerLoader{
 	csvtargetmanager.Load,
 	targetlist.Load,
 }
@@ -129,7 +129,7 @@ func main() {
 	storage.SetStorage(s)
 
 	// set Locker engine
-	target.SetLocker(inmemory.New(config.LockTimeout))
+	targetmanager.SetLocker(inmemory.New(config.LockTimeout))
 
 	// user-defined function registration
 	for name, fn := range userFunctions {
