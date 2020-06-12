@@ -1,0 +1,28 @@
+JobName: test job
+Runs: 3
+RunInterval: 3s
+Tags: [test, csv]
+TestDescriptors:
+    - TargetManagerName: TargetList
+      TargetManagerAcquireParameters:
+          Targets:
+              - Name: example.org
+                ID: "1234"
+      TargetManagerReleaseParameters:
+      TestFetcherName: literal
+      TestFetcherFetchParameters:
+          TestName: literal test
+          Steps:
+              - name: cmd
+                label: some label
+                parameters:
+                    executable: [echo]
+                    args: ["Title={{ Title .Name }}, ToUpper={{ ToUpper .Name }}"]
+Reporting:
+    RunReporters:
+        - name: TargetSuccess
+          parameters:
+              SuccessExpression: ">80%"
+        - name: noop
+    FinalReporters:
+        - name: noop
