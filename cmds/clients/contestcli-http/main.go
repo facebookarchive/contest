@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/api"
+	"github.com/facebookincubator/contest/pkg/config"
 	"github.com/facebookincubator/contest/pkg/jobmanager"
 	"github.com/facebookincubator/contest/plugins/listeners/httplistener"
 )
@@ -42,6 +43,7 @@ var (
 	flagAddr      = flag.String("addr", "http://localhost:8080", "ConTest server [scheme://]host:port[/basepath] to connect to")
 	flagRequestor = flag.String("r", defaultRequestor, "Identifier of the requestor of the API call")
 	flagWait      = flag.Bool("wait", false, "After starting a job, wait for it to finish, and exit 0 only if it is successful")
+	flagYAML      = flag.Bool("yaml", false, "Parse job descriptor as YAML instead of JSON")
 )
 
 func main() {
@@ -67,7 +69,7 @@ func main() {
 	flag.Parse()
 	verb := flag.Arg(0)
 	if err := run(verb); err != nil {
-		fmt.Fprintf(os.Stderr, "%s", err)
+		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}
 }
@@ -82,9 +84,18 @@ func run(verb string) error {
 		fmt.Fprintf(os.Stderr, "Reading from stdin...\n")
 		jobDesc, err := ioutil.ReadAll(os.Stdin)
 		if err != nil {
-			return fmt.Errorf("failed to parse job descriptor: %v", err)
+			return fmt.Errorf("failed to read job descriptor: %v", err)
 		}
-		params.Add("jobDesc", string(jobDesc))
+
+		jobDescFormat := config.JobDescFormatJSON
+		if *flagYAML {
+			jobDescFormat = config.JobDescFormatYAML
+		}
+		jobDescJSON, err := config.ParseJobDescriptor(jobDesc, jobDescFormat)
+		if err != nil {
+			return fmt.Errorf("failed to parse job descriptor: %w", err)
+		}
+		params.Add("jobDesc", string(jobDescJSON))
 		resp, err := request(verb, params)
 		if err != nil {
 			return err
