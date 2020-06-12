@@ -14,6 +14,7 @@ CREATE TABLE test_events (
 	target_id VARCHAR(64) NULL,
 	payload TEXT NULL,
 	emit_time TIMESTAMP NOT NULL,
+	INDEX (job_id, run_id, test_name),
 	PRIMARY KEY (event_id)
 );
 
@@ -23,6 +24,7 @@ CREATE TABLE framework_events (
 	event_name VARCHAR(32) NULL,
 	payload TEXT NULL,
 	emit_time TIMESTAMP NOT NULL,
+	INDEX (job_id, event_name),
 	PRIMARY KEY (event_id)
 );
 
@@ -34,6 +36,7 @@ CREATE TABLE run_reports (
 	success TINYINT(1) NULL,
 	report_time TIMESTAMP NOT NULL,
 	data TEXT NOT NULL,
+	INDEX (job_id),
 	PRIMARY KEY (report_id)
 );
 
@@ -44,6 +47,7 @@ CREATE TABLE final_reports (
 	reporter_name VARCHAR(32) NOT NULL,
 	report_time TIMESTAMP NOT NULL,
 	data TEXT NOT NULL,
+	INDEX (job_id),
 	PRIMARY KEY (report_id)
 );
 
