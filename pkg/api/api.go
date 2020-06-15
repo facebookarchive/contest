@@ -100,7 +100,7 @@ func (a *API) SendEvent(ev *Event, timeout *time.Duration) error {
 	case a.Events <- ev:
 		return nil
 	case <-time.After(to):
-		return fmt.Errorf("sending event timed out after %v", timeout)
+		return fmt.Errorf("sending event timed out after %v", to)
 	}
 }
 
