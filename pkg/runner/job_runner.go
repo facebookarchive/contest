@@ -149,24 +149,24 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 					case <-j.CancelCh:
 						// unlock targets
 						if err := tl.Unlock(j.ID, targets); err != nil {
-							log.Warningf("Failed to unlock targets (%v) for job ID %d: %v", targets, j.ID, err)
+							jobLog.Warningf("Failed to unlock targets (%v) for job ID %d: %v", targets, j.ID, err)
 						}
 						return
 					case <-j.PauseCh:
 						// do not unlock targets, we can resume later, or let
 						// them expire
-						log.Debugf("Received pause request, NOT releasing targets so the job can be resumed")
+						jobLog.Debugf("Received pause request, NOT releasing targets so the job can be resumed")
 						return
 					case <-done:
 						if err := tl.Unlock(j.ID, targets); err != nil {
-							log.Warningf("Failed to unlock %d target(s) (%v): %v", len(targets), targets, err)
+							jobLog.Warningf("Failed to unlock %d target(s) (%v): %v", len(targets), targets, err)
 						}
-						log.Infof("Unlocked %d target(s) for job ID %d", len(targets), j.ID)
+						jobLog.Infof("Unlocked %d target(s) for job ID %d", len(targets), j.ID)
 						return
 					case <-time.After(lockTimeout):
 						// refresh the locks before the timeout expires
 						if err := tl.RefreshLocks(j.ID, targets); err != nil {
-							log.Warningf("Failed to refresh %d locks for job ID %d: %v", len(targets), j.ID, err)
+							jobLog.Warningf("Failed to refresh %d locks for job ID %d: %v", len(targets), j.ID, err)
 						}
 					}
 				}
