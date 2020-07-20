@@ -30,6 +30,7 @@ require (
 	github.com/spf13/cast v1.3.1 // indirect
 	github.com/spf13/cobra v0.0.6 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
+	github.com/spf13/pflag v1.0.6-0.20200504143853-81378bbcd8a1
 	github.com/spf13/viper v1.6.2 // indirect
 	github.com/stretchr/testify v1.5.1
 	github.com/u-root/u-root v6.0.0+incompatible // indirect
