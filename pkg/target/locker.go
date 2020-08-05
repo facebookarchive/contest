@@ -38,18 +38,6 @@ type Locker interface {
 	// The request is rejected if the job ID does not match the one of the lock
 	// owner.
 	RefreshLocks(types.JobID, []*Target) error
-	// TODO this method is probably redundant and misleading. The job runner
-	//      should not check if the targets are locked by a given job ID, but
-	//      should lock them directly, so that the already locked ones are
-	//      refreshed, and the not locked ones are locked. This is a possible
-	//      scenario in target acquisition, e.g. when a target manager tries to
-	//      lock targets until enough are found, but is not responsible for
-	//      locking all of them since the job runner will do that anyway. This
-	//      reduces the responsibility on target managers, and hence the chances
-	//      of bugs.
-	// CheckLocks returns whether all the targets are locked by the given job ID,
-	// an array of locked targets, and an array of not-locked targets.
-	CheckLocks(types.JobID, []*Target) (bool, []*Target, []*Target)
 }
 
 // SetLocker sets the desired lock engine for targets.

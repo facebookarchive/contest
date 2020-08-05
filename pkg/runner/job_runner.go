@@ -109,8 +109,15 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 					targetsCh <- nil
 					return
 				}
-				if allAreLocked, _, notLocked := tl.CheckLocks(j.ID, targets); !allAreLocked {
-					errCh <- fmt.Errorf("Could not lock %d targets out of %d are not locked: %v", len(notLocked), len(targets), notLocked)
+				// Lock all the targets returned by Acquire.
+				// Targets can also be locked in the `Acquire` method, for
+				// example to allow dynamic acquisition.
+				// We lock them again to ensure that all the acquired
+				// targets are locked before running the job.
+				// Locking an already-locked target (by the same owner)
+				// extends the locking deadline.
+				if err := tl.Lock(j.ID, targets); err != nil {
+					errCh <- fmt.Errorf("Target locking failed: %w", err)
 					targetsCh <- nil
 				}
 				errCh <- nil
