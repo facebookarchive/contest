@@ -18,7 +18,6 @@ import (
 var (
 	jobID = types.JobID(123)
 
-	noTarget   = []*target.Target{}
 	targetOne  = target.Target{Name: "target001", ID: "001"}
 	targetTwo  = target.Target{Name: "target002", ID: "002"}
 	oneTarget  = []*target.Target{&targetOne}
@@ -117,48 +116,6 @@ func TestInMemoryLockUnlockDifferentJobID(t *testing.T) {
 	tl := New(time.Second)
 	require.NoError(t, tl.Lock(jobID, twoTargets))
 	assert.Error(t, tl.Unlock(jobID+1, twoTargets))
-}
-
-func TestInMemoryCheckLocksNoneLocked(t *testing.T) {
-	tl := New(time.Second)
-	allLocked, locked, notLocked := tl.CheckLocks(jobID, twoTargets)
-	assert.False(t, allLocked)
-	assert.Equal(t, noTarget, locked)
-	assert.Equal(t, twoTargets, notLocked)
-}
-
-func TestInMemoryCheckLocksAllLocked(t *testing.T) {
-	tl := New(time.Second)
-	require.NoError(t, tl.Lock(jobID, twoTargets))
-	allLocked, locked, notLocked := tl.CheckLocks(jobID, twoTargets)
-	assert.True(t, allLocked)
-	assert.Equal(t, twoTargets, locked)
-	assert.Equal(t, noTarget, notLocked)
-}
-
-func TestInMemoryCheckLocksSomeLocked(t *testing.T) {
-	tl := New(time.Second)
-	require.NoError(t, tl.Lock(jobID, []*target.Target{&targetOne}))
-	allLocked, locked, notLocked := tl.CheckLocks(jobID, []*target.Target{&targetOne, &targetTwo})
-	assert.False(t, allLocked)
-	assert.Equal(t, []*target.Target{&targetOne}, locked)
-	assert.Equal(t, []*target.Target{&targetTwo}, notLocked)
-}
-
-func TestInMemoryCheckLocksMultipleOwners(t *testing.T) {
-	tl := New(time.Second)
-	require.NoError(t, tl.Lock(jobID, []*target.Target{&targetOne}))
-	require.NoError(t, tl.Lock(jobID+1, []*target.Target{&targetTwo}))
-	// owner 1
-	allLocked, locked, notLocked := tl.CheckLocks(jobID, []*target.Target{&targetOne, &targetTwo})
-	assert.False(t, allLocked)
-	assert.Equal(t, []*target.Target{&targetOne}, locked)
-	assert.Equal(t, []*target.Target{&targetTwo}, notLocked)
-	// owner 2
-	allLocked, locked, notLocked = tl.CheckLocks(jobID+1, []*target.Target{&targetOne, &targetTwo})
-	assert.False(t, allLocked)
-	assert.Equal(t, []*target.Target{&targetTwo}, locked)
-	assert.Equal(t, []*target.Target{&targetOne}, notLocked)
 }
 
 func TestInMemoryRefreshLocks(t *testing.T) {

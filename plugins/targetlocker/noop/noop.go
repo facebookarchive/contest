@@ -36,13 +36,6 @@ func (tl Noop) Unlock(_ types.JobID, targets []*target.Target) error {
 	return nil
 }
 
-// CheckLocks tells whether all the targets are locked. They all are, always. It
-// also returns an array of the ones that are locked, and the ones that are not locked.
-func (tl Noop) CheckLocks(jobID types.JobID, targets []*target.Target) (bool, []*target.Target, []*target.Target) {
-	log.Infof("All %d targets are obviously locked, since I did nothing", len(targets))
-	return true, targets, nil
-}
-
 // RefreshLocks refreshes all the locks by the internal (non-existing) timeout,
 // by flawlessly doing nothing.
 func (tl Noop) RefreshLocks(jobID types.JobID, targets []*target.Target) error {

@@ -53,24 +53,3 @@ func TestNoopUnlock(t *testing.T) {
 		&target.Target{Name: "bleh"},
 	}))
 }
-
-func TestNoopCheckLocks(t *testing.T) {
-	tl := New(time.Second)
-	// we don't enforce that at least one target is passed, as checking on
-	// non-zero targets is the framework's responsibility, not the plugin.
-	// So, zero targets is OK.
-	jobID := types.JobID(123)
-	allAreLocked, locked, notLocked := tl.CheckLocks(jobID, nil)
-	require.True(t, allAreLocked)
-	require.Nil(t, locked)
-	require.Nil(t, notLocked)
-
-	targets := []*target.Target{
-		&target.Target{Name: "t1"},
-		&target.Target{Name: "t2"},
-	}
-	allAreLocked, locked, notLocked = tl.CheckLocks(jobID, targets)
-	require.True(t, allAreLocked)
-	require.Equal(t, locked, targets)
-	require.Nil(t, notLocked, nil)
-}

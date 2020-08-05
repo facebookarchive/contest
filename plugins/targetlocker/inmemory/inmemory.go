@@ -211,22 +211,6 @@ func (tl *InMemory) RefreshLocks(jobID types.JobID, targets []*target.Target) er
 	return <-req.err
 }
 
-// CheckLocks tells whether all the targets are locked, and returns a slice of
-// locked and a slice of unlocked targets.
-func (tl *InMemory) CheckLocks(jobID types.JobID, targets []*target.Target) (bool, []*target.Target, []*target.Target) {
-	log.Infof("Checking if %d target(s) are locked by job ID %d", len(targets), jobID)
-	req := newReq(jobID, targets)
-	tl.checkLocksRequests <- &req
-	if err := <-req.err; err != nil {
-		// TODO the target.Locker.CheckLocks interface has to change to return an
-		// error as well, because lock checking can fail, e.g. when using
-		// external services.
-		// Just log an error for now.
-		log.Warningf("Error when trying to unlock targets: %v", err)
-	}
-	return len(req.locked) == len(targets), req.locked, req.notLocked
-}
-
 // New initializes and returns a new InMemory target locker.
 func New(timeout time.Duration) target.Locker {
 	lockRequests := make(chan *request)
