@@ -96,7 +96,7 @@ func broker(lockRequests, unlockRequests, checkLocksRequests <-chan *request, do
 							l.expiresAt = time.Now().Add(req.timeout)
 							locks[*t] = l
 						} else {
-							lockErr = fmt.Errorf("lock request: target already locked: %+v", t)
+							lockErr = fmt.Errorf("lock request: target already locked: %+v (lock: %+v)", t, l)
 						}
 						break
 					}
