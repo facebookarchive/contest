@@ -129,7 +129,7 @@ func main() {
 	storage.SetStorage(s)
 
 	// set Locker engine
-	target.SetLocker(inmemory.New(config.LockTimeout))
+	target.SetLocker(inmemory.New(config.LockInitialTimeout, config.LockRefreshTimeout))
 
 	// user-defined function registration
 	for name, fn := range userFunctions {

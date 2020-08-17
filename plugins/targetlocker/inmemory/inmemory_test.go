@@ -25,75 +25,75 @@ var (
 )
 
 func TestInMemoryNew(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	require.NotNil(t, tl)
 	require.IsType(t, &InMemory{}, tl)
 }
 
 func TestInMemoryLockInvalidJobIDAndNoTargets(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	assert.Error(t, tl.Lock(0, nil))
 }
 
 func TestInMemoryLockValidJobIDAndNoTargets(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	assert.Error(t, tl.Lock(jobID, nil))
 }
 
 func TestInMemoryLockInvalidJobIDAndOneTarget(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	assert.Error(t, tl.Lock(0, oneTarget))
 }
 
 func TestInMemoryLockValidJobIDAndOneTarget(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	require.NoError(t, tl.Lock(jobID, oneTarget))
 }
 
 func TestInMemoryLockValidJobIDAndTwoTargets(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	require.NoError(t, tl.Lock(jobID, twoTargets))
 }
 
 func TestInMemoryLockReentrantLock(t *testing.T) {
-	tl := New(10 * time.Second)
+	tl := New(10 * time.Second, time.Second)
 	require.NoError(t, tl.Lock(jobID, twoTargets))
 	require.NoError(t, tl.Lock(jobID, twoTargets))
 }
 
 func TestInMemoryLockReentrantLockDifferentJobID(t *testing.T) {
-	tl := New(10 * time.Second)
+	tl := New(10 * time.Second, time.Second)
 	require.NoError(t, tl.Lock(jobID, twoTargets))
 	require.Error(t, tl.Lock(jobID+1, twoTargets))
 }
 
 func TestInMemoryUnlockInvalidJobIDAndNoTargets(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	assert.Error(t, tl.Unlock(jobID, nil))
 }
 
 func TestInMemoryUnlockValidJobIDAndNoTargets(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	assert.Error(t, tl.Unlock(jobID, nil))
 }
 
 func TestInMemoryUnlockInvalidJobIDAndOneTarget(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	assert.Error(t, tl.Unlock(0, oneTarget))
 }
 
 func TestInMemoryUnlockValidJobIDAndOneTarget(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	require.Error(t, tl.Unlock(jobID, oneTarget))
 }
 
 func TestInMemoryUnlockValidJobIDAndTwoTargets(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	require.Error(t, tl.Unlock(jobID, twoTargets))
 }
 
 func TestInMemoryUnlockUnlockTwice(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	err := tl.Unlock(jobID, oneTarget)
 	log.Print(err)
 	assert.Error(t, err)
@@ -101,42 +101,42 @@ func TestInMemoryUnlockUnlockTwice(t *testing.T) {
 }
 
 func TestInMemoryUnlockReentrantLockDifferentJobID(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	require.Error(t, tl.Unlock(jobID, twoTargets))
 	assert.Error(t, tl.Unlock(jobID+1, twoTargets))
 }
 
 func TestInMemoryLockUnlockSameJobID(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	require.NoError(t, tl.Lock(jobID, twoTargets))
 	assert.NoError(t, tl.Unlock(jobID, twoTargets))
 }
 
 func TestInMemoryLockUnlockDifferentJobID(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	require.NoError(t, tl.Lock(jobID, twoTargets))
 	assert.Error(t, tl.Unlock(jobID+1, twoTargets))
 }
 
 func TestInMemoryRefreshLocks(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	require.NoError(t, tl.RefreshLocks(jobID, twoTargets))
 }
 
 func TestInMemoryRefreshLocksTwice(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	require.NoError(t, tl.RefreshLocks(jobID, twoTargets))
 	assert.NoError(t, tl.RefreshLocks(jobID, twoTargets))
 }
 
 func TestInMemoryRefreshLocksOneThenTwo(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	require.NoError(t, tl.RefreshLocks(jobID, oneTarget))
 	assert.NoError(t, tl.RefreshLocks(jobID, twoTargets))
 }
 
 func TestInMemoryRefreshLocksTwoThenOne(t *testing.T) {
-	tl := New(time.Second)
+	tl := New(time.Second, time.Second)
 	require.NoError(t, tl.RefreshLocks(jobID, twoTargets))
 	assert.NoError(t, tl.RefreshLocks(jobID, oneTarget))
 }
