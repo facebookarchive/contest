@@ -42,4 +42,5 @@ var TestRunnerShutdownTimeout = 30 * time.Second
 var TestRunnerStepShutdownTimeout = 5 * time.Second
 
 // LockTimeout represent the amount of time that a lock is held for a target
-var LockTimeout = 1 * time.Minute
+// This should be greater than TargetManagerTimeout to allow for dynamic locking.
+var LockTimeout = TargetManagerTimeout + 1*time.Minute
