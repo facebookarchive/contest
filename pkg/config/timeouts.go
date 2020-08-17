@@ -41,5 +41,11 @@ var TestRunnerShutdownTimeout = 30 * time.Second
 // doesn't reset when a TestStep returns.
 var TestRunnerStepShutdownTimeout = 5 * time.Second
 
-// LockTimeout represent the amount of time that a lock is held for a target
-var LockTimeout = 1 * time.Minute
+// LockRefreshTimeout is the amount of time by which a target lock is extended
+// periodically while a job is running.
+var LockRefreshTimeout = 1 * time.Minute
+
+// LockInitialTimeout is the initial lock duration when acquiring a new lock
+// during target acquisition. This should include TargetManagerTimeout to
+// allow for dynamic locking in the target manager.
+var LockInitialTimeout = TargetManagerTimeout + LockRefreshTimeout

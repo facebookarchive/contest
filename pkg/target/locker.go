@@ -16,7 +16,7 @@ var locker Locker
 
 // LockerFactory is a type representing a function which builds
 // a Locker.
-type LockerFactory func(time.Duration) Locker
+type LockerFactory func(time.Duration, time.Duration) Locker
 
 // Locker defines an interface to lock and unlock targets. It is passed
 // to TargetManager's Acquire and Release methods, and the target manager

@@ -170,8 +170,10 @@ func broker(lockRequests, unlockRequests, checkLocksRequests <-chan *request, do
 type InMemory struct {
 	lockRequests, unlockRequests, checkLocksRequests chan *request
 	done                                             chan struct{}
-	// timeout set on each lock request
-	timeout time.Duration
+	// lockTimeout set on each initial lock request
+	lockTimeout time.Duration
+	// refreshTimeout is used during refresh
+	refreshTimeout time.Duration
 }
 
 func newReq(jobID types.JobID, targets []*target.Target) request {
@@ -186,7 +188,7 @@ func newReq(jobID types.JobID, targets []*target.Target) request {
 func (tl *InMemory) Lock(jobID types.JobID, targets []*target.Target) error {
 	log.Infof("Trying to lock %d targets", len(targets))
 	req := newReq(jobID, targets)
-	req.timeout = tl.timeout
+	req.timeout = tl.lockTimeout
 	tl.lockRequests <- &req
 	return <-req.err
 }
@@ -202,9 +204,9 @@ func (tl *InMemory) Unlock(jobID types.JobID, targets []*target.Target) error {
 // RefreshLocks extends the lock duration by the internally configured timeout. If
 // the owner is different, the request is rejected.
 func (tl *InMemory) RefreshLocks(jobID types.JobID, targets []*target.Target) error {
-	log.Infof("Trying to refresh locks on %d targets by %s", len(targets), tl.timeout)
+	log.Infof("Trying to refresh locks on %d targets by %s", len(targets), tl.refreshTimeout)
 	req := newReq(jobID, targets)
-	req.timeout = tl.timeout
+	req.timeout = tl.refreshTimeout
 	// refreshing a lock is just a lock operation with the same owner and a new
 	// duration.
 	tl.lockRequests <- &req
@@ -212,7 +214,7 @@ func (tl *InMemory) RefreshLocks(jobID types.JobID, targets []*target.Target) er
 }
 
 // New initializes and returns a new InMemory target locker.
-func New(timeout time.Duration) target.Locker {
+func New(lockTimeout, refreshTimeout time.Duration) target.Locker {
 	lockRequests := make(chan *request)
 	unlockRequests := make(chan *request)
 	checkLocksRequests := make(chan *request)
@@ -223,6 +225,7 @@ func New(timeout time.Duration) target.Locker {
 		unlockRequests:     unlockRequests,
 		checkLocksRequests: checkLocksRequests,
 		done:               done,
-		timeout:            timeout,
+		lockTimeout:        lockTimeout,
+		refreshTimeout:     refreshTimeout,
 	}
 }
