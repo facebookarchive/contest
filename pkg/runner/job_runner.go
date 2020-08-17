@@ -150,7 +150,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			// instance or upgrading it), the locks are not released, because we
 			// may want to resume once the new ConTest instance starts.
 			done := make(chan struct{})
-			go func(j *job.Job, tl target.Locker, targets []*target.Target, lockRefreshTimeout time.Duration) {
+			go func(j *job.Job, tl target.Locker, targets []*target.Target, refreshInterval time.Duration) {
 				for {
 					select {
 					case <-j.CancelCh:
@@ -170,14 +170,15 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 						}
 						jobLog.Infof("Unlocked %d target(s) for job ID %d", len(targets), j.ID)
 						return
-					case <-time.After(lockRefreshTimeout):
+					case <-time.After(refreshInterval):
 						// refresh the locks before the timeout expires
 						if err := tl.RefreshLocks(j.ID, targets); err != nil {
 							jobLog.Warningf("Failed to refresh %d locks for job ID %d: %v", len(targets), j.ID, err)
 						}
 					}
 				}
-			}(j, tl, targets, config.LockRefreshTimeout)
+				// refresh locks a bit faster than locking timeout to avoid races
+			}(j, tl, targets, config.LockRefreshTimeout/10*9)
 
 			// Emit events tracking targets acquisition
 			header := testevent.Header{JobID: j.ID, RunID: types.RunID(run + 1), TestName: t.Name}
