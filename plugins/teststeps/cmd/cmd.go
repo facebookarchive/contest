@@ -46,12 +46,14 @@ var Events = []event.Name{
 type eventCmdStartPayload struct {
 	Path string
 	Args []string
+	Dir string
 }
 
 // Cmd is used to run arbitrary commands as test steps.
 type Cmd struct {
 	executable string
 	args       []test.Param
+	dir        string
 }
 
 // Name returns the plugin name.
@@ -77,13 +79,19 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 			args = append(args, expArg)
 		}
 		cmd := exec.CommandContext(ctx, ts.executable, args...)
+		cmd.Dir = ts.dir
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
-		log.Printf("Running command '%+v'", cmd)
+		if ts.dir!="" {
+			log.Printf("Running command '%+v' in directory '%+v'", cmd, cmd.Dir)
+		} else {
+			log.Printf("Running command '%+v'", cmd)
+		}
+
 		errCh := make(chan error)
 		go func() {
 			// Emit EventCmdStart
-			payload, err := json.Marshal(eventCmdStartPayload{Path: cmd.Path, Args: cmd.Args})
+			payload, err := json.Marshal(eventCmdStartPayload{Path: cmd.Path, Args: cmd.Args,  Dir: cmd.Dir})
 			if err != nil {
 				log.Warningf("Cannot encode payload for EventCmdStart: %v", err)
 			} else {
@@ -141,6 +149,8 @@ func (ts *Cmd) validateAndPopulate(params test.TestStepParameters) error {
 		ts.executable = p
 	}
 	ts.args = params.Get("args")
+	dir := params.GetOne("dir")
+	ts.dir = dir.String()
 	return nil
 }
 
