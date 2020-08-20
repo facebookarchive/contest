@@ -11,9 +11,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
@@ -80,8 +83,14 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 		}
 		cmd := exec.CommandContext(ctx, ts.executable, args...)
 		cmd.Dir = ts.dir
-		var stdout, stderr bytes.Buffer
-		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		var stdoutBuf, stderrBuf bytes.Buffer
+		stdoutIn, _ := cmd.StdoutPipe()
+		stderrIn, _ := cmd.StderrPipe()
+
+		var errStdout, errStderr error
+		stdout := io.MultiWriter(os.Stdout, &stdoutBuf)
+		stderr := io.MultiWriter(os.Stderr, &stderrBuf)
+
 		if ts.dir!="" {
 			log.Printf("Running command '%+v' in directory '%+v'", cmd, cmd.Dir)
 		} else {
@@ -105,8 +114,29 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 					log.Warningf("Cannot emit event EventCmdStart: %v", err)
 				}
 			}
-			// Run the command
-			errCh <- cmd.Run()
+			// Start the command
+			errCh := cmd.Start()
+			if errCh != nil {
+				log.Fatalf("cmd.Start() failed with '%s'\n", errCh)
+			}
+			var wg sync.WaitGroup
+			wg.Add(1)
+
+			go func() {
+				_, errStdout = io.Copy(stdout, stdoutIn)
+				wg.Done()
+			}()
+
+			_, errStderr = io.Copy(stderr, stderrIn)
+			wg.Wait()
+
+			err = cmd.Wait()
+			if err != nil {
+				log.Fatalf("cmd.Run() failed with %s\n", errCh)
+			}
+			if errStdout != nil || errStderr != nil {
+				log.Fatal("failed to capture stdout or stderr\n")
+			}
 			// Emit EventCmdEnd
 			evData := testevent.Data{
 				EventName: EventCmdStart,
@@ -116,11 +146,11 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 			if err := ev.Emit(evData); err != nil {
 				log.Warningf("Cannot emit event EventCmdEnd: %v", err)
 			}
-			log.Infof("Stdout of command '%s' with args '%s' is '%s'", cmd.Path, cmd.Args, stdout.Bytes())
+			log.Infof("Stdout of command '%s' with args '%s' in directory '%s' is '%s'", cmd.Path, cmd.Args, cmd.Dir, string(stdoutBuf.Bytes()))
 		}()
 		select {
 		case err := <-errCh:
-			log.Warningf("Stderr of command '%+v' is: '%s'", cmd, stderr.Bytes())
+			log.Warningf("Stderr of command '%+v' is: '%s'", cmd, stderrBuf.Bytes())
 			return err
 		case <-cancel:
 			return nil
