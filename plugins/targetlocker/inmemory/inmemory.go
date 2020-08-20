@@ -73,6 +73,7 @@ func broker(lockRequests, unlockRequests, checkLocksRequests <-chan *request, do
 		case req := <-lockRequests:
 			if err := validateRequest(req); err != nil {
 				req.err <- fmt.Errorf("lock request: %w", err)
+				continue
 			}
 			log.Debugf("Requested to lock %d targets for job ID %d: %v", len(req.targets), req.owner, req.targets)
 			var lockErr error
@@ -113,6 +114,7 @@ func broker(lockRequests, unlockRequests, checkLocksRequests <-chan *request, do
 		case req := <-unlockRequests:
 			if err := validateRequest(req); err != nil {
 				req.err <- fmt.Errorf("unlock request: %w", err)
+				continue
 			}
 			log.Debugf("Requested to transactionally unlock %d targets: %v", len(req.targets), req.targets)
 			var unlockErr error
@@ -133,6 +135,7 @@ func broker(lockRequests, unlockRequests, checkLocksRequests <-chan *request, do
 		case req := <-checkLocksRequests:
 			if err := validateRequest(req); err != nil {
 				req.err <- fmt.Errorf("checklocks request: %w", err)
+				continue
 			}
 			log.Debugf("Requested to check locks for %d targets by job ID %d: %v", len(req.targets), req.owner, req.targets)
 			locked := make([]*target.Target, 0)
