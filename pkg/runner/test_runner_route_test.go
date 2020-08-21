@@ -213,7 +213,7 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllSuccessfulTargets() {
 
 	go func() {
 		// start routing
-		_, _  = suite.router.routeOut(terminate)
+		_, _ = suite.router.routeOut(terminate)
 	}()
 
 	stepResult := make(chan error)
