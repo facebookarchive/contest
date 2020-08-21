@@ -150,7 +150,6 @@ func newTargetWriter(log *logrus.Entry, timeouts TestRunnerTimeouts) *targetWrit
 	return &targetWriter{log: log, timeouts: timeouts}
 }
 
-
 // Run implements the main logic of the TestRunner, i.e. the instantiation and
 // connection of the TestSteps, routing blocks and pipeline runner.
 func (tr *TestRunner) Run(cancel, pause <-chan struct{}, test *test.Test, targets []*target.Target, jobID types.JobID, runID types.RunID) error {
