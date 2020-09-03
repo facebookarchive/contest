@@ -77,14 +77,19 @@ func broker(lockRequests, unlockRequests, checkLocksRequests <-chan *request, do
 			}
 			log.Debugf("Requested to lock %d targets for job ID %d: %v", len(req.targets), req.owner, req.targets)
 			var lockErr error
+			// newLocks is the state of the locks that have been modified by this transaction
+			// If there is an error, we discard newLocks leaving the state of 'locks' untouched
+			// otherwise we update 'locks' with the modifed locks after the transaction has completed
+			newLocks := make(map[target.Target]lock)
 			for _, t := range req.targets {
 				now := time.Now()
+
 				if l, ok := locks[*t]; ok {
 					// target has been locked before. Is it still locked, or did
 					// it expire?
 					if now.After(l.expiresAt) {
 						// lock has expired, consider it unlocked
-						locks[*t] = lock{
+						newLocks[*t] = lock{
 							owner:     req.owner,
 							lockedAt:  now,
 							expiresAt: now.Add(req.timeout),
@@ -93,21 +98,26 @@ func broker(lockRequests, unlockRequests, checkLocksRequests <-chan *request, do
 						// target is locked. Is it us or someone else?
 						if l.owner == req.owner {
 							// we are trying to extend a lock.
-							l := locks[*t]
 							l.expiresAt = time.Now().Add(req.timeout)
-							locks[*t] = l
+							newLocks[*t] = l
 						} else {
 							lockErr = fmt.Errorf("lock request: target already locked: %+v (lock: %+v)", t, l)
+							break
 						}
-						break
 					}
 				} else {
 					// target not locked and never seen, create new lock
-					locks[*t] = lock{
+					newLocks[*t] = lock{
 						owner:     req.owner,
 						lockedAt:  now,
 						expiresAt: now.Add(req.timeout),
 					}
+				}
+			}
+			if lockErr == nil {
+				// everything in this transaction was OK - update the locks
+				for t, l := range newLocks {
+					locks[t] = l
 				}
 			}
 			req.err <- lockErr
