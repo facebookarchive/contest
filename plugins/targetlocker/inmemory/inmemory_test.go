@@ -17,6 +17,7 @@ import (
 
 var (
 	jobID = types.JobID(123)
+	otherJobID = types.JobID(456)
 
 	targetOne  = target.Target{Name: "target001", ID: "001"}
 	targetTwo  = target.Target{Name: "target002", ID: "002"}
@@ -139,4 +140,27 @@ func TestInMemoryRefreshLocksTwoThenOne(t *testing.T) {
 	tl := New(time.Second, time.Second)
 	require.NoError(t, tl.RefreshLocks(jobID, twoTargets))
 	assert.NoError(t, tl.RefreshLocks(jobID, oneTarget))
+}
+
+func TestRefreshMultiple(t *testing.T) {
+	tl := New(200 * time.Millisecond, 200 * time.Millisecond)
+	require.NoError(t, tl.Lock(jobID, twoTargets))
+	time.Sleep(100 * time.Millisecond)
+	// they are not expired yet, extend both
+	require.NoError(t, tl.RefreshLocks(jobID, twoTargets))
+	time.Sleep(150 * time.Millisecond)
+	// if they were refreshed properly, they are still valid and attempts to get them must fail
+	require.Error(t, tl.Lock(otherJobID, []*target.Target{&targetOne}))
+	require.Error(t, tl.Lock(otherJobID, []*target.Target{&targetTwo}))
+}
+
+func TestLockingTransactional(t *testing.T) {
+	tl := New(time.Second, time.Second)
+	// lock the second target
+	require.NoError(t, tl.Lock(jobID, []*target.Target{&targetTwo}))
+	// try to lock both with another owner (this fails as expected)
+	require.Error(t, tl.Lock(jobID+1, twoTargets))
+	// API says target one should remain unlocked because Lock() is transactional
+	// this means it can be locked by the first owner
+	require.NoError(t, tl.Lock(jobID, []*target.Target{&targetOne}))
 }
