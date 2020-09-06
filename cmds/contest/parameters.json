@@ -1,0 +1,21 @@
+[{
+    "ID" : "yv3-evt-slot2.business.dut.sr1.9esec.dev",
+    "parameter":  {
+        "privateKeyFile" : "/root/.ssh/id_rsa",
+        "bmcHost" : "yv3-evt-bmc.business.dut.sr1.9esec.dev",
+        "bmcUser" : "root",
+        "bmcPassword" : "0penBmc",
+        "slotToTest": "slot2",
+        "githubRepo" : "git@github.com:walterchris/osf-partner-template"
+        }
+}, {
+    "ID" : "yv3-evt-slot3.business.dut.sr1.9esec.dev",
+    "parameter": {
+        "privateKeyFile" : "/root/.ssh/id_rsa",
+        "bmcHost" : "yv3-evt-bmc.business.dut.sr1.9esec.dev",
+        "bmcUser" : "root",
+        "bmcPassword" : "0penBmc",
+        "slotToTest": "slot3",
+        "githubRepo" : "git@github.com:walterchris/osf-partner-template"
+        }
+}]

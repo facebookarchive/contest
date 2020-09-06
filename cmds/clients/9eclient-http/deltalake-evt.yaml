@@ -1,0 +1,121 @@
+JobName: Deltalake Firmware Testing
+Runs: 1
+RunInterval: 60s
+Tags: ["ocp", "deltalake", "csv"]
+TestDescriptors:
+    -   TargetManagerName: CSVFileTargetManager
+        TargetManagerAcquireParameters:
+            FileURI: hosts.csv
+            Shuffle: true
+            MinNumberDevices: 1
+            MaxNumberDevices: 3
+        TargetManagerReleaseParameters:
+        TestFetcherName: literal
+        TestFetcherFetchParameters:
+            TestName: Build and Boot coreboot
+            Steps:
+                -   name: cmd
+                    label: Copy SSH Key to BMC Host
+                    parameters:
+                        executable: [sh]
+                        args: ["-c", "sshpass -p {{ getBmcPassword .ID }} ssh-copy-id -f -i {{ getPrivateKeyFile .ID }} {{ getBmcUser .ID }}@{{ getBmcHost .ID }}"]
+                -   name: cmd
+                    label: Cloning coreboot
+                    parameters:
+                        executable: [git]
+                        args: ["clone","{{ getGithubRepo .ID }}", "/tmp/coreboot-{{ .Name }}"]
+                -   name: cmd
+                    label: Build coreboot
+                    parameters:
+                        executable: [sh]
+                        args: ["-c","PLATFORM=deltalake-evt HASH=permissive ./build_external.sh"]
+                        dir: ["/tmp/coreboot-{{ .Name }}"]
+                -   name: cmd
+                    label: Extract Internal Versions
+                    parameters:
+                        executable: [vpd]
+                        args: ["-f", "/tmp/coreboot-{{ .Name }}/coreboot/coreboot-deltalake-evt.rom", "-g", "internal_versions"]
+                        dir: ["/tmp/coreboot-{{ .Name }}/linuxboot-artifacts"]
+                        emit_stdout: [true]
+                -   name: cmd
+                    label: SCP binary to target
+                    parameters:
+                        executable: [sh]
+                        args: ["-c", "scp -i {{ getPrivateKeyFile .ID }} /tmp/coreboot-{{ .Name }}/coreboot/coreboot-deltalake-evt.rom {{ getBmcUser .ID }}@{{ getBmcHost .ID }}:/tmp/coreboot-deltalake-evt-{{ .Name }}.rom"]
+                -   name: sshcmd
+                    label: Power off DUT
+                    parameters:
+                        user: ["{{ getBmcUser .ID }}"]
+                        private_key_file: ["{{ getPrivateKeyFile .ID }}"]
+                        host: ["{{ getBmcHost .ID }}"]
+                        executable: [/usr/local/bin/power-util]
+                        args: ["{{ getSlotToTest .ID }}", "off"]
+                        expect: ["to OFF state..."]
+                        timeout: ["5m"]
+                -   name: sshcmd
+                    label: Flashing BIOS
+                    parameters:
+                        user: ["{{ getBmcUser .ID }}"]
+                        private_key_file: ["{{ getPrivateKeyFile .ID }}"]
+                        host: ["{{ getBmcHost .ID }}"]
+                        executable: [/usr/bin/fw-util]
+                        args: ["{{ getSlotToTest .ID }}", "sb", "--update", "bios", "/tmp/coreboot-deltalake-evt-{{ .Name }}.rom"]
+                        expect: ["bios succeeded"]
+                        timeout: ["25m"]
+                -   name: sshcmd
+                    label: Kill mTerm
+                    parameters:
+                        user: ["{{ getBmcUser .ID }}"]
+                        private_key_file: ["{{ getPrivateKeyFile .ID }}"]
+                        host: ["{{ getBmcHost .ID }}"]
+                        executable: [killall]
+                        args: ["-STOP", "mTerm_server"]
+                        timeout: ["5m"]
+                -   name: sshcmd
+                    label: Configure TTY
+                    parameters:
+                        user: ["{{ getBmcUser .ID }}"]
+                        private_key_file: ["{{ getPrivateKeyFile .ID }}"]
+                        host: ["{{ getBmcHost .ID }}"]
+                        executable: [/bin/stty]
+                        args: ["-F", "{{ getTty .ID }}", "57600"]
+                        timeout: ["5m"]
+                -   name: sshcmd
+                    label: Boot into Debian
+                    parameters:
+                        user: ["{{ getBmcUser .ID }}"]
+                        private_key_file: ["{{ getPrivateKeyFile .ID }}"]
+                        host: ["{{ getBmcHost .ID }}"]
+                        executable: [cat]
+                        args: ["{{ getTty .ID }}"]
+                        expect: ["debian login:"]
+                        timeout: ["25m"]
+    -   TargetManagerName: CSVFileTargetManager
+        TargetManagerAcquireParameters: 
+            FileURI: hosts.csv
+            MinNumberDevices: 1
+            MaxNumberDevices: 3
+        TargetManagerReleaseParameters:
+        TestFetcherName: literal
+        TestFetcherFetchParameters:
+            TestName: Cleanup
+            Steps:
+                -   name: cmd
+                    label: Delete local Files
+                    parameters:
+                        executable: [rm]
+                        args: ["-R", "-f", "/tmp/coreboot-{{ .Name }}"]
+                -   name: sshcmd
+                    label: Delete BMC Files
+                    parameters:
+                        user: ["{{ getBmcUser .ID }}"]
+                        private_key_file: ["{{ getPrivateKeyFile .ID }}"]
+                        host: ["{{ getBmcHost .ID }}"]
+                        executable: [rm]
+                        args: ["-R", "-f", "/tmp/coreboot-deltalake-evt-{{ .Name }}.rom"]
+                        timeout: ["2m"]
+Reporting:
+    RunReporters:
+        -   name: TargetSuccess
+            parameters:
+                SuccessExpression: "=100%"

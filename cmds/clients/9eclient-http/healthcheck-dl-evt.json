@@ -1,0 +1,134 @@
+{
+    "JobName": "Deltalake Firmware Testing",
+    "Runs": 1,
+    "RunInterval": "5s",
+    "Tags": ["test", "list"],
+    "TestDescriptors": [
+        {
+            "TargetManagerName": "CSVFileTargetManager",
+            "TargetManagerAcquireParameters": {
+                "FileURI": "hosts.csv",
+                "MinNumberDevices": 1,
+                "MaxNumberDevices": 3
+            },
+            "TargetManagerReleaseParameters": {
+            },
+            "TestFetcherName": "literal",
+            "TestFetcherFetchParameters": {
+                "TestName": "Healtcheck Yv3 Deltalake",
+                "steps": [
+                    {
+                        "name": "cmd",
+                        "label": "sshcopy-id to the BMC",
+                        "parameters": {
+                            "executable": ["sh"],
+                            "args": ["-c", "sshpass -p {{ getBmcPassword .ID }} ssh-copy-id -f -i {{ getPrivateKeyFile .ID }} {{ getBmcUser .ID }}@{{ getBmcHost .ID }}"]
+                        }
+                    },
+                    {
+                        "name": "cmd",
+                        "label": "scping to deltalake",
+                        "parameters": {
+                            "args": [
+                                "-c",
+                                "scp -i {{ getPrivateKeyFile .ID }} /root/contest/cmds/contest/assets/coreboot-deltalake-evt-dut-prov.rom {{ getBmcUser .ID }}@{{ getBmcHost .ID }}:/tmp/coreboot-deltalake-evt-{{ .Name }}.rom"
+                            ],
+                            "executable": [
+                                "sh"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "sshcmd",
+                        "label": "powering off the machine",
+                        "parameters": {
+                            "user": ["{{ getBmcUser .ID }}"],
+                            "private_key_file": ["{{ getPrivateKeyFile .ID }}"],
+                            "host": ["{{ getBmcHost .ID }}"],
+                            "executable": ["/usr/local/bin/power-util"],
+                            "args": ["{{ getSlotToTest .ID }}", "off"],
+                            "expect": ["to OFF state..."],
+                            "timeout" : ["5m"]
+                        }
+                    },
+                    {
+                        "name": "sshcmd",
+                        "label": "Flashing Bios",
+                        "parameters": {
+                            "user": ["{{ getBmcUser .ID }}"],
+                            "private_key_file": ["{{ getPrivateKeyFile .ID }}"],
+                            "host": ["{{ getBmcHost .ID }}"],
+                            "executable": ["/usr/bin/fw-util"],
+                            "args": ["{{ getSlotToTest .ID }}", "sb", "--update", "bios", "/tmp/coreboot-deltalake-evt-{{ .Name }}.rom"],
+                            "expect": ["bios succeeded"],
+                            "timeout" : ["25m"]
+                        }
+                    },
+                    {
+                        "name": "sshcmd",
+                        "label": "configuring tty",
+                        "parameters": {
+                            "user": ["{{ getBmcUser .ID }}"],
+                            "private_key_file": ["{{ getPrivateKeyFile .ID }}"],
+                            "host": ["{{ getBmcHost .ID }}"],
+                            "executable": ["/bin/stty"],
+                            "args": ["-F", "{{ getTty .ID }}", "57600"],
+                            "timeout" : ["5m"]
+                        }
+                    },
+                    {
+                        "name": "sshcmd",
+                        "label": "collecting bootlog",
+                        "parameters": {
+                            "user": ["{{ getBmcUser .ID }}"],
+                            "private_key_file": ["{{ getPrivateKeyFile .ID }}"],
+                            "host": ["{{ getBmcHost .ID }}"],
+                            "executable": ["cat"],
+                            "args": ["{{ getTty .ID }}"],
+                            "expect": ["CLEANUP"],
+                            "timeout": ["10m"]
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "TargetManagerName": "CSVFileTargetManager",
+            "TargetManagerAcquireParameters": {
+                "FileURI": "hosts.csv",
+                "MinNumberDevices": 1,
+                "MaxNumberDevices": 3
+            },
+            "TargetManagerReleaseParameters": {
+            },
+            "TestFetcherName": "literal",
+            "TestFetcherFetchParameters": {
+                "TestName": "Healtcheck Yv3 Deltalake",
+                "steps": [
+                    {
+                        "name": "sshcmd",
+                        "label": "Delete BIOS",
+                        "parameters": {
+                            "user": ["{{ getBmcUser .ID }}"],
+                            "private_key_file": ["{{ getPrivateKeyFile .ID }}"],
+                            "host": ["{{ getBmcHost .ID }}"],
+                            "executable": ["rm"],
+                            "args": ["-R", "-f", "/tmp/coreboot-deltalake-evt-{{ .Name }}.rom"],
+                            "timeout" : ["2m"]
+                        }
+                    }
+                ]
+            }
+        }
+    ],
+    "Reporting": {
+        "RunReporters": [
+            {
+                "Name": "TargetSuccess",
+                "Parameters": {
+                    "SuccessExpression": ">80%"
+                }
+            }
+        ]
+   }
+}
