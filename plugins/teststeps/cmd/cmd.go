@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -80,14 +82,16 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 		}
 		cmd := exec.CommandContext(ctx, ts.executable, args...)
 		cmd.Dir = ts.dir
-		var stdout, stderr bytes.Buffer
-		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		var stdoutBuf, stderrBuf bytes.Buffer
+
+		cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
+		cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
+
 		if ts.dir != "" {
 			log.Printf("Running command '%+v' in directory '%+v'", cmd, cmd.Dir)
 		} else {
 			log.Printf("Running command '%+v'", cmd)
 		}
-
 		errCh := make(chan error)
 		go func() {
 			// Emit EventCmdStart
@@ -116,11 +120,11 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 			if err := ev.Emit(evData); err != nil {
 				log.Warningf("Cannot emit event EventCmdEnd: %v", err)
 			}
-			log.Infof("Stdout of command '%s' with args '%s' is '%s'", cmd.Path, cmd.Args, stdout.Bytes())
+			log.Infof("Stdout of command '%s' with args '%s' in directory '%s' is '%s'", cmd.Path, cmd.Args, cmd.Dir, stdoutBuf.String())
 		}()
 		select {
 		case err := <-errCh:
-			log.Warningf("Stderr of command '%+v' is: '%s'", cmd, stderr.Bytes())
+			log.Warningf("Stderr of command '%+v' is: '%s'", cmd, stderrBuf.String())
 			return err
 		case <-cancel:
 			return nil
