@@ -6,6 +6,8 @@
 package teststeps
 
 import (
+	"sync/atomic"
+
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -29,22 +31,41 @@ type PerTargetFunc func(cancel, pause <-chan struct{}, target *target.Target) er
 func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.TestStepChannels, f PerTargetFunc) error {
 	type tgtErr struct {
 		target *target.Target
-		err error
+		err    error
 	}
 	tgtErrCh := make(chan tgtErr)
-	for {
-		select {
-		case tgt := <-ch.In:
-			if tgt == nil {
-				// no more targets incoming
-				return nil
-			}
+	tgtInFlight := int32(0)
+	noMoreTargetsCh := make(chan struct{})
+
+	go func() {
+		defer func() {
+			log.Debugf("%s: ForEachTarget: exiting incoming loop, targets inflight %d", pluginName, tgtInFlight)
+		}()
+		for {
+			tgt := <-ch.In
 			log.Debugf("%s: ForEachTarget: received target %s", pluginName, tgt)
+
+			if tgt == nil {
+				log.Debugf("%s: ForEachTarget: all targets have been received", pluginName)
+				noMoreTargetsCh <- struct{}{}
+				return
+			}
+
 			go func() {
-				log.Debugf("%s: ForEachTarget: calling function on target %s", pluginName, tgt)
 				tgtErrCh <- tgtErr{target: tgt, err: f(cancel, pause, tgt)}
 			}()
+			atomic.AddInt32(&tgtInFlight, 1)
+		}
+	}()
+
+	noMoreTargets := false
+	defer func() {
+		log.Debugf("%s: ForEachTarget: exiting outgoing loop, targets inflight %d, the last target received %v", pluginName, tgtInFlight, noMoreTargets)
+	}()
+	for {
+		select {
 		case te := <-tgtErrCh:
+			atomic.AddInt32(&tgtInFlight, -1)
 			if te.err != nil {
 				select {
 				case ch.Err <- cerrors.TargetError{Target: te.target, Err: te.err}:
@@ -68,9 +89,20 @@ func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.Tes
 					return nil
 				}
 			}
+			if atomic.LoadInt32(&tgtInFlight) == 0 && noMoreTargets {
+				return nil
+			}
+		case <-noMoreTargetsCh:
+			log.Debugf("%s: ForEachTarget: received noMoreTargets signal", pluginName)
+			if atomic.LoadInt32(&tgtInFlight) == 0 {
+				return nil
+			}
+			noMoreTargets = true
 		case <-cancel:
+			log.Debugf("%s: ForEachTarget: received cancellation signal", pluginName)
 			return nil
 		case <-pause:
+			log.Debugf("%s: ForEachTarget: received pausing signal", pluginName)
 			return nil
 		}
 	}
