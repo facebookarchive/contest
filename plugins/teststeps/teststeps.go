@@ -37,7 +37,7 @@ func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.Tes
 	tgtInFlight := int32(0)
 	noMoreTargetsCh := make(chan struct{})
 
-	go func() {
+	go func(tgtInFlight *int32) {
 		defer func() {
 			log.Debugf("%s: ForEachTarget: exiting incoming loop, targets inflight %d", pluginName, tgtInFlight)
 		}()
@@ -54,9 +54,9 @@ func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.Tes
 			go func() {
 				tgtErrCh <- tgtErr{target: tgt, err: f(cancel, pause, tgt)}
 			}()
-			atomic.AddInt32(&tgtInFlight, 1)
+			atomic.AddInt32(tgtInFlight, 1)
 		}
-	}()
+	}(&tgtInFlight)
 
 	noMoreTargets := false
 	defer func() {
