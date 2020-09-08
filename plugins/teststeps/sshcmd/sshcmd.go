@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"io/ioutil"
 	"net"
 	"regexp"
@@ -176,8 +177,10 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 			}
 		}()
 		// run the remote command and catch stdout/stderr
-		var stdout, stderr bytes.Buffer
-		session.Stdout, session.Stderr = &stdout, &stderr
+		var stdoutBuf, stderrBuf bytes.Buffer
+		session.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
+		session.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
+
 		cmd := shellquote.Join(append([]string{executable}, args...)...)
 		log.Printf("Running remote SSH command on %s: '%v'", addr, cmd)
 		errCh := make(chan error)
@@ -188,7 +191,7 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 
 		select {
 		case err := <-errCh:
-			log.Infof("Stdout of command '%s' is '%s'", cmd, stdout.Bytes())
+			log.Infof("Stdout of command '%s' is '%s'", cmd, stdoutBuf.Bytes())
 			if err == nil {
 				// Execute expectations
 				expect := ts.Expect.String()
@@ -196,7 +199,7 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 					log.Warningf("no expectations specified")
 				} else {
 					re := regexp.MustCompile(expect)
-					matches := re.FindAll(stdout.Bytes(), -1)
+					matches := re.FindAll(stdoutBuf.Bytes(), -1)
 					if len(matches) > 0 {
 						log.Infof("match for regex \"%s\" found", expect)
 					} else {
@@ -204,7 +207,7 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 					}
 				}
 			} else {
-				log.Warningf("Stderr of command '%s' is '%s'", cmd, stderr.Bytes())
+				log.Warningf("Stderr of command '%s' is '%s'", cmd, stderrBuf.Bytes())
 			}
 			return err
 		case <-cancel:
