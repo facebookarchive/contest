@@ -292,11 +292,9 @@ func TestForEachTargetCancelSignalPropagation(t *testing.T) {
 	sleepTime := time.Second * 5
 	numTargets := 10
 	var canceledTargets int32
-	var wg sync.WaitGroup
 	d := newData()
 
 	fn := func(cancel, pause <-chan struct{}, tgt *target.Target) error {
-		defer wg.Done()
 		log.Printf("Handling target %+v", tgt)
 		select {
 		case <-cancel:
@@ -313,7 +311,6 @@ func TestForEachTargetCancelSignalPropagation(t *testing.T) {
 	go func() {
 		for i := 0; i < numTargets; i++ {
 			d.inCh <- &target.Target{Name: fmt.Sprintf("target%03d", i)}
-			wg.Add(1)
 		}
 		d.inCh <- nil
 	}()
@@ -326,6 +323,47 @@ func TestForEachTargetCancelSignalPropagation(t *testing.T) {
 	err := ForEachTarget("test_cancelation", d.cancel, d.pause, d.stepChans, fn)
 	require.NoError(t, err)
 
-	wg.Wait()
+	assert.Equal(t, int32(numTargets), canceledTargets)
+}
+
+func TestForEachTargetCancelBeforeInputChannelClosed(t *testing.T) {
+	logging.Debug()
+	sleepTime := time.Second * 5
+	numTargets := 10
+	var canceledTargets int32
+	d := newData()
+
+	fn := func(cancel, pause <-chan struct{}, tgt *target.Target) error {
+		log.Printf("Handling target %+v", tgt)
+		select {
+		case <-cancel:
+			log.Printf("target %+v caneled", tgt)
+			atomic.AddInt32(&canceledTargets, 1)
+		case <-pause:
+			log.Printf("target %+v paused", tgt)
+		case <-time.After(sleepTime):
+			log.Printf("target %+v processed", tgt)
+		}
+		return nil
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		for i := 0; i < numTargets; i++ {
+			d.inCh <- &target.Target{Name: fmt.Sprintf("target%03d", i)}
+		}
+		wg.Wait() //Don't close the input channel until ForEachTarget returned
+	}()
+
+	go func() {
+		time.Sleep(sleepTime / 3)
+		close(d.cancel)
+	}()
+
+	err := ForEachTarget("test_cancelation", d.cancel, d.pause, d.stepChans, fn)
+	require.NoError(t, err)
+
+	wg.Done()
 	assert.Equal(t, int32(numTargets), canceledTargets)
 }

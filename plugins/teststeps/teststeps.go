@@ -42,23 +42,32 @@ func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.Tes
 			log.Debugf("%s: ForEachTarget: exiting incoming loop, targets inflight %d", pluginName, tgtInFlight)
 		}()
 		for {
-			tgt := <-ch.In
-			log.Debugf("%s: ForEachTarget: received target %s", pluginName, tgt)
+			select {
+			case tgt := <-ch.In:
+				log.Debugf("%s: ForEachTarget: received target %s", pluginName, tgt)
+				if tgt == nil {
+					log.Debugf("%s: ForEachTarget: all targets have been received", pluginName)
+					noMoreTargetsCh <- struct{}{}
+					return
+				}
 
-			if tgt == nil {
-				log.Debugf("%s: ForEachTarget: all targets have been received", pluginName)
-				noMoreTargetsCh <- struct{}{}
+				go func() {
+					tgtErrCh <- tgtErr{target: tgt, err: f(cancel, pause, tgt)}
+				}()
+				atomic.AddInt32(tgtInFlight, 1)
+			case <-cancel:
+				log.Debugf("%s: ForEachTarget: incoming loop canceled", pluginName)
+				return
+			case <-pause:
+				log.Debugf("%s: ForEachTarget: incoming loop paused", pluginName)
 				return
 			}
 
-			go func() {
-				tgtErrCh <- tgtErr{target: tgt, err: f(cancel, pause, tgt)}
-			}()
-			atomic.AddInt32(tgtInFlight, 1)
 		}
 	}(&tgtInFlight)
 
 	noMoreTargets := false
+	reportResults := true
 	defer func() {
 		log.Debugf("%s: ForEachTarget: exiting outgoing loop, targets inflight %d, the last target received %v", pluginName, tgtInFlight, noMoreTargets)
 	}()
@@ -66,30 +75,34 @@ func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.Tes
 		select {
 		case te := <-tgtErrCh:
 			atomic.AddInt32(&tgtInFlight, -1)
-			if te.err != nil {
-				select {
-				case ch.Err <- cerrors.TargetError{Target: te.target, Err: te.err}:
-					log.Errorf("%s: ForEachTarget: failed to apply test step function on target %s: %v", pluginName, te.target, te.err)
-				case <-cancel:
-					log.Debugf("%s: ForEachTarget: received cancellation signal", pluginName)
-					return nil
-				case <-pause:
-					log.Debugf("%s: ForEachTarget: received pausing signal", pluginName)
-					return nil
+			if reportResults {
+				if te.err != nil {
+					select {
+					case ch.Err <- cerrors.TargetError{Target: te.target, Err: te.err}:
+						log.Errorf("%s: ForEachTarget: failed to apply test step function on target %s: %v", pluginName, te.target, te.err)
+					case <-cancel:
+						log.Debugf("%s: ForEachTarget: received cancellation signal while reporting error", pluginName)
+						reportResults = false
+					case <-pause:
+						log.Debugf("%s: ForEachTarget: received pausing signal while reporting error", pluginName)
+						reportResults = false
+					}
+				} else {
+					select {
+					case ch.Out <- te.target:
+						log.Debugf("%s: ForEachTarget: target %s completed successfully", pluginName, te.target)
+					case <-cancel:
+						log.Debugf("%s: ForEachTarget: received cancellation signal while reporting success", pluginName)
+						reportResults = false
+					case <-pause:
+						log.Debugf("%s: ForEachTarget: received pausing signal while reporting success", pluginName)
+						reportResults = false
+					}
 				}
 			} else {
-				select {
-				case ch.Out <- te.target:
-					log.Debugf("%s: ForEachTarget: target %s completed successfully", pluginName, te.target)
-				case <-cancel:
-					log.Debugf("%s: ForEachTarget: received cancellation signal", pluginName)
-					return nil
-				case <-pause:
-					log.Debugf("%s: ForEachTarget: received pausing signal", pluginName)
-					return nil
-				}
+				log.Debugf("%s: ForEachTarget: the result is ignored due to cancelation: %v", pluginName, te)
 			}
-			if atomic.LoadInt32(&tgtInFlight) == 0 && noMoreTargets {
+			if atomic.LoadInt32(&tgtInFlight) == 0 && (noMoreTargets || !reportResults) {
 				return nil
 			}
 		case <-noMoreTargetsCh:
@@ -99,11 +112,11 @@ func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.Tes
 			}
 			noMoreTargets = true
 		case <-cancel:
-			log.Debugf("%s: ForEachTarget: received cancellation signal", pluginName)
-			return nil
+			log.Debugf("%s: ForEachTarget: received cancellation signal while waiting for results", pluginName)
+			reportResults = false
 		case <-pause:
-			log.Debugf("%s: ForEachTarget: received pausing signal", pluginName)
-			return nil
+			log.Debugf("%s: ForEachTarget: received pausing signal while waiting for results", pluginName)
+			reportResults = false
 		}
 	}
 }
