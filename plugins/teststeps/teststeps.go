@@ -39,7 +39,7 @@ func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.Tes
 
 	go func(tgtInFlight *int32) {
 		defer func() {
-			log.Debugf("%s: ForEachTarget: exiting incoming loop, targets inflight %d", pluginName, tgtInFlight)
+			log.Debugf("%s: ForEachTarget: exiting incoming loop, targets inflight %d", pluginName, atomic.LoadInt32(tgtInFlight))
 		}()
 		for {
 			select {
@@ -69,7 +69,7 @@ func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.Tes
 	noMoreTargets := false
 	reportResults := true
 	defer func() {
-		log.Debugf("%s: ForEachTarget: exiting outgoing loop, targets inflight %d, the last target received %v", pluginName, tgtInFlight, noMoreTargets)
+		log.Debugf("%s: ForEachTarget: exiting outgoing loop, targets inflight %d, the last target received %v", pluginName, atomic.LoadInt32(&tgtInFlight), noMoreTargets)
 	}()
 	for {
 		select {
@@ -77,9 +77,9 @@ func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.Tes
 			atomic.AddInt32(&tgtInFlight, -1)
 			if reportResults {
 				if te.err != nil {
+					log.Errorf("%s: ForEachTarget: failed to apply test step function on target %s: %v", pluginName, te.target, te.err)
 					select {
 					case ch.Err <- cerrors.TargetError{Target: te.target, Err: te.err}:
-						log.Errorf("%s: ForEachTarget: failed to apply test step function on target %s: %v", pluginName, te.target, te.err)
 					case <-cancel:
 						log.Debugf("%s: ForEachTarget: received cancellation signal while reporting error", pluginName)
 						reportResults = false
@@ -88,9 +88,9 @@ func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.Tes
 						reportResults = false
 					}
 				} else {
+					log.Debugf("%s: ForEachTarget: target %s completed successfully", pluginName, te.target)
 					select {
 					case ch.Out <- te.target:
-						log.Debugf("%s: ForEachTarget: target %s completed successfully", pluginName, te.target)
 					case <-cancel:
 						log.Debugf("%s: ForEachTarget: received cancellation signal while reporting success", pluginName)
 						reportResults = false
@@ -100,7 +100,7 @@ func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.Tes
 					}
 				}
 			} else {
-				log.Debugf("%s: ForEachTarget: the result is ignored due to cancelation: %v", pluginName, te)
+				log.Debugf("%s: ForEachTarget: the result is ignored due to cancellation: %v", pluginName, te)
 			}
 			if atomic.LoadInt32(&tgtInFlight) == 0 && (noMoreTargets || !reportResults) {
 				return nil

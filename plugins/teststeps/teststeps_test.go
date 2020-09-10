@@ -62,7 +62,7 @@ func TestForEachTargetOneTarget(t *testing.T) {
 		for {
 			select {
 			case <-d.done:
-				break
+				return
 			case tgt := <-d.outCh:
 				log.Printf("Step for target %+v completed as expected", tgt)
 			case err := <-d.errCh:
@@ -90,7 +90,7 @@ func TestForEachTargetOneTargetAllFail(t *testing.T) {
 		for {
 			select {
 			case <-d.done:
-				break
+				return
 			case tgt := <-d.outCh:
 				t.Errorf("Step for target %+v expected to fail but completed successfully instead", tgt)
 			case err := <-d.errCh:
@@ -120,7 +120,7 @@ func TestForEachTargetTenTargets(t *testing.T) {
 		for {
 			select {
 			case <-d.done:
-				break
+				return
 			case tgt := <-d.outCh:
 				log.Printf("Step for target %+v completed as expected", tgt)
 			case err := <-d.errCh:
@@ -151,7 +151,7 @@ func TestForEachTargetTenTargetsAllFail(t *testing.T) {
 		for {
 			select {
 			case <-d.done:
-				break
+				return
 			case tgt := <-d.outCh:
 				t.Errorf("Step for target %+v expected to fail but completed successfully instead", tgt)
 			case err := <-d.errCh:
@@ -187,7 +187,7 @@ func TestForEachTargetTenTargetsOneFails(t *testing.T) {
 		for {
 			select {
 			case <-d.done:
-				break
+				return
 			case tgt := <-d.outCh:
 				if tgt.Name == failingTarget {
 					t.Errorf("Step for target %+v expected to fail but completed successfully instead", tgt)
@@ -337,7 +337,7 @@ func TestForEachTargetCancelBeforeInputChannelClosed(t *testing.T) {
 		log.Printf("Handling target %+v", tgt)
 		select {
 		case <-cancel:
-			log.Printf("target %+v caneled", tgt)
+			log.Printf("target %+v cancelled", tgt)
 			atomic.AddInt32(&canceledTargets, 1)
 		case <-pause:
 			log.Printf("target %+v paused", tgt)
