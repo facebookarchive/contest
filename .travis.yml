@@ -9,6 +9,7 @@ global:
 env:
   global:
     - COMPOSE_VERSION=1.25.4
+    - GO111MODULE=on
   jobs:
     - TEST_SUITE=tests
     - TEST_SUITE=linters

@@ -69,6 +69,19 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 			return
 		}
 
+		// store job report before emitting the job status event, to avoid a
+		// race condition when waiting on a job status where the event is marked
+		// as completed but no report exists.
+		jobReport := job.JobReport{
+			JobID:        j.ID,
+			RunReports:   runReports,
+			FinalReports: finalReports,
+		}
+		if storageErr := jm.jobStorageManager.StoreJobReport(&jobReport); storageErr != nil {
+			log.Warningf("Could not emit job report: %v", storageErr)
+		}
+		// at this point it is safe to emit the job status event. Note: this is
+		// checking `err` from the `jm.jobRunner.Run()` call above.
 		if err != nil {
 			errMsg := fmt.Sprintf("Job %+v failed after %s : %v", j, duration, err)
 			log.Errorf(errMsg)
@@ -91,15 +104,6 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 			if err != nil {
 				log.Warningf("event emission failed: %v", err)
 			}
-		}
-		jobReport := job.JobReport{
-			JobID:        j.ID,
-			RunReports:   runReports,
-			FinalReports: finalReports,
-		}
-		err = jm.jobStorageManager.StoreJobReport(&jobReport)
-		if err != nil {
-			log.Warningf("Could not emit job report: %v", err)
 		}
 	}()
 
