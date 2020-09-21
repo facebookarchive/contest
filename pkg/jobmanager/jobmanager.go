@@ -23,6 +23,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/runner"
 	"github.com/facebookincubator/contest/pkg/storage"
+	"github.com/facebookincubator/contest/pkg/storage/limits"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
 )
@@ -88,6 +89,9 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 	if jd.JobName == "" {
 		return nil, errors.New("job name cannot be empty")
 	}
+	if err := limits.Validator.ValidateJobName(jd.JobName); err != nil {
+		return nil, err
+	}
 	if jd.RunInterval < 0 {
 		return nil, errors.New("run interval must be non-negative")
 	}
@@ -98,6 +102,9 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 	for _, reporter := range jd.Reporting.RunReporters {
 		if strings.TrimSpace(reporter.Name) == "" {
 			return nil, errors.New("run reporters cannot have empty or all-whitespace names")
+		}
+		if err := limits.Validator.ValidateReporterName(reporter.Name); err != nil {
+			return nil, err
 		}
 	}
 
@@ -127,6 +134,9 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 		if err != nil {
 			return nil, err
 		}
+		if err := limits.Validator.ValidateTestName(name); err != nil {
+			return nil, err
+		}
 		testDescriptors = append(testDescriptors, testStepDescs)
 
 		// look up test step plugins in the plugin registry
@@ -135,6 +145,9 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 		for idx, testStepDesc := range testStepDescs {
 			if testStepDesc == nil {
 				return nil, errors.New("test step description is null")
+			}
+			if err := limits.Validator.ValidateTestStepLabel(testStepDesc.Label); err != nil {
+				return nil, err
 			}
 			tse, err := pr.NewTestStepEvents(testStepDesc.Name)
 			if err != nil {

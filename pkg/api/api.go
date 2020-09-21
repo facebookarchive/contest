@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/facebookincubator/contest/pkg/storage/limits"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
@@ -51,14 +52,18 @@ func New(serverIDFunc func() string) *API {
 // ServerID returns the Server ID to be used in responses. A custom server ID
 // generation function can be passed to New().
 func (a API) ServerID() string {
+	serverID := "<unknown>"
 	if a.serverIDFunc != nil {
-		return a.serverIDFunc()
+		serverID = a.serverIDFunc()
+	} else {
+		if hn, err := os.Hostname(); err == nil {
+			serverID = hn
+		}
 	}
-	hn, err := os.Hostname()
-	if err != nil {
-		return "<unknown>"
+	if err := limits.Validator.ValidateServerID(serverID); err != nil {
+		panic(err)
 	}
-	return hn
+	return serverID
 }
 
 // newResponse returns a new Response object with type and server ID set. The
@@ -91,6 +96,9 @@ func (a API) Version() Response {
 func (a *API) SendEvent(ev *Event, timeout *time.Duration) error {
 	if ev.Msg.Requestor() == "" {
 		return errors.New("requestor cannot be empty")
+	}
+	if err := limits.Validator.ValidateRequesterName(string(ev.Msg.Requestor())); err != nil {
+		return err
 	}
 	to := DefaultEventTimeout
 	if timeout != nil {
