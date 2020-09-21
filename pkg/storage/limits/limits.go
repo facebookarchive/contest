@@ -1,3 +1,8 @@
+// Copyright (c) Facebook, Inc. and its affiliates.
+//
+// This source code is licensed under the MIT license found in the
+// LICENSE file in the root directory of this source tree.
+
 package limits
 
 import "fmt"
@@ -10,23 +15,19 @@ import "fmt"
 
 // LimitsValidator provides methods to validate data size from storage perspective
 type LimitsValidator interface {
-	ValidateTestName(testName string)
-	ValidateTestStepLabel(testStepLabel string)
-	ValidateEventName(eventName string)
-
-	ValidateReporterName(reporterName string)
-
-	ValidateJobName(jobName string)
-	ValidateJobRequestor(jobRequestor string)
-	ValidateServerId(serverID string)
+	ValidateTestName(testName string) error
+	ValidateTestStepLabel(testStepLabel string) error
+	ValidateEventName(eventName string) error
+	ValidateReporterName(reporterName string) error
+	ValidateJobName(jobName string) error
+	ValidateRequesterName(jobRequester string) error
+	ValidateServerID(serverID string) error
 
 	// Target name/id??
 }
 
 // Validator is an instance of current storage limits validator
-var Validator = BasicStorageLimitsValidator{}
-
-//var Validator LimitsValidator = BasicStorageLimitsValidator{}
+var Validator LimitsValidator = &BasicStorageLimitsValidator{}
 
 // BasicStorageLimitsValidator is a simple LimitsValidator implementation
 type BasicStorageLimitsValidator struct{}
