@@ -26,6 +26,17 @@ type LimitsValidator interface {
 	// Target name/id??
 }
 
+// ErrParameterIsTooLong implements "error" for generic length check error.
+type ErrParameterIsTooLong struct {
+	DataName  string
+	MaxLen    int
+	ActualLen int
+}
+
+func (err ErrParameterIsTooLong) Error() string {
+	return fmt.Sprintf("%s is too long: %d > %d", err.DataName, err.ActualLen, err.MaxLen)
+}
+
 // Validator is an instance of current storage limits validator
 var Validator LimitsValidator = &BasicStorageLimitsValidator{}
 
@@ -90,7 +101,7 @@ func (v *BasicStorageLimitsValidator) ValidateServerID(serverID string) error {
 
 func (v *BasicStorageLimitsValidator) validate(data string, dataName string, maxDataLen int) error {
 	if l := len(data); l > maxDataLen {
-		return fmt.Errorf("%s is too long: %d > %d", dataName, l, maxDataLen)
+		return ErrParameterIsTooLong{DataName: dataName, MaxLen: maxDataLen, ActualLen: l}
 	}
 	return nil
 }
