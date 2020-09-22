@@ -20,7 +20,7 @@ type LimitsValidator interface {
 	ValidateEventName(eventName string) error
 	ValidateReporterName(reporterName string) error
 	ValidateJobName(jobName string) error
-	ValidateRequesterName(jobRequester string) error
+	ValidateRequestorName(jobRequestor string) error
 	ValidateServerID(serverID string) error
 
 	// Target name/id??
@@ -72,12 +72,12 @@ func (v *BasicStorageLimitsValidator) ValidateReporterName(reporterName string) 
 	return v.validate(reporterName, "Reporter name", MaxReporterNameLen)
 }
 
-// MaxRequesterNameLen is a max length of requester name field
-const MaxRequesterNameLen = 32
+// MaxRequestorNameLen is a max length of Requestor name field
+const MaxRequestorNameLen = 32
 
-// ValidateRequesterName retruns error if the requester name does not match storage limitations
-func (v *BasicStorageLimitsValidator) ValidateRequesterName(requesterName string) error {
-	return v.validate(requesterName, "Requester name", MaxRequesterNameLen)
+// ValidateRequestorName retruns error if the requestor name does not match storage limitations
+func (v *BasicStorageLimitsValidator) ValidateRequestorName(requestorName string) error {
+	return v.validate(requestorName, "Requestor name", MaxRequestorNameLen)
 }
 
 // MaxServerIDLen is a max length of server id field

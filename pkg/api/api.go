@@ -97,7 +97,7 @@ func (a *API) SendEvent(ev *Event, timeout *time.Duration) error {
 	if ev.Msg.Requestor() == "" {
 		return errors.New("requestor cannot be empty")
 	}
-	if err := limits.Validator.ValidateRequesterName(string(ev.Msg.Requestor())); err != nil {
+	if err := limits.Validator.ValidateRequestorName(string(ev.Msg.Requestor())); err != nil {
 		return err
 	}
 	to := DefaultEventTimeout
