@@ -53,6 +53,7 @@ func TestEventName(t *testing.T) {
 func TestJobName(t *testing.T) {
 	jd := job.JobDescriptor{TestDescriptors: []*test.TestDescriptor{{}}, JobName: strings.Repeat("A", limits.MaxJobNameLen+1)}
 	jsonJd, err := json.Marshal(&jd)
+	require.NoError(t, err)
 	_, err = jobmanager.NewJobFromRequest(&pluginregistry.PluginRegistry{}, &job.Request{JobDescriptor: string(jsonJd)})
 	assertLenError(t, "Job name", err)
 }
@@ -64,6 +65,7 @@ func TestReporterName(t *testing.T) {
 		Reporting:       job.Reporting{RunReporters: []job.ReporterConfig{{Name: strings.Repeat("A", limits.MaxReporterNameLen+1)}}},
 	}
 	jsonJd, err := json.Marshal(&jd)
+	require.NoError(t, err)
 	_, err = jobmanager.NewJobFromRequest(&pluginregistry.PluginRegistry{},
 		&job.Request{JobDescriptor: string(jsonJd)},
 	)
