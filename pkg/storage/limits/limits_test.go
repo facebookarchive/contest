@@ -86,6 +86,7 @@ func TestTestName(t *testing.T) {
 	testFetchParams, err := json.Marshal(&literal.FetchParameters{
 		TestName: strings.Repeat("A", limits.MaxTestNameLen+1),
 	})
+	require.NoError(t, err)
 
 	jd := job.JobDescriptor{
 		TestDescriptors: []*test.TestDescriptor{{
@@ -117,6 +118,7 @@ func TestTestStepLabel(t *testing.T) {
 			Label: strings.Repeat("A", limits.MaxTestStepLabelLen+1),
 		}},
 	})
+	require.NoError(t, err)
 
 	jd := job.JobDescriptor{
 		TestDescriptors: []*test.TestDescriptor{{
