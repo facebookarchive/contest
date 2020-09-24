@@ -20,10 +20,15 @@ import (
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/storage/limits"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/plugins/targetmanagers/targetlist"
+	"github.com/facebookincubator/contest/plugins/testfetchers/literal"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// This tests are bad, because they touche so may things which are not related to storage limitations and
+// depend on order of checks in validation code, but this is the price of having them all in one package
 
 func TestServerIDPanics(t *testing.T) {
 	apiInst := api.New(func() string { return strings.Repeat("A", limits.MaxServerIDLen+1) })
@@ -71,6 +76,65 @@ func TestReporterName(t *testing.T) {
 	)
 	assertLenError(t, "Reporter name", err)
 }
+func TestTestName(t *testing.T) {
+	pluginRegistry := pluginregistry.NewPluginRegistry()
+	err := pluginRegistry.RegisterTargetManager(targetlist.Load())
+	require.NoError(t, err)
+	err = pluginRegistry.RegisterTestFetcher(literal.Load())
+	require.NoError(t, err)
+
+	testFetchParams, err := json.Marshal(&literal.FetchParameters{
+		TestName: strings.Repeat("A", limits.MaxTestNameLen+1),
+	})
+
+	jd := job.JobDescriptor{
+		TestDescriptors: []*test.TestDescriptor{{
+			TargetManagerName:          "targetList",
+			TestFetcherName:            "literal",
+			TestFetcherFetchParameters: testFetchParams,
+		}},
+		JobName:   "AA",
+		Reporting: job.Reporting{RunReporters: []job.ReporterConfig{{Name: "BB"}}},
+	}
+	jsonJd, err := json.Marshal(&jd)
+	require.NoError(t, err)
+	_, err = jobmanager.NewJobFromRequest(pluginRegistry,
+		&job.Request{JobDescriptor: string(jsonJd)},
+	)
+	assertLenError(t, "Test name", err)
+}
+
+func TestTestStepLabel(t *testing.T) {
+	pluginRegistry := pluginregistry.NewPluginRegistry()
+	err := pluginRegistry.RegisterTargetManager(targetlist.Load())
+	require.NoError(t, err)
+	err = pluginRegistry.RegisterTestFetcher(literal.Load())
+	require.NoError(t, err)
+
+	testFetchParams, err := json.Marshal(&literal.FetchParameters{
+		TestName: "AA",
+		Steps: []*test.TestStepDescriptor{{
+			Label: strings.Repeat("A", limits.MaxTestStepLabelLen+1),
+		}},
+	})
+
+	jd := job.JobDescriptor{
+		TestDescriptors: []*test.TestDescriptor{{
+			TargetManagerName:          "targetList",
+			TestFetcherName:            "literal",
+			TestFetcherFetchParameters: testFetchParams,
+		}},
+		JobName:   "AA",
+		Reporting: job.Reporting{RunReporters: []job.ReporterConfig{{Name: "BB"}}},
+	}
+	jsonJd, err := json.Marshal(&jd)
+	require.NoError(t, err)
+	_, err = jobmanager.NewJobFromRequest(pluginRegistry,
+		&job.Request{JobDescriptor: string(jsonJd)},
+	)
+	assertLenError(t, "Test step label", err)
+}
+
 func assertLenError(t *testing.T, name string, err error) {
 	var lenErr limits.ErrParameterIsTooLong
 	require.Truef(t, errors.As(err, &lenErr), "got %v instead of ErrParameterIsTooLong", err)
