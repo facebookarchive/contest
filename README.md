@@ -26,7 +26,7 @@ You can look at the tools implemented under [cmds/*](cmds/) for usage examples.
 ## Requirements
 
 ConTest is developed on Linux. It may work on other platforms, but it is only being actively tested on Linux.
-You will also need a recent version of Go (we recommend at least Go 1.13 at the
+You will also need a recent version of Go (we recommend at least Go 1.15 at the
 moment).
 
 

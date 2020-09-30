@@ -3,17 +3,20 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
-// +build !go1.13
-
 package reflecttools
 
 import (
 	"reflect"
+	"time"
 )
 
 func IsZero(i interface{}) bool {
 
+	t, isTime := i.(time.Time)
 	v := reflect.ValueOf(i)
+	if isTime {
+		return t.IsZero()
+	}
 	switch v.Kind() {
 	case reflect.Array, reflect.String:
 		return v.Len() == 0
