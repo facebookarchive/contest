@@ -27,7 +27,7 @@ func (e Name) Validate() error {
 	if !matched {
 		return fmt.Errorf("event name %s does not comply with events api (does not match %s)", AllowedEventFormat.String(), string(e))
 	}
-	if err := limits.Validator.ValidateEventName(string(e)); err != nil {
+	if err := limits.NewValidator().ValidateEventName(string(e)); err != nil {
 		return err
 	}
 	return nil

@@ -13,19 +13,6 @@ import "fmt"
 // (Image a test failing after multiple hours with a error like "you step label is too long!") So as a tradoff we will try
 // to establish and enforce some system wide limits, and make storage plugin developer's life easier
 
-// LimitsValidator provides methods to validate data size from storage perspective
-type LimitsValidator interface {
-	ValidateTestName(testName string) error
-	ValidateTestStepLabel(testStepLabel string) error
-	ValidateEventName(eventName string) error
-	ValidateReporterName(reporterName string) error
-	ValidateJobName(jobName string) error
-	ValidateRequestorName(jobRequestor string) error
-	ValidateServerID(serverID string) error
-
-	// Target name/id??
-}
-
 // ErrParameterIsTooLong implements "error" for generic length check error.
 type ErrParameterIsTooLong struct {
 	DataName  string
@@ -37,17 +24,19 @@ func (err ErrParameterIsTooLong) Error() string {
 	return fmt.Sprintf("%s is too long: %d > %d", err.DataName, err.ActualLen, err.MaxLen)
 }
 
-// Validator is an instance of current storage limits validator
-var Validator LimitsValidator = &BasicStorageLimitsValidator{}
+// NewValidator returns new instance of storage Validator
+func NewValidator() *Validator {
+	return &Validator{}
+}
 
-// BasicStorageLimitsValidator is a simple LimitsValidator implementation
-type BasicStorageLimitsValidator struct{}
+// Validator provides methods to validate data structures against storage limitations
+type Validator struct{}
 
 // MaxTestNameLen is a max length of test name field
 const MaxTestNameLen = 32
 
 // ValidateTestName retruns error if the test name does not match storage limitations
-func (v *BasicStorageLimitsValidator) ValidateTestName(testName string) error {
+func (v *Validator) ValidateTestName(testName string) error {
 	return v.validate(testName, "Test name", MaxTestNameLen)
 }
 
@@ -55,7 +44,7 @@ func (v *BasicStorageLimitsValidator) ValidateTestName(testName string) error {
 const MaxTestStepLabelLen = 32
 
 // ValidateTestStepLabel retruns error if the test step label does not match storage limitations
-func (v *BasicStorageLimitsValidator) ValidateTestStepLabel(testStepLabel string) error {
+func (v *Validator) ValidateTestStepLabel(testStepLabel string) error {
 	return v.validate(testStepLabel, "Test step label", MaxTestStepLabelLen)
 }
 
@@ -63,7 +52,7 @@ func (v *BasicStorageLimitsValidator) ValidateTestStepLabel(testStepLabel string
 const MaxJobNameLen = 32
 
 // ValidateJobName retruns error if the job name does not match storage limitations
-func (v *BasicStorageLimitsValidator) ValidateJobName(jobName string) error {
+func (v *Validator) ValidateJobName(jobName string) error {
 	return v.validate(jobName, "Job name", MaxJobNameLen)
 }
 
@@ -71,7 +60,7 @@ func (v *BasicStorageLimitsValidator) ValidateJobName(jobName string) error {
 const MaxEventNameLen = 32
 
 // ValidateEventName retruns error if the event name does not match storage limitations
-func (v *BasicStorageLimitsValidator) ValidateEventName(eventName string) error {
+func (v *Validator) ValidateEventName(eventName string) error {
 	return v.validate(eventName, "Event name", MaxEventNameLen)
 }
 
@@ -79,7 +68,7 @@ func (v *BasicStorageLimitsValidator) ValidateEventName(eventName string) error 
 const MaxReporterNameLen = 32
 
 // ValidateReporterName retruns error if the reporter name does not match storage limitations
-func (v *BasicStorageLimitsValidator) ValidateReporterName(reporterName string) error {
+func (v *Validator) ValidateReporterName(reporterName string) error {
 	return v.validate(reporterName, "Reporter name", MaxReporterNameLen)
 }
 
@@ -87,7 +76,7 @@ func (v *BasicStorageLimitsValidator) ValidateReporterName(reporterName string) 
 const MaxRequestorNameLen = 32
 
 // ValidateRequestorName retruns error if the requestor name does not match storage limitations
-func (v *BasicStorageLimitsValidator) ValidateRequestorName(requestorName string) error {
+func (v *Validator) ValidateRequestorName(requestorName string) error {
 	return v.validate(requestorName, "Requestor name", MaxRequestorNameLen)
 }
 
@@ -95,11 +84,11 @@ func (v *BasicStorageLimitsValidator) ValidateRequestorName(requestorName string
 const MaxServerIDLen = 64
 
 // ValidateServerID retruns error if the ServerID does not match storage limitations
-func (v *BasicStorageLimitsValidator) ValidateServerID(serverID string) error {
+func (v *Validator) ValidateServerID(serverID string) error {
 	return v.validate(serverID, "Server ID", MaxServerIDLen)
 }
 
-func (v *BasicStorageLimitsValidator) validate(data string, dataName string, maxDataLen int) error {
+func (v *Validator) validate(data string, dataName string, maxDataLen int) error {
 	if l := len(data); l > maxDataLen {
 		return ErrParameterIsTooLong{DataName: dataName, MaxLen: maxDataLen, ActualLen: l}
 	}

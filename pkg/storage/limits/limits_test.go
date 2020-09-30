@@ -31,8 +31,8 @@ import (
 // depend on order of checks in validation code, but this is the price of having them all in one package
 
 func TestServerIDPanics(t *testing.T) {
-	apiInst := api.New(func() string { return strings.Repeat("A", limits.MaxServerIDLen+1) })
-	assert.Panics(t, func() { apiInst.ServerID() })
+	_, err := api.New(func() string { return strings.Repeat("A", limits.MaxServerIDLen+1) })
+	assertLenError(t, "Server ID", err)
 }
 
 type eventMsg struct {
