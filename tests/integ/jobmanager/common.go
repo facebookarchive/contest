@@ -8,9 +8,11 @@
 package test
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"syscall"
+	"testing"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/api"
@@ -480,4 +482,8 @@ func (suite *TestJobManagerSuite) TestTestNull() {
 
 	_, err := suite.startJob(jobDescriptorNullTest)
 	require.Error(suite.T(), err)
+}
+
+func requireErrorType(t *testing.T, err, errType error) {
+	require.True(t, errors.As(err, &errType))
 }
