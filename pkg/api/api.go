@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/facebookincubator/contest/pkg/storage/limits"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
@@ -34,31 +35,43 @@ type API struct {
 	// JobManager. It is not necessary to close it explicitly as it will be
 	// garbage-collected when the API structure in the client goes out of scope.
 	Events chan *Event
-	// serverIDFunc is used by ServerID() to return a custom server ID in API
+	// serverID is used by ServerID() to return a custom server ID in API
 	// responses.
-	serverIDFunc ServerIDFunc
+	serverID string
 }
 
 // New returns an initialized instance of an API struct with the specified
 // server ID generation function.
-func New(serverIDFunc func() string) *API {
-	return &API{
-		Events:       make(chan *Event),
-		serverIDFunc: serverIDFunc,
+func New(serverIDFunc func() string) (*API, error) {
+	serverID, err := obtainServerID(serverIDFunc)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot create API instance: %w", err)
 	}
+	return &API{
+		Events:   make(chan *Event),
+		serverID: serverID,
+	}, nil
+}
+
+func obtainServerID(serverIDFunc func() string) (string, error) {
+	serverID := "<unknown>"
+	if serverIDFunc != nil {
+		serverID = serverIDFunc()
+	} else {
+		if hn, err := os.Hostname(); err == nil {
+			serverID = hn
+		}
+	}
+	if err := limits.NewValidator().ValidateServerID(serverID); err != nil {
+		return "", err
+	}
+	return serverID, nil
 }
 
 // ServerID returns the Server ID to be used in responses. A custom server ID
 // generation function can be passed to New().
 func (a API) ServerID() string {
-	if a.serverIDFunc != nil {
-		return a.serverIDFunc()
-	}
-	hn, err := os.Hostname()
-	if err != nil {
-		return "<unknown>"
-	}
-	return hn
+	return a.serverID
 }
 
 // newResponse returns a new Response object with type and server ID set. The
@@ -91,6 +104,9 @@ func (a API) Version() Response {
 func (a *API) SendEvent(ev *Event, timeout *time.Duration) error {
 	if ev.Msg.Requestor() == "" {
 		return errors.New("requestor cannot be empty")
+	}
+	if err := limits.NewValidator().ValidateRequestorName(string(ev.Msg.Requestor())); err != nil {
+		return err
 	}
 	to := DefaultEventTimeout
 	if timeout != nil {

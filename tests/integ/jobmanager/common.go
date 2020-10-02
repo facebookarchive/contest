@@ -8,6 +8,7 @@
 package test
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"syscall"
@@ -449,7 +450,7 @@ func (suite *TestJobManagerSuite) TestTestStepNoLabel() {
 
 	_, err := suite.startJob(jobDescriptorNoLabel)
 	require.Error(suite.T(), err)
-	requireErrorType(suite.T(), err, pluginregistry.ErrStepLabelIsMandatory{})
+	require.True(suite.T(), errors.As(err, &pluginregistry.ErrStepLabelIsMandatory{}))
 }
 
 func (suite *TestJobManagerSuite) TestTestStepLabelDuplication() {
