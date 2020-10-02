@@ -30,7 +30,7 @@ import (
 // This tests are bad, because they touche so may things which are not related to storage limitations and
 // depend on order of checks in validation code, but this is the price of having them all in one package
 
-func TestServerIDPanics(t *testing.T) {
+func TestServerID(t *testing.T) {
 	_, err := api.New(func() string { return strings.Repeat("A", limits.MaxServerIDLen+1) })
 	assertLenError(t, "Server ID", err)
 }
