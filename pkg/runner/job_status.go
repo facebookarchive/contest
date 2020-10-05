@@ -211,7 +211,7 @@ func (jr *JobRunner) BuildRunStatus(coordinates job.RunCoordinates, currentJob *
 func (jr *JobRunner) BuildRunStatuses(currentJob *job.Job) ([]job.RunStatus, error) {
 
 	// Calculate the status only for the runs which effectively were executed
-	runStartEvents, err := jr.frameworkEventManager.Fetch(frameworkevent.QueryEventName(EventRunStarted))
+	runStartEvents, err := jr.frameworkEventManager.Fetch(frameworkevent.QueryEventName(EventRunStarted), frameworkevent.QueryJobID(currentJob.ID))
 	if err != nil {
 		return nil, fmt.Errorf("could not determine how many runs were executed: %v", err)
 	}
