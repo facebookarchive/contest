@@ -74,7 +74,7 @@ func (value queryFieldEventNames) queryFieldPointer(query *Query) interface{} {
 	return &query.EventNames
 }
 
-// QueryEventName sets a single EventName field in the Query objec
+// QueryEventName sets a single EventName field in the Query object
 func QueryEventName(eventName event.Name) QueryField { return queryFieldEventNames{eventName} }
 
 // QueryEmittedStartTime sets the EmittedStartTime field of the Query object
