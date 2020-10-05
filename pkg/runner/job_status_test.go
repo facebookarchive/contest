@@ -23,8 +23,9 @@ func (fem dummyFrameworkEventManager) Emit(event frameworkevent.Event) error {
 	return nil
 }
 func (fem dummyFrameworkEventManager) Fetch(fields ...frameworkevent.QueryField) ([]frameworkevent.Event, error) {
-	require.Len(fem.t, fields, 1)
+	require.Len(fem.t, fields, 2)
 	require.Equal(fem.t, frameworkevent.QueryEventName(EventRunStarted), fields[0])
+	require.Equal(fem.t, frameworkevent.QueryJobID(1), fields[1])
 	return []frameworkevent.Event{
 		{
 			JobID:     1,
