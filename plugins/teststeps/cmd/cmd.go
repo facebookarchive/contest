@@ -46,7 +46,7 @@ var Events = []event.Name{
 type eventCmdStartPayload struct {
 	Path string
 	Args []string
-	Dir string
+	Dir  string
 }
 
 // Cmd is used to run arbitrary commands as test steps.
@@ -82,7 +82,7 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 		cmd.Dir = ts.dir
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
-		if ts.dir!="" {
+		if ts.dir != "" {
 			log.Printf("Running command '%+v' in directory '%+v'", cmd, cmd.Dir)
 		} else {
 			log.Printf("Running command '%+v'", cmd)
@@ -91,7 +91,7 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 		errCh := make(chan error)
 		go func() {
 			// Emit EventCmdStart
-			payload, err := json.Marshal(eventCmdStartPayload{Path: cmd.Path, Args: cmd.Args,  Dir: cmd.Dir})
+			payload, err := json.Marshal(eventCmdStartPayload{Path: cmd.Path, Args: cmd.Args, Dir: cmd.Dir})
 			if err != nil {
 				log.Warningf("Cannot encode payload for EventCmdStart: %v", err)
 			} else {

@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	jobID = types.JobID(123)
+	jobID      = types.JobID(123)
 	otherJobID = types.JobID(456)
 
 	targetOne  = target.Target{Name: "target001", ID: "001"}
@@ -57,13 +57,13 @@ func TestInMemoryLockValidJobIDAndTwoTargets(t *testing.T) {
 }
 
 func TestInMemoryLockReentrantLock(t *testing.T) {
-	tl := New(10 * time.Second, time.Second)
+	tl := New(10*time.Second, time.Second)
 	require.NoError(t, tl.Lock(jobID, twoTargets))
 	require.NoError(t, tl.Lock(jobID, twoTargets))
 }
 
 func TestInMemoryLockReentrantLockDifferentJobID(t *testing.T) {
-	tl := New(10 * time.Second, time.Second)
+	tl := New(10*time.Second, time.Second)
 	require.NoError(t, tl.Lock(jobID, twoTargets))
 	require.Error(t, tl.Lock(jobID+1, twoTargets))
 }
@@ -143,7 +143,7 @@ func TestInMemoryRefreshLocksTwoThenOne(t *testing.T) {
 }
 
 func TestRefreshMultiple(t *testing.T) {
-	tl := New(200 * time.Millisecond, 200 * time.Millisecond)
+	tl := New(200*time.Millisecond, 200*time.Millisecond)
 	require.NoError(t, tl.Lock(jobID, twoTargets))
 	time.Sleep(100 * time.Millisecond)
 	// they are not expired yet, extend both
