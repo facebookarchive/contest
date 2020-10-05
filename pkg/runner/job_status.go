@@ -215,27 +215,30 @@ func (jr *JobRunner) BuildRunStatuses(currentJob *job.Job) ([]job.RunStatus, err
 	if err != nil {
 		return nil, fmt.Errorf("could not determine how many runs were executed: %v", err)
 	}
-	numRuns := uint(0)
 	if len(runStartEvents) == 0 {
-		return make([]job.RunStatus, 0, currentJob.Runs), nil
+		return nil, nil
 	}
 
-	payload, err := runStartEvents[len(runStartEvents)-1].Payload.MarshalJSON()
-	if err != nil {
-		return nil, fmt.Errorf("could not extract JSON payload from RunStart event: %v", err)
+	numRuns := types.RunID(0)
+	for _, runStartEvent := range runStartEvents {
+		payload, err := runStartEvent.Payload.MarshalJSON()
+		if err != nil {
+			return nil, fmt.Errorf("could not extract JSON payload from RunStart event: %v", err)
+		}
+
+		payloadUnmarshaled := RunStartedPayload{}
+		if err := json.Unmarshal(payload, &payloadUnmarshaled); err != nil {
+			return nil, fmt.Errorf("could not unmarshal RunStarted event payload")
+		}
+
+		if payloadUnmarshaled.RunID > numRuns {
+			numRuns = payloadUnmarshaled.RunID
+		}
 	}
 
-	payloadUnmarshaled := RunStartedPayload{}
-
-	if err := json.Unmarshal(payload, &payloadUnmarshaled); err != nil {
-		return nil, fmt.Errorf("could not unmarshal RunStarted event payload")
-	}
-	numRuns = uint(payloadUnmarshaled.RunID)
-
-	runStatuses := make([]job.RunStatus, 0, numRuns)
-
-	for runID := uint(1); runID <= numRuns; runID++ {
-		runCoordinates := job.RunCoordinates{JobID: currentJob.ID, RunID: types.RunID(runID)}
+	var runStatuses []job.RunStatus
+	for runID := types.RunID(1); runID <= numRuns; runID++ {
+		runCoordinates := job.RunCoordinates{JobID: currentJob.ID, RunID: runID}
 		runStatus, err := jr.BuildRunStatus(runCoordinates, currentJob)
 		if err != nil {
 			return nil, fmt.Errorf("could not rebuild run status for run %d: %v", runID, err)
