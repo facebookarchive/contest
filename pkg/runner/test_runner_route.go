@@ -144,7 +144,7 @@ func (r *stepRouter) routeIn(terminate <-chan struct{}) (int, error) {
 	injectionWg.Wait()
 
 	if err != nil {
-		log.Debugf("routeIn failed: %v", err)
+		log.Debugf("routeIn failed: %w", err)
 		return 0, err
 	}
 	return len(ingressTarget), nil
@@ -246,13 +246,15 @@ func (r *stepRouter) routeOut(terminate <-chan struct{}) (int, error) {
 	}
 
 	if err != nil {
-		log.Debugf("routeOut failed: %v", err)
+		log.Debugf("routeOut failed: %w", err)
 		return 0, err
 	}
 	return len(egressTarget), nil
 
 }
 
+// route implements the routing logic from the previous routing block to the test step
+// and from the test step to the next routing block
 // route implements the routing logic from the previous routing block to the test step
 // and from the test step to the next routing block
 func (r *stepRouter) route(terminate <-chan struct{}, resultCh chan<- routeResult) {
