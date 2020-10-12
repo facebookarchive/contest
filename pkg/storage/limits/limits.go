@@ -49,7 +49,7 @@ func (v *Validator) ValidateTestStepLabel(testStepLabel string) error {
 }
 
 // MaxJobNameLen is a max length of job name field
-const MaxJobNameLen = 32
+const MaxJobNameLen = 64
 
 // ValidateJobName retruns error if the job name does not match storage limitations
 func (v *Validator) ValidateJobName(jobName string) error {
