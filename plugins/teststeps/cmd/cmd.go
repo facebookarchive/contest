@@ -109,7 +109,7 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 			errCh <- cmd.Run()
 			// Emit EventCmdEnd
 			evData := testevent.Data{
-				EventName: EventCmdStart,
+				EventName: EventCmdEnd,
 				Target:    target,
 				Payload:   nil,
 			}
