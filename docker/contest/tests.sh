@@ -74,7 +74,7 @@ for tag in integration integration_storage; do
         go test -tags=${tag} -race \
           -coverprofile=profile.out ${pflag} \
           -covermode=atomic \
-          -coverpkg=github.com/facebookincubator/contest/pkg/...,github.com/facebookincubator/contest/plugins/...,github.com/facebookincubator/contest/cmds/... \
+          -coverpkg=all \
           "${d}"
         if [ -f profile.out ]; then
           cat profile.out >> coverage.txt
@@ -87,6 +87,7 @@ if [ "${CI}" == "true" ]
 then
     echo "Uploading coverage profile for integration tests"
     bash <(curl -s https://codecov.io/bash) -c -F integration
+    bash <(curl -s https://codecov.io/bash) -c -F integration_storage
 else
     echo "Skipping upload of coverage profile for integration tests because not running in a CI"
 fi
