@@ -7,6 +7,7 @@ package teststeps
 
 import (
 	"sync/atomic"
+	"time"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/logging"
@@ -113,9 +114,17 @@ func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.Tes
 			noMoreTargets = true
 		case <-cancel:
 			log.Debugf("%s: ForEachTarget: received cancellation signal while waiting for results", pluginName)
+			if !reportResults {
+				time.Sleep(time.Second)
+			}
+			log.Infof("Waiting for all targets to be released (%d in flight)", atomic.LoadInt32(&tgtInFlight))
 			reportResults = false
 		case <-pause:
 			log.Debugf("%s: ForEachTarget: received pausing signal while waiting for results", pluginName)
+			if !reportResults {
+				time.Sleep(time.Second)
+			}
+			log.Infof("Waiting for all targets to be released (%d in flight)", atomic.LoadInt32(&tgtInFlight))
 			reportResults = false
 		}
 	}
