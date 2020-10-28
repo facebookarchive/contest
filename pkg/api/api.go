@@ -22,7 +22,11 @@ const CurrentAPIVersion uint32 = 5
 
 // DefaultEventTimeout is the default time to wait for sending or receiving an
 // event on the events channel.
-var DefaultEventTimeout = 3 * time.Second
+//
+// TODO: Diagnose why 3 seconds is not enough, and change the value
+//       back to 3 seconds. More context: sometimes request 'Start'
+//       fails with error: "failed to start job: unable to request: Internal error processing Start: sending event timed out after 3s"
+var DefaultEventTimeout = 10 * time.Second
 
 // ServerIDFunc is used to return a custom server ID in api responses.
 type ServerIDFunc func() string
