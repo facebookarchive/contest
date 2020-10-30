@@ -140,6 +140,43 @@ func TestLockUnlockDifferentJobID(t *testing.T) {
 	assert.Error(t, tl.Lock(jobID+1, twoTargets))
 }
 
+func TestTryLockOne(t *testing.T) {
+	tl.ResetAllLocks()
+	res, err := tl.TryLock(jobID, oneTarget)
+	assert.NoError(t, err)
+	assert.Equal(t, oneTarget[0].ID, res[0])
+}
+
+func TestTryLockTwo(t *testing.T) {
+	tl.ResetAllLocks()
+	res, err := tl.TryLock(jobID, twoTargets)
+	assert.NoError(t, err)
+	// order is not guaranteed
+	assert.Contains(t, res, twoTargets[0].ID)
+	assert.Contains(t, res, twoTargets[1].ID)
+}
+
+func TestTryLockOneOfTwo(t *testing.T) {
+	tl.ResetAllLocks()
+	assert.NoError(t, tl.Lock(jobID, oneTarget))
+	// now tryLock both with other ID
+	res, err := tl.TryLock(jobID+1, twoTargets)
+	assert.NoError(t, err)
+	// should have locked 1 but not 0
+	assert.NotContains(t, res, twoTargets[0].ID)
+	assert.Contains(t, res, twoTargets[1].ID)
+}
+
+func TestTryLockNoneOfTwo(t *testing.T) {
+	tl.ResetAllLocks()
+	assert.NoError(t, tl.Lock(jobID, twoTargets))
+	// now tryLock both with other ID
+	res, err := tl.TryLock(jobID+1, twoTargets)
+	// should have locked zero targets, but no error
+	assert.NoError(t, err)
+	assert.Empty(t, res)
+}
+
 func TestRefreshLocks(t *testing.T) {
 	tl.ResetAllLocks()
 	assert.NoError(t, tl.RefreshLocks(jobID, twoTargets))
