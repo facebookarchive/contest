@@ -37,6 +37,27 @@ func TestNoopLock(t *testing.T) {
 	}))
 }
 
+func TestNoopTryLock(t *testing.T) {
+	tl := New(time.Second)
+	// we don't enforce that at least one target is passed, as checking on
+	// non-zero targets is the framework's responsibility, not the plugin.
+	// So, zero targets is OK.
+	jobID := types.JobID(123)
+	_, err := tl.TryLock(jobID, nil)
+	require.Nil(t, err)
+	_, err = tl.TryLock(jobID, []*target.Target{})
+	require.Nil(t, err)
+	_, err = tl.TryLock(jobID, []*target.Target{
+		&target.Target{Name: "blah"},
+	})
+	require.Nil(t, err)
+	_, err = tl.TryLock(jobID, []*target.Target{
+		&target.Target{Name: "blah"},
+		&target.Target{Name: "bleh"},
+	})
+	require.Nil(t, err)
+}
+
 func TestNoopUnlock(t *testing.T) {
 	tl := New(time.Second)
 	// we don't enforce that at least one target is passed, as checking on

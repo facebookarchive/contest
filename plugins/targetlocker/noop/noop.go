@@ -30,6 +30,16 @@ func (tl Noop) Lock(_ types.JobID, targets []*target.Target) error {
 	return nil
 }
 
+// TryLock locks the specified targets by doing nothing.
+func (tl Noop) TryLock(_ types.JobID, targets []*target.Target) ([]string, error) {
+	log.Infof("Trylocked %d targets by doing nothing", len(targets))
+	res := make([]string, 0, len(targets))
+	for _, t := range targets {
+		res = append(res, t.ID)
+	}
+	return res, nil
+}
+
 // Unlock unlocks the specified targets by doing nothing.
 func (tl Noop) Unlock(_ types.JobID, targets []*target.Target) error {
 	log.Infof("Unlocked %d targets by doing nothing", len(targets))
