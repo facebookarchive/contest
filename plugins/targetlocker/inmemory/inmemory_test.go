@@ -68,6 +68,43 @@ func TestInMemoryLockReentrantLockDifferentJobID(t *testing.T) {
 	require.Error(t, tl.Lock(jobID+1, twoTargets))
 }
 
+func TestInMemoryTryLockOne(t *testing.T) {
+	tl := New(10*time.Second, time.Second)
+	res, err := tl.TryLock(jobID, oneTarget)
+	require.NoError(t, err)
+	require.Equal(t, oneTarget[0].ID, res[0])
+}
+
+func TestInMemoryTryLockTwo(t *testing.T) {
+	tl := New(10*time.Second, time.Second)
+	res, err := tl.TryLock(jobID, twoTargets)
+	require.NoError(t, err)
+	// order is not guaranteed
+	require.Contains(t, res, twoTargets[0].ID)
+	require.Contains(t, res, twoTargets[1].ID)
+}
+
+func TestInMemoryTryLockOneOfTwo(t *testing.T) {
+	tl := New(10*time.Second, time.Second)
+	require.NoError(t, tl.Lock(jobID, oneTarget))
+	// now tryLock both with other ID
+	res, err := tl.TryLock(jobID+1, twoTargets)
+	require.NoError(t, err)
+	// should have locked 1 but not 0
+	require.NotContains(t, res, twoTargets[0].ID)
+	require.Contains(t, res, twoTargets[1].ID)
+}
+
+func TestInMemoryTryLockNoneOfTwo(t *testing.T) {
+	tl := New(10*time.Second, time.Second)
+	require.NoError(t, tl.Lock(jobID, twoTargets))
+	// now tryLock both with other ID
+	res, err := tl.TryLock(jobID+1, twoTargets)
+	// should have locked zero targets, but no error
+	require.NoError(t, err)
+	require.Empty(t, res)
+}
+
 func TestInMemoryUnlockInvalidJobIDAndNoTargets(t *testing.T) {
 	tl := New(time.Second, time.Second)
 	assert.Error(t, tl.Unlock(jobID, nil))

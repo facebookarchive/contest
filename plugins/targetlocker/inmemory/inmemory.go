@@ -25,6 +25,9 @@ var log = logging.GetLogger("targetlocker/" + strings.ToLower(Name))
 
 type request struct {
 	targets []*target.Target
+	// allowConflicts enabled tryLock semantics: Return what can be locked, but
+	// don't error on conflicts
+	allowConflicts bool
 	// owner is the owner of the lock, relative to the lock operation request,
 	// represented by a job ID.
 	// The in-memory locker enforces that the requests are validated against the
@@ -33,6 +36,8 @@ type request struct {
 	// timeout is how long the lock should be held for. There is no lower or
 	// upper bound on how long the lock can be held.
 	timeout time.Duration
+	// locked is list of target IDs that were locked in this transaction (if any)
+	locked []string
 	// err reports whether there were errors in any lock-related operation.
 	err chan error
 }
@@ -97,8 +102,12 @@ func broker(lockRequests, unlockRequests <-chan *request, done <-chan struct{}) 
 							l.expiresAt = time.Now().Add(req.timeout)
 							newLocks[*t] = l
 						} else {
-							lockErr = fmt.Errorf("lock request: target already locked: %+v (lock: %+v)", t, l)
-							break
+							// already locked
+							if !req.allowConflicts {
+								lockErr = fmt.Errorf("lock request: target already locked: %+v (lock: %+v)", t, l)
+								break
+							}
+							continue
 						}
 					}
 				} else {
@@ -110,10 +119,12 @@ func broker(lockRequests, unlockRequests <-chan *request, done <-chan struct{}) 
 					}
 				}
 			}
+			req.locked = make([]string, 0, len(newLocks))
 			if lockErr == nil {
 				// everything in this transaction was OK - update the locks
 				for t, l := range newLocks {
 					locks[t] = l
+					req.locked = append(req.locked, t.ID)
 				}
 			}
 			req.err <- lockErr
@@ -167,6 +178,18 @@ func (tl *InMemory) Lock(jobID types.JobID, targets []*target.Target) error {
 	req.timeout = tl.lockTimeout
 	tl.lockRequests <- &req
 	return <-req.err
+}
+
+// Lock locks the specified targets.
+func (tl *InMemory) TryLock(jobID types.JobID, targets []*target.Target) ([]string, error) {
+	log.Infof("Trying to trylock %d targets", len(targets))
+	req := newReq(jobID, targets)
+	req.timeout = tl.lockTimeout
+	req.allowConflicts = true
+	tl.lockRequests <- &req
+	// wait for result
+	err := <-req.err
+	return req.locked, err
 }
 
 // Unlock unlocks the specified targets.
