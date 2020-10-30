@@ -122,14 +122,14 @@ func (d *DBLocker) queryLocks(tx *sql.Tx, targets []string) (map[string]dblock, 
 }
 
 // handleLock does the real locking, it assumes the jobID is valid
-func (d *DBLocker) handleLock(jobID int64, targets []string, timeout time.Duration) error {
+func (d *DBLocker) handleLock(jobID int64, targets []string, timeout time.Duration, allowConflicts bool) ([]string, error) {
 	// everything operates on this frozen time
 	now := time.Now()
 	expires := now.Add(timeout)
-	// locking is all or nothing in one transaction
+
 	tx, err := d.db.Begin()
 	if err != nil {
-		return fmt.Errorf("unable to start database transaction: %w", err)
+		return nil, fmt.Errorf("unable to start database transaction: %w", err)
 	}
 	defer func() {
 		// this always fails if tx.Commit() was called before, ignore error
@@ -138,14 +138,15 @@ func (d *DBLocker) handleLock(jobID int64, targets []string, timeout time.Durati
 
 	// immediately lock db rows to prevent deadlocks with concurrent transactions
 	if err := d.lockDBRows(tx, targets); err != nil {
-		return err
+		return nil, err
 	}
 
 	locks, err := d.queryLocks(tx, targets)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	// go through existing locks, they are either held by something else and valid (abort),
+	// go through existing locks, they are either held by something else and valid
+	// (abort or skip, depending on allowConflicts setting),
 	// not valid anymore (update), held by something else and valid but expired (update),
 	// held by us and valid (update), or not held at all(insert)
 	inserts := make([]string, 0)
@@ -166,25 +167,25 @@ func (d *DBLocker) handleLock(jobID int64, targets []string, timeout time.Durati
 			conflicts = append(conflicts, lock)
 		}
 	}
-	if len(conflicts) > 0 {
-		return fmt.Errorf("unable to lock targets %v for owner %d, have conflicting locks: %v", targets, jobID, conflicts)
+	if len(conflicts) > 0 && !allowConflicts {
+		return nil, fmt.Errorf("unable to lock targets %v for owner %d, have conflicting locks: %v", targets, jobID, conflicts)
 	}
 
 	ins := "INSERT INTO locks (target_id, job_id, created_at, expires_at, valid) VALUES (?, ?, ?, ?, ?);"
 	for _, id := range inserts {
 		if _, err := tx.Exec(ins, id, jobID, now, expires, true); err != nil {
-			return fmt.Errorf("unable to lock target %s: %w", id, err)
+			return nil, fmt.Errorf("unable to lock target %s: %w", id, err)
 		}
 	}
 
 	upd := "UPDATE locks SET expires_at = ?, job_id = ?, valid = true WHERE target_id = ?;"
 	for _, id := range updates {
 		if _, err := tx.Exec(upd, expires, jobID, id); err != nil {
-			return fmt.Errorf("unable to refresh lock on target %s: %w", id, err)
+			return nil, fmt.Errorf("unable to refresh lock on target %s: %w", id, err)
 		}
 	}
 
-	return tx.Commit()
+	return append(inserts, updates...), tx.Commit()
 }
 
 // handleUnlock does the real unlocking, it assumes the jobID is valid
@@ -264,7 +265,25 @@ func (d *DBLocker) Lock(jobID types.JobID, targets []*target.Target) error {
 		return nil
 	}
 
-	return d.handleLock(int64(jobID), targetIDList(targets), d.lockTimeout)
+	_, err := d.handleLock(int64(jobID), targetIDList(targets), d.lockTimeout, false)
+	return err
+}
+
+// TryLock attempts to locks the given targets.
+// See target.Locker for API details
+func (d *DBLocker) TryLock(jobID types.JobID, targets []*target.Target) ([]string, error) {
+	if jobID == 0 {
+		return nil, fmt.Errorf("invalid tryLock request, jobID cannot be zero (targets: %v)", targets)
+	}
+	if err := validateTargets(targets); err != nil {
+		return nil, fmt.Errorf("invalid tryLock request: %w", err)
+	}
+	log.Debugf("Requested to tryLock %d targets for job ID %d: %v", len(targets), jobID, targets)
+	if len(targets) == 0 {
+		return nil, nil
+	}
+
+	return d.handleLock(int64(jobID), targetIDList(targets), d.lockTimeout, true)
 }
 
 // Unlock unlocks the given targets.
@@ -298,7 +317,8 @@ func (d *DBLocker) RefreshLocks(jobID types.JobID, targets []*target.Target) err
 		return nil
 	}
 
-	return d.handleLock(int64(jobID), targetIDList(targets), d.refreshTimeout)
+	_, err := d.handleLock(int64(jobID), targetIDList(targets), d.refreshTimeout, false)
+	return err
 }
 
 // ResetAllLocks resets the database and clears all locks, regardless of who owns them.
