@@ -477,7 +477,7 @@ func (p *pipeline) init(cancel, pause <-chan struct{}) (routeInFirst chan *targe
 			TestName:      p.test.Name,
 			TestStepLabel: testStepBundle.TestStepLabel,
 		}
-		ev := storage.NewTestEventEmitterFetcher(Header)
+		ev := storage.NewTestEventEmitterFetcherWithAllowedEvents(Header, &testStepBundle.AllowedEvents)
 
 		router := newStepRouter(p.log, testStepBundle, routingChannels, ev, p.timeouts)
 		go router.route(routingCancelCh, routingResultCh)
