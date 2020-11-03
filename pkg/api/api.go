@@ -22,11 +22,7 @@ const CurrentAPIVersion uint32 = 5
 
 // DefaultEventTimeout is the default time to wait for sending or receiving an
 // event on the events channel.
-//
-// TODO: Diagnose why 3 seconds is not enough, and change the value
-//       back to 3 seconds. More context: sometimes request 'Start'
-//       fails with error: "failed to start job: unable to request: Internal error processing Start: sending event timed out after 3s"
-var DefaultEventTimeout = 10 * time.Second
+var DefaultEventTimeout = 3 * time.Second
 
 // ServerIDFunc is used to return a custom server ID in api responses.
 type ServerIDFunc func() string
@@ -35,7 +31,9 @@ type ServerIDFunc func() string
 // JobManager. It enables several operations like starting, stopping,
 // retrying a job, and getting a job status.
 type API struct {
-	// The events channel is used to route API events between clients and the
+	// Config is a set of knobs to change the behavior of API processing.
+	Config Config
+	// Events channel is used to route API events between clients and the
 	// JobManager. It is not necessary to close it explicitly as it will be
 	// garbage-collected when the API structure in the client goes out of scope.
 	Events chan *Event
@@ -46,12 +44,14 @@ type API struct {
 
 // New returns an initialized instance of an API struct with the specified
 // server ID generation function.
-func New(serverIDFunc func() string) (*API, error) {
-	serverID, err := obtainServerID(serverIDFunc)
+func New(opts ...Option) (*API, error) {
+	cfg := getConfig(opts...)
+	serverID, err := obtainServerID(cfg.ServerIDFunc)
 	if err != nil {
 		return nil, fmt.Errorf("Cannot create API instance: %w", err)
 	}
 	return &API{
+		Config:   cfg,
 		Events:   make(chan *Event),
 		serverID: serverID,
 	}, nil
@@ -112,7 +112,7 @@ func (a *API) SendEvent(ev *Event, timeout *time.Duration) error {
 	if err := limits.NewValidator().ValidateRequestorName(string(ev.Msg.Requestor())); err != nil {
 		return err
 	}
-	to := DefaultEventTimeout
+	to := a.Config.EventTimeout
 	if timeout != nil {
 		to = *timeout
 	}
@@ -128,7 +128,7 @@ func (a *API) SendEvent(ev *Event, timeout *time.Duration) error {
 // from the consumer. The timeout is used once for the send, and once for the
 // receive, it's not a cumulative timeout.
 func (a *API) SendReceiveEvent(ev *Event, timeout *time.Duration) (*EventResponse, error) {
-	to := DefaultEventTimeout
+	to := a.Config.EventTimeout
 	if timeout != nil {
 		to = *timeout
 	}

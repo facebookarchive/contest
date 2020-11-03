@@ -43,8 +43,9 @@ import (
 const defaultDBURI = "contest:contest@tcp(localhost:3306)/contest?parseTime=true"
 
 var (
-	flagDBURI    = flag.String("dbURI", defaultDBURI, "Database URI")
-	flagServerID = flag.String("serverID", "", "Set a static server ID, e.g. the host name or another unique identifier. If unset, will use the listener's default")
+	flagDBURI          = flag.String("dbURI", defaultDBURI, "Database URI")
+	flagServerID       = flag.String("serverID", "", "Set a static server ID, e.g. the host name or another unique identifier. If unset, will use the listener's default")
+	flagProcessTimeout = flag.Duration("processTimeout", api.DefaultEventTimeout, "API request processing timeout")
 )
 
 var targetManagers = []target.TargetManagerLoader{
@@ -141,11 +142,14 @@ func main() {
 	// spawn JobManager
 	listener := httplistener.HTTPListener{}
 
-	var serverIDFunc api.ServerIDFunc
-	if *flagServerID != "" {
-		serverIDFunc = func() string { return *flagServerID }
+	opts := []jobmanager.Option{
+		jobmanager.APIOption(api.OptionEventTimeout(*flagProcessTimeout)),
 	}
-	jm, err := jobmanager.New(&listener, serverIDFunc, pluginRegistry)
+	if *flagServerID != "" {
+		opts = append(opts, jobmanager.APIOption(api.OptionServerID(*flagServerID)))
+	}
+
+	jm, err := jobmanager.New(&listener, pluginRegistry, opts...)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -153,6 +157,7 @@ func main() {
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
 	if err := jm.Start(sigs); err != nil {
 		log.Fatal(err)
 	}
