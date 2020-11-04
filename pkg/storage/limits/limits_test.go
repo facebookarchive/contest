@@ -31,7 +31,7 @@ import (
 // depend on order of checks in validation code, but this is the price of having them all in one package
 
 func TestServerID(t *testing.T) {
-	_, err := api.New(func() string { return strings.Repeat("A", limits.MaxServerIDLen+1) })
+	_, err := api.New(api.OptionServerID(strings.Repeat("A", limits.MaxServerIDLen+1)))
 	assertLenError(t, "Server ID", err)
 }
 

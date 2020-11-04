@@ -196,10 +196,10 @@ func New(lockTimeout, refreshTimeout time.Duration) target.Locker {
 	done := make(chan struct{}, 1)
 	go broker(lockRequests, unlockRequests, done)
 	return &InMemory{
-		lockRequests:       lockRequests,
-		unlockRequests:     unlockRequests,
-		done:               done,
-		lockTimeout:        lockTimeout,
-		refreshTimeout:     refreshTimeout,
+		lockRequests:   lockRequests,
+		unlockRequests: unlockRequests,
+		done:           done,
+		lockTimeout:    lockTimeout,
+		refreshTimeout: refreshTimeout,
 	}
 }

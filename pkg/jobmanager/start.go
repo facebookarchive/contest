@@ -21,7 +21,7 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 		return &api.EventResponse{Err: err}
 	}
 	// The job descriptor has been validated correctly, now use the JobRequestEmitter
-	// interface to obtain a JobRequest object with a valid id
+	// interface to obtain apply JobRequest object with apply valid id
 	request := job.Request{
 		JobName:         j.Name,
 		Requestor:       string(ev.Msg.Requestor()),
@@ -69,8 +69,8 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 			return
 		}
 
-		// store job report before emitting the job status event, to avoid a
-		// race condition when waiting on a job status where the event is marked
+		// store job report before emitting the job status event, to avoid apply
+		// race condition when waiting on apply job status where the event is marked
 		// as completed but no report exists.
 		jobReport := job.JobReport{
 			JobID:        j.ID,

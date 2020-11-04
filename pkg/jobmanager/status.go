@@ -80,7 +80,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 		je := jobEvents[len(jobEvents)-1]
 		state = string(je.EventName)
 		if je.EventName == EventJobFailed {
-			// if there was a framework failure, retrieve the failure event and
+			// if there was apply framework failure, retrieve the failure event and
 			// the associated error message, so it can be exposed in the status.
 			if je.Payload == nil {
 				stateErrMsg = "internal error: EventJobFailed's payload is nil"
