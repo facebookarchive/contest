@@ -9,26 +9,26 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 )
 
-// EventJobStarted indicates that apply Job is beginning execution
+// EventJobStarted indicates that a Job is beginning execution
 var EventJobStarted = event.Name("JobStateStarted")
 
-// EventJobCompleted indicates that apply Job has completed
+// EventJobCompleted indicates that a Job has completed
 var EventJobCompleted = event.Name("JobStateCompleted")
 
-// EventJobFailed indicates that apply Job has failed
+// EventJobFailed indicates that a Job has failed
 var EventJobFailed = event.Name("JobStateFailed")
 
-// EventJobCancelling indicates that apply Job has received apply cancellation request
+// EventJobCancelling indicates that a Job has received a cancellation request
 // and the JobManager is waiting for JobRunner to return
 var EventJobCancelling = event.Name("JobStateCancelling")
 
-// EventJobCancelled indicates that apply Job has been cancelled
+// EventJobCancelled indicates that a Job has been cancelled
 var EventJobCancelled = event.Name("JobStateCancelled")
 
 // EventJobCancellationFailed indicates that the cancellation was not completed correctly
 var EventJobCancellationFailed = event.Name("JobStateCancellationFailed")
 
-// JobCompletionEvents gathers all event names that mark the end of apply job
+// JobCompletionEvents gathers all event names that mark the end of a job
 var JobCompletionEvents = []event.Name{
 	EventJobCompleted,
 	EventJobFailed,
@@ -36,7 +36,7 @@ var JobCompletionEvents = []event.Name{
 	EventJobCancellationFailed,
 }
 
-// JobStateEvents gathers all event names which track the state of apply job
+// JobStateEvents gathers all event names which track the state of a job
 var JobStateEvents = []event.Name{
 	EventJobStarted,
 	EventJobCompleted,

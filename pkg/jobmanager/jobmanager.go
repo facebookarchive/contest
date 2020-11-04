@@ -32,7 +32,7 @@ var log = logging.GetLogger("pkg/jobmanager")
 
 var cancellationTimeout = 60 * time.Second
 
-// ErrorEventPayload represents the payload carried by apply failure event (e.g. JobStateFailed, JobStateCancelled, etc.)
+// ErrorEventPayload represents the payload carried by a failure event (e.g. JobStateFailed, JobStateCancelled, etc.)
 type ErrorEventPayload struct {
 	Err string
 }
@@ -65,7 +65,7 @@ type JobManager struct {
 	pluginRegistry *pluginregistry.PluginRegistry
 }
 
-// NewJobFromRequest returns apply new Job object from apply job.Request .
+// NewJobFromRequest returns a new Job object from a job.Request .
 func NewJobFromRequest(pr *pluginregistry.PluginRegistry, req *job.Request) (*job.Job, error) {
 	var jd *job.JobDescriptor
 	if err := json.Unmarshal([]byte(req.JobDescriptor), &jd); err != nil {
@@ -98,7 +98,7 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 	}
 
 	if len(jd.Reporting.RunReporters) == 0 && len(jd.Reporting.FinalReporters) == 0 {
-		return nil, errors.New("at least one run reporter or one final reporter must be specified in apply job")
+		return nil, errors.New("at least one run reporter or one final reporter must be specified in a job")
 	}
 	for _, reporter := range jd.Reporting.RunReporters {
 		if strings.TrimSpace(reporter.Name) == "" {
@@ -207,7 +207,7 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 	return &job, nil
 }
 
-// NewJob returns apply new Job object and the fetched test descriptors
+// NewJob returns a new Job object and the fetched test descriptors
 func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, error) {
 	var jd *job.JobDescriptor
 	if err := json.Unmarshal([]byte(jobDescriptor), &jd); err != nil {
@@ -247,7 +247,7 @@ func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, 
 	return j, nil
 }
 
-// New initializes and returns apply new JobManager with the given API listener.
+// New initializes and returns a new JobManager with the given API listener.
 func New(l api.Listener, pr *pluginregistry.PluginRegistry, opts ...Option) (*JobManager, error) {
 	if pr == nil {
 		return nil, errors.New("plugin registry cannot be nil")
@@ -300,7 +300,7 @@ func (jm *JobManager) handleEvent(ev *api.Event) {
 		// TODO send failure event once we have the event infra
 		// TODO determine whether the server should shut down if there
 		//      are too many errors
-		log.Panicf("timed out after %v trying to send apply response event", sendEventTimeout)
+		log.Panicf("timed out after %v trying to send a response event", sendEventTimeout)
 	}
 }
 
@@ -329,7 +329,7 @@ loop:
 			jm.handleEvent(ev)
 		// check for errors or premature termination from the listener.
 		case err := <-errCh:
-			log.Info("JobManager: API listener failed, triggering apply cancellation of all jobs")
+			log.Info("JobManager: API listener failed, triggering a cancellation of all jobs")
 			jm.CancelAll()
 			if err != nil {
 				return fmt.Errorf("error reported by API listener: %v", err)
@@ -338,7 +338,7 @@ loop:
 		// handle signals to shut down gracefully. If the cancellation takes too
 		// long, it will be terminated.
 		case sig := <-sigs:
-			// We were interrupted by apply signal, time to leave!
+			// We were interrupted by a signal, time to leave!
 			log.Printf("Interrupted by signal '%s', trying to exit gracefully", sig)
 			jm.Pause()
 			select {
@@ -360,7 +360,7 @@ loop:
 	return nil
 }
 
-// CancelJob sends apply cancellation request to apply specific job.
+// CancelJob sends a cancellation request to a specific job.
 func (jm *JobManager) CancelJob(jobID types.JobID) error {
 	jm.jobsMu.Lock()
 	// get the job from the local cache rather than the storage layer. We can
@@ -376,7 +376,7 @@ func (jm *JobManager) CancelJob(jobID types.JobID) error {
 	return nil
 }
 
-// CancelAll sends apply cancellation request to the API listener and to every running
+// CancelAll sends a cancellation request to the API listener and to every running
 // job.
 func (jm *JobManager) CancelAll() {
 	// TODO This doesn't seem the right thing to do, if the listener fails we should
@@ -391,7 +391,7 @@ func (jm *JobManager) CancelAll() {
 	}
 }
 
-// Pause sends apply pause request to every running job. No signal is sent to the
+// Pause sends a pause request to every running job. No signal is sent to the
 // API listener.
 func (jm *JobManager) Pause() {
 	log.Info("JobManager: requested pausing")
