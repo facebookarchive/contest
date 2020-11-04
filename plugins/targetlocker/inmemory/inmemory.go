@@ -33,10 +33,6 @@ type request struct {
 	// timeout is how long the lock should be held for. There is no lower or
 	// upper bound on how long the lock can be held.
 	timeout time.Duration
-	// locked and notLocked are arrays of targets that are respectively already locked
-	// by a given job ID, and that are not locked by a given job ID. This is only
-	// populated when checking locks for such targets.
-	locked, notLocked []*target.Target
 	// err reports whether there were errors in any lock-related operation.
 	err chan error
 }
@@ -63,7 +59,7 @@ func validateRequest(req *request) error {
 // broker is the broker of locking requests, and it's the only goroutine with
 // access to the locks map, in accordance with Go's "share memory by
 // communicating" principle.
-func broker(lockRequests, unlockRequests, checkLocksRequests <-chan *request, done <-chan struct{}) {
+func broker(lockRequests, unlockRequests <-chan *request, done <-chan struct{}) {
 	locks := make(map[target.Target]lock)
 	for {
 		select {
@@ -142,47 +138,14 @@ func broker(lockRequests, unlockRequests, checkLocksRequests <-chan *request, do
 				}
 			}
 			req.err <- unlockErr
-		case req := <-checkLocksRequests:
-			if err := validateRequest(req); err != nil {
-				req.err <- fmt.Errorf("checklocks request: %w", err)
-				continue
-			}
-			log.Debugf("Requested to check locks for %d targets by job ID %d: %v", len(req.targets), req.owner, req.targets)
-			locked := make([]*target.Target, 0)
-			notLocked := make([]*target.Target, 0)
-			for _, t := range req.targets {
-				if l, ok := locks[*t]; ok {
-					if l.owner == req.owner {
-						now := time.Now()
-						if now.After(l.expiresAt) {
-							// target was locked but lock expired, purge the entry
-							log.Debugf("Purged expired lock for target %+v. Lock time is %s, expiration timeout is %s", t, l.lockedAt, req.timeout)
-							delete(locks, *t)
-							notLocked = append(notLocked, t)
-						} else {
-							// target is locked
-							locked = append(locked, t)
-						}
-					} else {
-						// target is locked by someone else
-						notLocked = append(notLocked, t)
-					}
-				} else {
-					// target is not locked
-					notLocked = append(notLocked, t)
-				}
-			}
-			req.locked = locked
-			req.notLocked = notLocked
-			req.err <- nil
 		}
 	}
 }
 
 // InMemory locks targets in an in-memory map.
 type InMemory struct {
-	lockRequests, unlockRequests, checkLocksRequests chan *request
-	done                                             chan struct{}
+	lockRequests, unlockRequests chan *request
+	done                         chan struct{}
 	// lockTimeout set on each initial lock request
 	lockTimeout time.Duration
 	// refreshTimeout is used during refresh
@@ -230,15 +193,13 @@ func (tl *InMemory) RefreshLocks(jobID types.JobID, targets []*target.Target) er
 func New(lockTimeout, refreshTimeout time.Duration) target.Locker {
 	lockRequests := make(chan *request)
 	unlockRequests := make(chan *request)
-	checkLocksRequests := make(chan *request)
 	done := make(chan struct{}, 1)
-	go broker(lockRequests, unlockRequests, checkLocksRequests, done)
+	go broker(lockRequests, unlockRequests, done)
 	return &InMemory{
-		lockRequests:       lockRequests,
-		unlockRequests:     unlockRequests,
-		checkLocksRequests: checkLocksRequests,
-		done:               done,
-		lockTimeout:        lockTimeout,
-		refreshTimeout:     refreshTimeout,
+		lockRequests:   lockRequests,
+		unlockRequests: unlockRequests,
+		done:           done,
+		lockTimeout:    lockTimeout,
+		refreshTimeout: refreshTimeout,
 	}
 }

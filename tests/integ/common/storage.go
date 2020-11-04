@@ -3,8 +3,6 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
-// +build integration_storage integration
-
 package common
 
 import (
@@ -14,9 +12,10 @@ import (
 	"github.com/facebookincubator/contest/plugins/storage/rdbms"
 )
 
+const DbURI = "contest:contest@tcp(mysql:3306)/contest_integ?parseTime=true"
+
 func NewStorage(opts ...rdbms.Opt) (storage.Storage, error) {
-	dbURI := "contest:contest@tcp(mysql:3306)/contest_integ?parseTime=true"
-	return rdbms.New(dbURI, opts...)
+	return rdbms.New(DbURI, opts...)
 }
 
 // InitStorage initializes the storage backend with a new transaction, if supported

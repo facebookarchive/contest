@@ -32,7 +32,7 @@ func TestJobManagerSuiteMemoryStorage(t *testing.T) {
 	testSuite.storage = storagelayer
 	storage.SetStorage(storagelayer)
 
-	targetLocker := inmemory.New(10 * time.Second, 10 * time.Second)
+	targetLocker := inmemory.New(10*time.Second, 10*time.Second)
 	target.SetLocker(targetLocker)
 
 	suite.Run(t, &testSuite)

@@ -55,6 +55,7 @@ CREATE TABLE jobs (
 	request_time TIMESTAMP NOT NULL,
 	descriptor TEXT NOT NULL,
 	teststeps TEXT,
+	extended_descriptor TEXT,
 	PRIMARY KEY (job_id)
 );
 
@@ -63,5 +64,6 @@ CREATE TABLE locks (
 	job_id BIGINT(20) UNSIGNED NOT NULL,
 	created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	expires_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	valid BOOL NOT NULL DEFAULT TRUE,
 	PRIMARY KEY (target_id)
 );

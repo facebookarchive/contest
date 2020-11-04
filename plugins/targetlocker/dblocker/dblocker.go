@@ -6,7 +6,6 @@
 package dblocker
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -31,11 +30,12 @@ type dblock struct {
 	targetID  string
 	jobID     int64
 	expiresAt time.Time
+	valid     bool
 }
 
 // String pretty-prints dblocks for logging and errors
 func (d dblock) String() string {
-	return fmt.Sprintf("target: %s job: %d expires: %s", d.targetID, d.jobID, d.expiresAt)
+	return fmt.Sprintf("target: %s job: %d expires: %s valid: %t", d.targetID, d.jobID, d.expiresAt, d.valid)
 }
 
 // targetIDList is a helper to convert contest targets to
@@ -76,26 +76,25 @@ type DBLocker struct {
 	refreshTimeout time.Duration
 }
 
-// cleanExpired deletes all expired locks on the given targets
-// (lock owner is ignored)
-func (d *DBLocker) cleanExpired(tx *sql.Tx, targets []string, now time.Time) error {
-	q := "DELETE FROM locks WHERE expires_at < ? AND target_id IN " + listQueryString(uint(len(targets))) + ";"
+// lockDBRows locks the rows for the given targets in the database
+// to prevent later races and deadlocks
+func (d *DBLocker) lockDBRows(tx *sql.Tx, targets []string) error {
+	q := "SELECT * FROM locks WHERE target_id IN " + listQueryString(uint(len(targets))) + " FOR UPDATE;"
 	// convert targets to a list of interface{}
-	queryList := make([]interface{}, 0, len(targets)+1)
-	queryList = append(queryList, now)
+	queryList := make([]interface{}, 0, len(targets))
 	for _, targetID := range targets {
 		queryList = append(queryList, targetID)
 	}
 	_, err := tx.Exec(q, queryList...)
 	if err != nil {
-		return fmt.Errorf("unable to clean existing locks: %w", err)
+		return fmt.Errorf("unable lock DB rows: %w", err)
 	}
 	return nil
 }
 
 // queryLocks returns a map of ID -> dblock for a given list of targets
 func (d *DBLocker) queryLocks(tx *sql.Tx, targets []string) (map[string]dblock, error) {
-	q := "SELECT target_id, job_id, expires_at FROM locks WHERE target_id IN " + listQueryString(uint(len(targets))) + ";"
+	q := "SELECT target_id, job_id, expires_at, valid FROM locks WHERE target_id IN " + listQueryString(uint(len(targets))) + ";"
 	// convert targets to a list of interface{}
 	queryList := make([]interface{}, 0, len(targets))
 	for _, targetID := range targets {
@@ -111,7 +110,7 @@ func (d *DBLocker) queryLocks(tx *sql.Tx, targets []string) (map[string]dblock, 
 	row := dblock{}
 	locks := make(map[string]dblock)
 	for rows.Next() {
-		if err := rows.Scan(&row.targetID, &row.jobID, &row.expiresAt); err != nil {
+		if err := rows.Scan(&row.targetID, &row.jobID, &row.expiresAt, &row.valid); err != nil {
 			return nil, fmt.Errorf("unexpected read from database: %w", err)
 		}
 		locks[row.targetID] = row
@@ -128,9 +127,7 @@ func (d *DBLocker) handleLock(jobID int64, targets []string, timeout time.Durati
 	now := time.Now()
 	expires := now.Add(timeout)
 	// locking is all or nothing in one transaction
-	// phantom reads might mess with the expired lock cleaning assumptions below,
-	// so request serializable isolation
-	tx, err := d.db.BeginTx(context.Background(), &sql.TxOptions{Isolation: sql.LevelSerializable})
+	tx, err := d.db.Begin()
 	if err != nil {
 		return fmt.Errorf("unable to start database transaction: %w", err)
 	}
@@ -139,8 +136,8 @@ func (d *DBLocker) handleLock(jobID int64, targets []string, timeout time.Durati
 		_ = tx.Rollback()
 	}()
 
-	// clean expired locks first, this simplifies the logic later
-	if err := d.cleanExpired(tx, targets, now); err != nil {
+	// immediately lock db rows to prevent deadlocks with concurrent transactions
+	if err := d.lockDBRows(tx, targets); err != nil {
 		return err
 	}
 
@@ -148,8 +145,9 @@ func (d *DBLocker) handleLock(jobID int64, targets []string, timeout time.Durati
 	if err != nil {
 		return err
 	}
-	// go through existing locks, they are either held by something else (abort)
-	// held by us (update time), or not held (insert)
+	// go through existing locks, they are either held by something else and valid (abort),
+	// not valid anymore (update), held by something else and valid but expired (update),
+	// held by us and valid (update), or not held at all(insert)
 	inserts := make([]string, 0)
 	updates := make([]string, 0)
 	conflicts := make([]dblock, 0)
@@ -158,7 +156,11 @@ func (d *DBLocker) handleLock(jobID int64, targets []string, timeout time.Durati
 		switch {
 		case !ok:
 			inserts = append(inserts, t)
+		case !lock.valid:
+			updates = append(updates, t)
 		case lock.jobID == jobID:
+			updates = append(updates, t)
+		case lock.jobID != jobID && (lock.expiresAt.Before(now) || lock.expiresAt.Equal(now)):
 			updates = append(updates, t)
 		default:
 			conflicts = append(conflicts, lock)
@@ -168,16 +170,16 @@ func (d *DBLocker) handleLock(jobID int64, targets []string, timeout time.Durati
 		return fmt.Errorf("unable to lock targets %v for owner %d, have conflicting locks: %v", targets, jobID, conflicts)
 	}
 
-	ins := "INSERT INTO locks (target_id, job_id, created_at, expires_at) VALUES (?, ?, ?, ?);"
+	ins := "INSERT INTO locks (target_id, job_id, created_at, expires_at, valid) VALUES (?, ?, ?, ?, ?);"
 	for _, id := range inserts {
-		if _, err := tx.Exec(ins, id, jobID, now, expires); err != nil {
+		if _, err := tx.Exec(ins, id, jobID, now, expires, true); err != nil {
 			return fmt.Errorf("unable to lock target %s: %w", id, err)
 		}
 	}
 
-	upd := "UPDATE locks SET expires_at = ? WHERE target_id = ? AND job_id = ?;"
+	upd := "UPDATE locks SET expires_at = ?, job_id = ?, valid = true WHERE target_id = ?;"
 	for _, id := range updates {
-		if _, err := tx.Exec(upd, expires, id, jobID); err != nil {
+		if _, err := tx.Exec(upd, expires, jobID, id); err != nil {
 			return fmt.Errorf("unable to refresh lock on target %s: %w", id, err)
 		}
 	}
@@ -187,10 +189,10 @@ func (d *DBLocker) handleLock(jobID int64, targets []string, timeout time.Durati
 
 // handleUnlock does the real unlocking, it assumes the jobID is valid
 func (d *DBLocker) handleUnlock(jobID int64, targets []string) error {
+	// everything operates on this frozen time
+	now := time.Now()
 	// unlocking is all or nothing in one transaction
-	// phantom reads might mess with the expired lock cleaning assumptions below,
-	// so request serializable isolation
-	tx, err := d.db.BeginTx(context.Background(), &sql.TxOptions{Isolation: sql.LevelSerializable})
+	tx, err := d.db.Begin()
 	if err != nil {
 		return fmt.Errorf("unable to start database transaction: %w", err)
 	}
@@ -199,8 +201,8 @@ func (d *DBLocker) handleUnlock(jobID int64, targets []string) error {
 		_ = tx.Rollback()
 	}()
 
-	// clean expired locks first, this simplifies the logic later
-	if err := d.cleanExpired(tx, targets, time.Now()); err != nil {
+	// immediately lock db rows to prevent deadlocks with concurrent transactions
+	if err := d.lockDBRows(tx, targets); err != nil {
 		return err
 	}
 
@@ -209,28 +211,31 @@ func (d *DBLocker) handleUnlock(jobID int64, targets []string) error {
 		return err
 	}
 
-	// detect conflicts (unlock on foreign locks) and warn about them,
+	// detect conflicts (unlock on valid foreign locks) and warn about them,
 	// but don't abort.
 	conflicts := make([]dblock, 0)
+	invalidate := make([]string, 0)
 	for _, lock := range locks {
-		if lock.jobID != jobID {
+		if lock.jobID != jobID && lock.expiresAt.After(now) && lock.valid {
 			conflicts = append(conflicts, lock)
+		} else {
+			invalidate = append(invalidate, lock.targetID)
 		}
 	}
 	if len(conflicts) > 0 {
 		log.Warningf("unable to unlock targets %v for owner %d due to different lock owners: %+v", targets, jobID, conflicts)
 	}
-
-	// only remove locks held by the owner
-	del := "DELETE FROM locks WHERE job_id = ? AND target_id IN " + listQueryString(uint(len(targets))) + ";"
-	queryList := make([]interface{}, 0, len(targets)+1)
-	queryList = append(queryList, jobID)
-	for _, targetID := range targets {
-		queryList = append(queryList, targetID)
-	}
-	_, err = tx.Exec(del, queryList...)
-	if err != nil {
-		return fmt.Errorf("unable to unlock targets %v, owner %d: %w", targets, jobID, err)
+	if len(invalidate) > 0 {
+		// invalidate non-conflicting locks
+		del := "UPDATE locks SET valid = false WHERE target_id IN " + listQueryString(uint(len(invalidate))) + ";"
+		queryList := make([]interface{}, 0, len(invalidate))
+		for _, targetID := range invalidate {
+			queryList = append(queryList, targetID)
+		}
+		_, err = tx.Exec(del, queryList...)
+		if err != nil {
+			return fmt.Errorf("unable to unlock targets %v, owner %d: %w", targets, jobID, err)
+		}
 	}
 
 	return tx.Commit()
