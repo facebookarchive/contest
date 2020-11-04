@@ -35,7 +35,7 @@ func APIOption(option api.Option) Option {
 	return OptionAPI{Option: option}
 }
 
-// getConfig converts apply set of Option-s into one structure "Config".
+// getConfig converts a set of Option-s into one structure "Config".
 func getConfig(opts ...Option) config {
 	result := config{}
 	for _, opt := range opts {
