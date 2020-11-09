@@ -101,7 +101,7 @@ func pollForEvent(eventManager frameworkevent.EmitterFetcher, ev event.Name, job
 	var pollAttempt int
 	for {
 		select {
-		case <-time.After(1 * time.Second):
+		case <-time.After(10 * time.Millisecond):
 			queryFields := []frameworkevent.QueryField{
 				frameworkevent.QueryJobID(jobID),
 				frameworkevent.QueryEventName(ev),
@@ -245,6 +245,44 @@ func (suite *TestJobManagerSuite) TearDownTest() {
 	}
 	common.FinalizeStorage(suite.txStorage)
 	storage.SetStorage(suite.storage)
+}
+
+func (suite *TestJobManagerSuite) TestPauseAndExit() {
+	go func() {
+		_ = suite.jm.Start(suite.sigs)
+		close(suite.jobManagerCh)
+	}()
+
+	jobID, err := suite.startJob(jobDescriptorSlowecho)
+	require.NoError(suite.T(), err)
+
+	// JobManager will emit an EventJobStarted when the Job is started
+	ev, err := pollForEvent(suite.eventManager, jobmanager.EventJobStarted, jobID)
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), 1, len(ev))
+
+	// Signal cancellation to the JobManager, which in turn will
+	// propagate cancellation signal to Serve method of the listener.
+	// JobManager.Start() will return and close jobManagerCh.
+	select {
+	case suite.sigs <- syscall.SIGINT:
+	case <-time.After(1 * time.Second):
+		suite.T().Fatalf("unable to push signal SIGINT")
+	}
+
+	select {
+	case <-suite.jobManagerCh:
+	case <-time.After(1 * time.Second):
+		suite.T().Errorf("JobManager should return within the timeout")
+	}
+
+	// JobManager will emit an EventJobPaused when the Job completes
+	ev, err = suite.eventManager.Fetch(
+		frameworkevent.QueryJobID(jobID),
+		frameworkevent.QueryEventName(jobmanager.EventJobPaused),
+	)
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), 1, len(ev))
 }
 
 func (suite *TestJobManagerSuite) TestJobManagerJobStartSingle() {

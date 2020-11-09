@@ -79,8 +79,17 @@ func (j *Job) Pause() {
 // IsCancelled returns whether the job has been cancelled
 func (j *Job) IsCancelled() bool {
 	select {
-	case _, ok := <-j.CancelCh:
-		return !ok
+	case <-j.CancelCh:
+		return true
+	default:
+		return false
+	}
+}
+
+func (j *Job) IsPaused() bool {
+	select {
+	case <-j.PauseCh:
+		return true
 	default:
 		return false
 	}

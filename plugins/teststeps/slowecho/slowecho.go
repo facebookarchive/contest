@@ -7,7 +7,6 @@ package slowecho
 
 import (
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -72,10 +71,6 @@ func (e *Step) ValidateParameters(params test.TestStepParameters) error {
 		return errors.New("missing 'sleep' field in slowecho parameters")
 	}
 
-	// no expression expansion here
-	if len(secStr.String()) != 1 {
-		return fmt.Errorf("invalid empty 'sleep' parameter: %v", secStr)
-	}
 	_, err := sleepTime(secStr.String())
 	if err != nil {
 		return err

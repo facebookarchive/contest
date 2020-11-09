@@ -19,16 +19,16 @@ import (
 
 var (
 	header = testevent.Header{
-		JobID: types.JobID(123),
-		RunID: types.RunID(456),
-		TestName: "TestStep",
+		JobID:         types.JobID(123),
+		RunID:         types.RunID(456),
+		TestName:      "TestStep",
 		TestStepLabel: "TestLabel",
 	}
 	allowedEvents = []event.Name{
 		"TestEventAllowed1",
 		"TestEventAllowed2",
 	}
-	allowedMap = map[event.Name]bool {
+	allowedMap = map[event.Name]bool{
 		allowedEvents[0]: true,
 		allowedEvents[1]: true,
 	}
@@ -39,14 +39,20 @@ var (
 
 type nullStorage struct{}
 
-func (n *nullStorage) StoreJobRequest(request *job.Request) (types.JobID, error) {return types.JobID(0), nil}
-func (n *nullStorage) GetJobRequest(jobID types.JobID) (*job.Request, error) {return nil, nil}
-func (n *nullStorage) StoreJobReport(report *job.JobReport) error {return nil}
-func (n *nullStorage) GetJobReport(jobID types.JobID) (*job.JobReport, error) {return nil, nil}
-func (n *nullStorage) StoreTestEvent(event testevent.Event) error {return nil}
-func (n *nullStorage) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, error) {return nil, nil}
-func (n *nullStorage) StoreFrameworkEvent(event frameworkevent.Event) error {return nil}
-func (n *nullStorage) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]frameworkevent.Event, error) {return nil, nil}
+func (n *nullStorage) StoreJobRequest(request *job.Request) (types.JobID, error) {
+	return types.JobID(0), nil
+}
+func (n *nullStorage) GetJobRequest(jobID types.JobID) (*job.Request, error)  { return nil, nil }
+func (n *nullStorage) StoreJobReport(report *job.JobReport) error             { return nil }
+func (n *nullStorage) GetJobReport(jobID types.JobID) (*job.JobReport, error) { return nil, nil }
+func (n *nullStorage) StoreTestEvent(event testevent.Event) error             { return nil }
+func (n *nullStorage) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, error) {
+	return nil, nil
+}
+func (n *nullStorage) StoreFrameworkEvent(event frameworkevent.Event) error { return nil }
+func (n *nullStorage) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]frameworkevent.Event, error) {
+	return nil, nil
+}
 
 func TestMain(m *testing.M) {
 	SetStorage(&nullStorage{})
