@@ -248,6 +248,14 @@ func (suite *TestJobManagerSuite) TearDownTest() {
 }
 
 func (suite *TestJobManagerSuite) TestPauseAndExit() {
+	suite.testExit(syscall.SIGINT, jobmanager.EventJobPaused, time.Second)
+}
+
+func (suite *TestJobManagerSuite) testExit(
+	sig syscall.Signal,
+	expectedEvent event.Name,
+	exitTimeout time.Duration,
+) {
 	go func() {
 		_ = suite.jm.Start(suite.sigs)
 		close(suite.jobManagerCh)
@@ -265,24 +273,27 @@ func (suite *TestJobManagerSuite) TestPauseAndExit() {
 	// propagate cancellation signal to Serve method of the listener.
 	// JobManager.Start() will return and close jobManagerCh.
 	select {
-	case suite.sigs <- syscall.SIGINT:
+	case suite.sigs <- sig:
 	case <-time.After(1 * time.Second):
-		suite.T().Fatalf("unable to push signal SIGINT")
+		suite.T().Fatalf("unable to push signal %s", sig)
 	}
 
 	select {
 	case <-suite.jobManagerCh:
-	case <-time.After(1 * time.Second):
+	case <-time.After(exitTimeout):
 		suite.T().Errorf("JobManager should return within the timeout")
 	}
 
 	// JobManager will emit an EventJobPaused when the Job completes
 	ev, err = suite.eventManager.Fetch(
 		frameworkevent.QueryJobID(jobID),
-		frameworkevent.QueryEventName(jobmanager.EventJobPaused),
+		frameworkevent.QueryEventName(expectedEvent),
 	)
 	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), 1, len(ev))
+	require.Equal(suite.T(), 1, len(ev), expectedEvent)
+
+	// Speeding up TearDownTest
+	suite.sigs = make(chan os.Signal, 1)
 }
 
 func (suite *TestJobManagerSuite) TestJobManagerJobStartSingle() {
