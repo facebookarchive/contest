@@ -56,15 +56,25 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 		runReports, finalReports, err := jm.jobRunner.Run(j)
 		duration := time.Since(start)
 		log.Debugf("job %d terminated", j.ID)
-		// If the Job was cancelled, the error returned by JobRunner indicates whether
-		// the cancellatioon has been successful or failed
-		if j.IsCancelled() {
+		// If the Job was cancelled/paused, the error returned by JobRunner indicates whether
+		// the cancellation/pausing has been successful or failed
+		switch {
+		case j.IsCancelled():
 			if err != nil {
 				errCancellation := fmt.Errorf("Job %+v failed cancellation: %v", j, err)
 				log.Error(errCancellation)
 				_ = jm.emitErrEvent(jobID, EventJobCancellationFailed, errCancellation)
 			} else {
 				_ = jm.emitEvent(jobID, EventJobCancelled)
+			}
+			return
+		case j.IsPaused():
+			if err != nil {
+				errPausing := fmt.Errorf("Job %+v failed pausing: %v", j, err)
+				log.Error(errPausing)
+				_ = jm.emitErrEvent(jobID, EventJobPauseFailed, errPausing)
+			} else {
+				_ = jm.emitEvent(jobID, EventJobPaused)
 			}
 			return
 		}
@@ -91,11 +101,16 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 			// might have been any of the following:
 			// * Job completed successfully
 			// * Job was cancelled
+			// * Job was paused
 			var eventToEmit event.Name
-			if j.IsCancelled() {
+			switch {
+			case j.IsCancelled():
 				log.Infof("Job %+v completed cancellation", j)
 				eventToEmit = EventJobCancelled
-			} else {
+			case j.IsPaused():
+				log.Infof("Job %+v completed pausing", j)
+				eventToEmit = EventJobPaused
+			default:
 				log.Infof("Job %+v completed after %s", j, duration)
 				eventToEmit = EventJobCompleted
 			}

@@ -18,6 +18,12 @@ var EventJobCompleted = event.Name("JobStateCompleted")
 // EventJobFailed indicates that a Job has failed
 var EventJobFailed = event.Name("JobStateFailed")
 
+// EventJobPaused indicates that a Job was paused
+var EventJobPaused = event.Name("JobStatePaused")
+
+// EventJobPauseFailed indicates that a Job pausing was not completed correctly
+var EventJobPauseFailed = event.Name("JobStatePauseFailed")
+
 // EventJobCancelling indicates that a Job has received a cancellation request
 // and the JobManager is waiting for JobRunner to return
 var EventJobCancelling = event.Name("JobStateCancelling")
@@ -41,6 +47,8 @@ var JobStateEvents = []event.Name{
 	EventJobStarted,
 	EventJobCompleted,
 	EventJobFailed,
+	EventJobPaused,
+	EventJobPauseFailed,
 	EventJobCancelling,
 	EventJobCancelled,
 	EventJobCancellationFailed,
