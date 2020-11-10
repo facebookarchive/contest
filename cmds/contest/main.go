@@ -72,7 +72,7 @@ func main() {
 	log.Printf("JobManager %+v", jm)
 
 	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	if err := jm.Start(sigs); err != nil {
 		log.Fatal(err)

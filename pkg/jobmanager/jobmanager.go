@@ -12,7 +12,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/api"
@@ -339,17 +338,9 @@ loop:
 		// handle signals to shut down gracefully. If the cancellation takes too
 		// long, it will be terminated.
 		case sig := <-sigs:
-			// TODO: stop processing signals inside jobmanager, this is
-			//       as responsibility of "main".
 			// We were interrupted by a signal, time to leave!
-			if sig == syscall.SIGUSR1 {
-				log.Printf("Interrupted by signal '%s': wait for jobs and exit", sig)
-				jm.stopAPI()
-			} else {
-				log.Printf("Interrupted by signal '%s': pause jobs and exit", sig)
-				jm.stopAPI()
-				jm.PauseJobs()
-			}
+			log.Printf("Interrupted by signal '%s', trying to exit gracefully", sig)
+			jm.Pause()
 			select {
 			case err := <-errCh:
 				if err != nil {
@@ -400,13 +391,11 @@ func (jm *JobManager) CancelAll() {
 	}
 }
 
-func (jm *JobManager) stopAPI() {
-	close(jm.apiCancel)
-}
-
-// PauseJobs sends a pause request to every running job.
-func (jm *JobManager) PauseJobs() {
+// Pause sends a pause request to every running job. No signal is sent to the
+// API listener.
+func (jm *JobManager) Pause() {
 	log.Info("JobManager: requested pausing")
+	close(jm.apiCancel)
 	for jobID, job := range jm.jobs {
 		log.Debugf("JobManager: pausing job with ID %v", jobID)
 		job.Pause()
