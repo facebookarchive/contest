@@ -25,12 +25,6 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 		Err:       nil,
 	}
 
-	report, err := jm.jobStorageManager.GetJobReport(jobID)
-	if err != nil {
-		evResp.Err = fmt.Errorf("could not fetch job report: %v", err)
-		return &evResp
-	}
-
 	// Fetch all the events associated to changes of state of the Job
 	jobEvents, err := jm.frameworkEvManager.Fetch(
 		frameworkevent.QueryJobID(jobID),
@@ -93,6 +87,12 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 				}
 			}
 		}
+	}
+
+	report, err := jm.jobStorageManager.GetJobReport(jobID)
+	if err != nil {
+		evResp.Err = fmt.Errorf("could not fetch job report: %v", err)
+		return &evResp
 	}
 
 	jobStatus := job.Status{
