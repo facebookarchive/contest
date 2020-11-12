@@ -1,5 +1,5 @@
 # ConTest
-[![Build Status](https://travis-ci.com/facebookincubator/contest.svg?branch=master)](https://travis-ci.com/facebookincubator/contest)
+[![Tests](https://github.com/facebookincubator/contest/workflows/Tests/badge.svg?branch=master)](https://github.com/facebookincubator/contest/actions?query=workflow%3ATests+branch%3Amaster)
 [![codecov](https://codecov.io/gh/facebookincubator/contest/branch/master/graph/badge.svg)](https://codecov.io/gh/facebookincubator/contest)
 [![Go Report Card](https://goreportcard.com/badge/github.com/facebookincubator/contest)](https://goreportcard.com/report/github.com/facebookincubator/contest)
 

@@ -43,41 +43,31 @@ echo "" > coverage.txt
 for d in $(go list ./... | grep -v vendor); do
     go test -race -coverprofile=profile.out -covermode=atomic "${d}"
     if [ -f profile.out ]; then
-      cat profile.out >> coverage.txt
+      cat profile.out >> coverage_unittests.txt
       rm profile.out
     fi
 done
-
-# Distinguish between coverage for unit tests and integration tests
-# Report coverage for unit tests and clear workspace afterwards (-c)
-if [ "${CI}" == "true" ]
-then
-    echo "Uploading coverage profile for unit tests"
-    [[ ! -z ${CI} ]] && bash <(curl -s https://codecov.io/bash) -c -F unittests
-else
-    echo "Skipping upload of coverage profile for unit tests because not running in a CI"
-fi
 
 # Run integration tests collecting coverage only for the business logic (pkg directory)
 for tag in integration integration_storage; do
     echo "Running integration tests with tag \"${tag}\""
     for d in $(go list -tags=${tag} ./... | grep integ | grep -Ev "integ$|common$|vendor"); do
-	pflag=""
+        pflag=""
         if test ${tag} = "integration_storage"; then
-	  # Storage tests are split across TestSuites in multiple packages. Within a TestSuite,
-	  # tests do not run in parallel, but tests in different packages might run in parallel
-	  # according to GOMAXPROCS. Storage tests are not safe to run in parallel as they
-	  # make assertions on the data that is persisted in the database. Therefore, use "-p1"
-	  # to have tests run serially.
-	  pflag="-p 1"
-	fi
+          # Storage tests are split across TestSuites in multiple packages. Within a TestSuite,
+          # tests do not run in parallel, but tests in different packages might run in parallel
+          # according to GOMAXPROCS. Storage tests are not safe to run in parallel as they
+          # make assertions on the data that is persisted in the database. Therefore, use "-p1"
+          # to have tests run serially.
+          pflag="-p 1"
+        fi
         go test -tags=${tag} -race \
           -coverprofile=profile.out ${pflag} \
           -covermode=atomic \
           -coverpkg=all \
           "${d}"
         if [ -f profile.out ]; then
-          cat profile.out >> coverage.txt
+          cat profile.out >> coverage_integration.txt
           rm profile.out
         fi
     done
@@ -85,9 +75,11 @@ done
 
 if [ "${CI}" == "true" ]
 then
+    echo "Uploading coverage profile for unit tests"
+    bash <(curl -s https://codecov.io/bash) -c -f coverage_unittests.txt -F unittests
     echo "Uploading coverage profile for integration tests"
-    bash <(curl -s https://codecov.io/bash) -c -F integration
+    bash <(curl -s https://codecov.io/bash) -c -f coverage_integration.txt -F integration
     bash <(curl -s https://codecov.io/bash) -c -F integration_storage
 else
-    echo "Skipping upload of coverage profile for integration tests because not running in a CI"
+    echo "Skipping upload of coverage profiles because not running in a CI"
 fi
