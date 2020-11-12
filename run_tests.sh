@@ -5,16 +5,19 @@
 # LICENSE file in the root directory of this source tree.
 
 set -eu
+
+export CI=${CI:-false}
+
 if [ "${UID}" -ne 0 ]
 then
     echo "Re-running as root with sudo"
-    sudo "$0" "$@"
+    sudo --preserve-env=CI,GITHUB_ACTIONS,GITHUB_REF,GITHUB_REPOSITORY,GITHUB_HEAD_REF,GITHUB_SHA,GITHUB_RUN_ID "$0" "$@"
     exit $?
 fi
 
 codecov_env=`bash <(curl -s https://codecov.io/env)`
 docker-compose build mysql contest
 docker-compose run \
-    ${codecov_env} \
+    ${codecov_env} -e "CI=${CI}" \
     contest \
     /go/src/github.com/facebookincubator/contest/docker/contest/tests.sh \

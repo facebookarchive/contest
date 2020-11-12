@@ -1,0 +1,19 @@
+name: Tests
+
+on:
+  push:
+    # To all branches
+
+jobs:
+  test:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+          stable: "false"
+          go-version: "1.15.4"
+      - name: Run Linters
+        run: ./run_lint.sh
+      - name: Run Tests
+        run: CI=true ./run_tests.sh
