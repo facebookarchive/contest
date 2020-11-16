@@ -237,7 +237,10 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 				if time.Now().After(timeTimeout) {
 					return fmt.Errorf("timed out after %s", timeout)
 				}
-				session.Signal(ssh.Signal("CONT"))
+				err = session.Signal(ssh.Signal("CONT"))
+				if err != nil {
+					log.Warnf("Unable to send CONT to ssh server: %v", err)
+				}
 				// Sanity Break to not spam the Server
 				time.Sleep(250 * time.Millisecond)
 			}
