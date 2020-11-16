@@ -20,12 +20,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"strings"
 
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/insomniacslk/xjson"
+	"github.com/prometheus/common/log"
 )
 
 // Name defined the name of the plugin
@@ -39,6 +41,7 @@ type AcquireParameters struct {
 	MinNumberDevices uint32
 	MaxNumberDevices uint32
 	HostPrefixes     []string
+	Shuffle          bool
 }
 
 // ReleaseParameters contains the parameters necessary to release targets.
@@ -142,6 +145,12 @@ func (tf *CSVFileTargetManager) Acquire(jobID types.JobID, cancel <-chan struct{
 			acquireParameters.MinNumberDevices,
 			len(hosts),
 		)
+	}
+	if acquireParameters.Shuffle {
+		log.Info("Shuffling targets")
+		rand.Shuffle(len(hosts), func(i, j int) {
+			hosts[i], hosts[j] = hosts[j], hosts[i]
+		})
 	}
 	if uint32(len(hosts)) > acquireParameters.MaxNumberDevices {
 		hosts = hosts[:acquireParameters.MaxNumberDevices]
