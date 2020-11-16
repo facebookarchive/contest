@@ -3,11 +3,10 @@ Runs: 3
 RunInterval: 3s
 Tags: [test, csv]
 TestDescriptors:
-    - TargetManagerName: TargetList
+    - TargetManagerName: csvtargetmanager
       TargetManagerAcquireParameters:
-          Targets:
-              - Name: example.org
-                ID: "1234"
+        FileURI: hosts.csv
+        Shuffle: true
       TargetManagerReleaseParameters:
       TestFetcherName: literal
       TestFetcherFetchParameters:
