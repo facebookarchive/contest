@@ -44,8 +44,39 @@ func Disable() {
 	log.SetOutput(ioutil.Discard)
 }
 
+// Trace - Set Log Level to Trace
+func Trace() {
+	log.SetLevel(logrus.TraceLevel)
+}
+
+// Debug - Set Log Level to Debug
 func Debug() {
 	log.SetLevel(logrus.DebugLevel)
+}
+
+// Info - Set Log Level to Info
+func Info() {
+	log.SetLevel(logrus.InfoLevel)
+}
+
+// Warn - Set Log Level to Warn
+func Warn() {
+	log.SetLevel(logrus.WarnLevel)
+}
+
+// Error - Set Log Level to Error
+func Error() {
+	log.SetLevel(logrus.ErrorLevel)
+}
+
+// Fatal - Set Log Level to Fatal
+func Fatal() {
+	log.SetLevel(logrus.FatalLevel)
+}
+
+// Panic - Set Log Level to Panic
+func Panic() {
+	log.SetLevel(logrus.PanicLevel)
 }
 
 func init() {
