@@ -219,6 +219,11 @@ func (m *Memory) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]framewor
 	return matchingFrameworkEvents, nil
 }
 
+// Version returns the version of the memory storage layer.
+func (m *Memory) Version() (int64, error) {
+	return 0, nil
+}
+
 // New create a new Memory events storage backend
 func New() (storage.Storage, error) {
 	m := Memory{lock: &sync.Mutex{}}

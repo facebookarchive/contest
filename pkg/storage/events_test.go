@@ -54,6 +54,10 @@ func (n *nullStorage) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]fra
 	return nil, nil
 }
 
+func (m *nullStorage) Version() (int64, error) {
+	return 0, nil
+}
+
 func TestMain(m *testing.M) {
 	SetStorage(&nullStorage{})
 	os.Exit(m.Run())

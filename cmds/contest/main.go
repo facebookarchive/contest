@@ -50,6 +50,13 @@ func main() {
 	}
 	storage.SetStorage(s)
 
+	dbVer, err := s.Version()
+	if err != nil {
+		log.Warningf("could not determine storage version: %v", err)
+	} else {
+		log.Infof("storage version: %d", dbVer)
+	}
+
 	// set Locker engine
 	target.SetLocker(inmemory.New(config.LockInitialTimeout, config.LockRefreshTimeout))
 
