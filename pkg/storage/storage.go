@@ -39,6 +39,9 @@ type Storage interface {
 	// Framework events storage interface
 	StoreFrameworkEvent(event frameworkevent.Event) error
 	GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]frameworkevent.Event, error)
+
+	// Version returns the version of the storage being used
+	Version() (int64, error)
 }
 
 // TransactionalStorage is implemented by storage backends that support transactions.

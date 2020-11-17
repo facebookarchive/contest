@@ -14,7 +14,6 @@ require (
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
 	github.com/onsi/ginkgo v1.12.0 // indirect
 	github.com/onsi/gomega v1.9.0 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkg/term v0.0.0-20190109203006-aa71e9d9e942 // indirect
 	github.com/pressly/goose v2.7.0-rc5+incompatible
 	github.com/prometheus/common v0.15.0
@@ -23,8 +22,5 @@ require (
 	github.com/stretchr/testify v1.5.1
 	github.com/x-cray/logrus-prefixed-formatter v0.5.2 // indirect
 	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
-	golang.org/x/text v0.3.2 // indirect
-	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543 // indirect
-	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20200605160147-a5ece683394c
 )
