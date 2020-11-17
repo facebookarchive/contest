@@ -202,6 +202,11 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 		}()
 
 		expect := ts.Expect.String()
+		re, err := regexp.Compile(expect)
+		if err != nil {
+			return fmt.Errorf("malformed expect parameter: Can not compile %s with %v", expect, err)
+		}
+
 		for {
 			select {
 			case err := <-errCh:
@@ -211,10 +216,9 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 					if expect == "" {
 						log.Warningf("no expectations specified")
 					} else {
-						re := regexp.MustCompile(expect)
 						matches := re.FindAll(stdout.Bytes(), -1)
 						if len(matches) > 0 {
-							log.Infof("match for regex \"%s\" found", expect)
+							log.Infof("match for regex '%s' found", expect)
 						} else {
 							return fmt.Errorf("match for %s not found for target %v", expect, target)
 						}
@@ -227,22 +231,20 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 				return session.Signal(ssh.SIGKILL)
 			case <-pause:
 				return session.Signal(ssh.SIGKILL)
-			default:
-				re := regexp.MustCompile(expect)
+			case <-time.After(250 * time.Millisecond):
 				matches := re.FindAll(stdout.Bytes(), -1)
 				if len(matches) > 0 {
-					log.Infof("match for regex \"%s\" found", expect)
+					log.Infof("match for regex '%s' found", expect)
 					return nil
 				}
 				if time.Now().After(timeTimeout) {
 					return fmt.Errorf("timed out after %s", timeout)
 				}
+				// This is needed to keep the connection to the server alive
 				err = session.Signal(ssh.Signal("CONT"))
 				if err != nil {
 					log.Warnf("Unable to send CONT to ssh server: %v", err)
 				}
-				// Sanity Break to not spam the Server
-				time.Sleep(250 * time.Millisecond)
 			}
 		}
 	}
