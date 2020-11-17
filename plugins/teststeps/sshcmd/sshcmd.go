@@ -232,10 +232,12 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 			case <-pause:
 				return session.Signal(ssh.SIGKILL)
 			case <-time.After(250 * time.Millisecond):
-				matches := re.FindAll(stdout.Bytes(), -1)
-				if len(matches) > 0 {
-					log.Infof("match for regex '%s' found", expect)
-					return nil
+				if expect != "" {
+					matches := re.FindAll(stdout.Bytes(), -1)
+					if len(matches) > 0 {
+						log.Infof("match for regex '%s' found", expect)
+						return nil
+					}
 				}
 				if time.Now().After(timeTimeout) {
 					return fmt.Errorf("timed out after %s", timeout)
