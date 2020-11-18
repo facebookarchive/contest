@@ -1,8 +1,6 @@
 name: Tests
 
-on:
-  push:
-    # To all branches
+on: [push, pull_request]
 
 jobs:
   test:
