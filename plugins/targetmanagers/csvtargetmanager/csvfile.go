@@ -24,16 +24,18 @@ import (
 	"os"
 	"strings"
 
+	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/insomniacslk/xjson"
-	"github.com/prometheus/common/log"
 )
 
 // Name defined the name of the plugin
 var (
 	Name = "CSVFileTargetManager"
 )
+
+var log = logging.GetLogger("targetmanagers/" + strings.ToLower(Name))
 
 // AcquireParameters contains the parameters necessary to acquire targets.
 type AcquireParameters struct {

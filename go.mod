@@ -14,9 +14,9 @@ require (
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
 	github.com/onsi/ginkgo v1.12.0 // indirect
 	github.com/onsi/gomega v1.9.0 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkg/term v0.0.0-20190109203006-aa71e9d9e942 // indirect
 	github.com/pressly/goose v2.7.0-rc5+incompatible
-	github.com/prometheus/common v0.15.0
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spf13/pflag v1.0.6-0.20200504143853-81378bbcd8a1
 	github.com/stretchr/testify v1.5.1
