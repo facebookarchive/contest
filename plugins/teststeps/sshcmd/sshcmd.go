@@ -25,6 +25,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
@@ -48,6 +49,7 @@ var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 var Events = []event.Name{}
 
 const defaultSSHPort = 22
+const defaultTimeoutParameter = "10m"
 
 // SSHCmd is used to run arbitrary commands as test steps.
 type SSHCmd struct {
@@ -59,6 +61,7 @@ type SSHCmd struct {
 	Executable     *test.Param
 	Args           []test.Param
 	Expect         *test.Param
+	Timeout        *test.Param
 }
 
 // Name returns the plugin name.
@@ -100,6 +103,18 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 		if err != nil {
 			return fmt.Errorf("failed to convert port parameter to integer: %v", err)
 		}
+
+		timeoutStr, err := ts.Timeout.Expand(target)
+		if err != nil {
+			return fmt.Errorf("cannot expand timeout parameter %s: %v", timeoutStr, err)
+		}
+
+		timeout, err := time.ParseDuration(timeoutStr)
+		if err != nil {
+			return fmt.Errorf("cannot parse timeout paramter: %v", err)
+		}
+
+		timeTimeout := time.Now().Add(timeout)
 
 		// apply functions to the private key, if any
 		var signer ssh.Signer
@@ -186,31 +201,58 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 			errCh <- innerErr
 		}()
 
-		select {
-		case err := <-errCh:
-			log.Infof("Stdout of command '%s' is '%s'", cmd, stdout.Bytes())
-			if err == nil {
-				// Execute expectations
-				expect := ts.Expect.String()
-				if expect == "" {
-					log.Warningf("no expectations specified")
+		expect := ts.Expect.String()
+		re, err := regexp.Compile(expect)
+		keepAliveCnt := 0
+
+		if err != nil {
+			return fmt.Errorf("malformed expect parameter: Can not compile %s with %v", expect, err)
+		}
+
+		for {
+			select {
+			case err := <-errCh:
+				log.Infof("Stdout of command '%s' is '%s'", cmd, stdout.Bytes())
+				if err == nil {
+					// Execute expectations
+					if expect == "" {
+						log.Warningf("no expectations specified")
+					} else {
+						matches := re.FindAll(stdout.Bytes(), -1)
+						if len(matches) > 0 {
+							log.Infof("match for regex '%s' found", expect)
+						} else {
+							return fmt.Errorf("match for %s not found for target %v", expect, target)
+						}
+					}
 				} else {
-					re := regexp.MustCompile(expect)
+					log.Warningf("Stderr of command '%s' is '%s'", cmd, stderr.Bytes())
+				}
+				return err
+			case <-cancel:
+				return session.Signal(ssh.SIGKILL)
+			case <-pause:
+				return session.Signal(ssh.SIGKILL)
+			case <-time.After(250 * time.Millisecond):
+				keepAliveCnt++
+				if expect != "" {
 					matches := re.FindAll(stdout.Bytes(), -1)
 					if len(matches) > 0 {
-						log.Infof("match for regex \"%s\" found", expect)
-					} else {
-						return fmt.Errorf("match for %s not found for target %v", expect, target)
+						log.Infof("match for regex '%s' found", expect)
+						return nil
 					}
 				}
-			} else {
-				log.Warningf("Stderr of command '%s' is '%s'", cmd, stderr.Bytes())
+				if time.Now().After(timeTimeout) {
+					return fmt.Errorf("timed out after %s", timeout)
+				}
+				// This is needed to keep the connection to the server alive
+				if keepAliveCnt%20 == 0 {
+					err = session.Signal(ssh.Signal("CONT"))
+					if err != nil {
+						log.Warnf("Unable to send CONT to ssh server: %v", err)
+					}
+				}
 			}
-			return err
-		case <-cancel:
-			return session.Signal(ssh.SIGKILL)
-		case <-pause:
-			return session.Signal(ssh.SIGKILL)
 		}
 	}
 	return teststeps.ForEachTarget(Name, cancel, pause, ch, f)
@@ -253,6 +295,12 @@ func (ts *SSHCmd) validateAndPopulate(params test.TestStepParameters) error {
 	}
 	ts.Args = params.Get("args")
 	ts.Expect = params.GetOne("expect")
+
+	if params.GetOne("timeout").IsEmpty() {
+		ts.Timeout = test.NewParam(defaultTimeoutParameter)
+	} else {
+		ts.Timeout = params.GetOne("timeout")
+	}
 	return nil
 }
 
