@@ -203,6 +203,8 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 
 		expect := ts.Expect.String()
 		re, err := regexp.Compile(expect)
+		keepAliveCnt := 0
+
 		if err != nil {
 			return fmt.Errorf("malformed expect parameter: Can not compile %s with %v", expect, err)
 		}
@@ -232,6 +234,7 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 			case <-pause:
 				return session.Signal(ssh.SIGKILL)
 			case <-time.After(250 * time.Millisecond):
+				keepAliveCnt++
 				if expect != "" {
 					matches := re.FindAll(stdout.Bytes(), -1)
 					if len(matches) > 0 {
@@ -243,9 +246,11 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 					return fmt.Errorf("timed out after %s", timeout)
 				}
 				// This is needed to keep the connection to the server alive
-				err = session.Signal(ssh.Signal("CONT"))
-				if err != nil {
-					log.Warnf("Unable to send CONT to ssh server: %v", err)
+				if keepAliveCnt%20 == 0 {
+					err = session.Signal(ssh.Signal("CONT"))
+					if err != nil {
+						log.Warnf("Unable to send CONT to ssh server: %v", err)
+					}
 				}
 			}
 		}
