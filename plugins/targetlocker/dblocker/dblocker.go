@@ -122,7 +122,7 @@ func (d *DBLocker) queryLocks(tx *sql.Tx, targets []string) (map[string]dblock, 
 }
 
 // handleLock does the real locking, it assumes the jobID is valid
-func (d *DBLocker) handleLock(jobID int64, targets []string, timeout time.Duration, allowConflicts bool) ([]string, error) {
+func (d *DBLocker) handleLock(jobID int64, targets []string, limit uint, timeout time.Duration, allowConflicts bool) ([]string, error) {
 	// everything operates on this frozen time
 	now := time.Now()
 	expires := now.Add(timeout)
@@ -171,21 +171,33 @@ func (d *DBLocker) handleLock(jobID int64, targets []string, timeout time.Durati
 		return nil, fmt.Errorf("unable to lock targets %v for owner %d, have conflicting locks: %v", targets, jobID, conflicts)
 	}
 
-	ins := "INSERT INTO locks (target_id, job_id, created_at, expires_at, valid) VALUES (?, ?, ?, ?, ?);"
-	for _, id := range inserts {
-		if _, err := tx.Exec(ins, id, jobID, now, expires, true); err != nil {
-			return nil, fmt.Errorf("unable to lock target %s: %w", id, err)
-		}
-	}
-
+	locked := make([]string, 0, limit)
+	// do the actual locking, stop when we hit the limit
+	// do updates of existing locks first (resets the timer)
+	// this is not strictly required by the API, but nice to do and free
 	upd := "UPDATE locks SET expires_at = ?, job_id = ?, valid = true WHERE target_id = ?;"
 	for _, id := range updates {
+		if uint(len(locked)) >= limit {
+			break
+		}
 		if _, err := tx.Exec(upd, expires, jobID, id); err != nil {
 			return nil, fmt.Errorf("unable to refresh lock on target %s: %w", id, err)
 		}
+		locked = append(locked, id)
 	}
 
-	return append(inserts, updates...), tx.Commit()
+	ins := "INSERT INTO locks (target_id, job_id, created_at, expires_at, valid) VALUES (?, ?, ?, ?, ?);"
+	for _, id := range inserts {
+		if uint(len(locked)) >= limit {
+			break
+		}
+		if _, err := tx.Exec(ins, id, jobID, now, expires, true); err != nil {
+			return nil, fmt.Errorf("unable to lock target %s: %w", id, err)
+		}
+		locked = append(locked, id)
+	}
+
+	return locked, tx.Commit()
 }
 
 // handleUnlock does the real unlocking, it assumes the jobID is valid
@@ -265,25 +277,25 @@ func (d *DBLocker) Lock(jobID types.JobID, targets []*target.Target) error {
 		return nil
 	}
 
-	_, err := d.handleLock(int64(jobID), targetIDList(targets), d.lockTimeout, false)
+	_, err := d.handleLock(int64(jobID), targetIDList(targets), uint(len(targets)), d.lockTimeout, false)
 	return err
 }
 
 // TryLock attempts to locks the given targets.
 // See target.Locker for API details
-func (d *DBLocker) TryLock(jobID types.JobID, targets []*target.Target) ([]string, error) {
+func (d *DBLocker) TryLock(jobID types.JobID, targets []*target.Target, limit uint) ([]string, error) {
 	if jobID == 0 {
 		return nil, fmt.Errorf("invalid tryLock request, jobID cannot be zero (targets: %v)", targets)
 	}
 	if err := validateTargets(targets); err != nil {
 		return nil, fmt.Errorf("invalid tryLock request: %w", err)
 	}
-	log.Debugf("Requested to tryLock %d targets for job ID %d: %v", len(targets), jobID, targets)
-	if len(targets) == 0 {
+	log.Debugf("Requested to tryLock up to %d of %d targets for job ID %d: %v", limit, len(targets), jobID, targets)
+	if len(targets) == 0 || limit == 0 {
 		return nil, nil
 	}
 
-	return d.handleLock(int64(jobID), targetIDList(targets), d.lockTimeout, true)
+	return d.handleLock(int64(jobID), targetIDList(targets), limit, d.lockTimeout, true)
 }
 
 // Unlock unlocks the given targets.
@@ -317,7 +329,7 @@ func (d *DBLocker) RefreshLocks(jobID types.JobID, targets []*target.Target) err
 		return nil
 	}
 
-	_, err := d.handleLock(int64(jobID), targetIDList(targets), d.refreshTimeout, false)
+	_, err := d.handleLock(int64(jobID), targetIDList(targets), uint(len(targets)), d.refreshTimeout, false)
 	return err
 }
 
