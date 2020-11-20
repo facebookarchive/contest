@@ -70,25 +70,57 @@ func TestInMemoryLockReentrantLockDifferentJobID(t *testing.T) {
 
 func TestInMemoryTryLockOne(t *testing.T) {
 	tl := New(10*time.Second, time.Second)
-	res, err := tl.TryLock(jobID, oneTarget)
+	res, err := tl.TryLock(jobID, oneTarget, 1)
 	require.NoError(t, err)
 	require.Equal(t, oneTarget[0].ID, res[0])
 }
 
 func TestInMemoryTryLockTwo(t *testing.T) {
 	tl := New(10*time.Second, time.Second)
-	res, err := tl.TryLock(jobID, twoTargets)
+	res, err := tl.TryLock(jobID, twoTargets, 2)
 	require.NoError(t, err)
 	// order is not guaranteed
 	require.Contains(t, res, twoTargets[0].ID)
 	require.Contains(t, res, twoTargets[1].ID)
 }
 
+func TestInMemoryTryLockZeroLimited(t *testing.T) {
+	tl := New(10*time.Second, time.Second)
+	// only request one
+	res, err := tl.TryLock(jobID, twoTargets, 0)
+	require.NoError(t, err)
+	// it is allowed to set the limit to zero
+	require.Equal(t, len(res), 0)
+}
+
+func TestInMemoryTryLockTwoHigherLimit(t *testing.T) {
+	tl := New(10*time.Second, time.Second)
+	// limit is just an upper bound, can be higher
+	res, err := tl.TryLock(jobID, twoTargets, 100)
+	require.NoError(t, err)
+	// order is not guaranteed
+	require.Contains(t, res, twoTargets[0].ID)
+	require.Contains(t, res, twoTargets[1].ID)
+}
+
+func TestInMemoryTryLockOneLimited(t *testing.T) {
+	tl := New(10*time.Second, time.Second)
+	// only request one
+	res, err := tl.TryLock(jobID, twoTargets, 1)
+	require.NoError(t, err)
+	require.Equal(t, len(res), 1)
+	// API doesn't require it, but locker guarantees order
+	// so the first one should have been locked,
+	// the second not because limit was 1
+	require.Contains(t, res, twoTargets[0].ID)
+	require.NotContains(t, res, twoTargets[1].ID)
+}
+
 func TestInMemoryTryLockOneOfTwo(t *testing.T) {
 	tl := New(10*time.Second, time.Second)
 	require.NoError(t, tl.Lock(jobID, oneTarget))
 	// now tryLock both with other ID
-	res, err := tl.TryLock(jobID+1, twoTargets)
+	res, err := tl.TryLock(jobID+1, twoTargets, 2)
 	require.NoError(t, err)
 	// should have locked 1 but not 0
 	require.NotContains(t, res, twoTargets[0].ID)
@@ -99,7 +131,7 @@ func TestInMemoryTryLockNoneOfTwo(t *testing.T) {
 	tl := New(10*time.Second, time.Second)
 	require.NoError(t, tl.Lock(jobID, twoTargets))
 	// now tryLock both with other ID
-	res, err := tl.TryLock(jobID+1, twoTargets)
+	res, err := tl.TryLock(jobID+1, twoTargets, 2)
 	// should have locked zero targets, but no error
 	require.NoError(t, err)
 	require.Empty(t, res)

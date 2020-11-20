@@ -33,6 +33,8 @@ type request struct {
 	// The in-memory locker enforces that the requests are validated against the
 	// right owner.
 	owner types.JobID
+	// limit provides an upper limit on how many locks will be acquired
+	limit uint
 	// timeout is how long the lock should be held for. There is no lower or
 	// upper bound on how long the lock can be held.
 	timeout time.Duration
@@ -83,6 +85,10 @@ func broker(lockRequests, unlockRequests <-chan *request, done <-chan struct{}) 
 			// otherwise we update 'locks' with the modifed locks after the transaction has completed
 			newLocks := make(map[target.Target]lock)
 			for _, t := range req.targets {
+				// don't go over limit
+				if uint(len(newLocks)) >= req.limit {
+					break
+				}
 				now := time.Now()
 
 				if l, ok := locks[*t]; ok {
@@ -176,16 +182,18 @@ func (tl *InMemory) Lock(jobID types.JobID, targets []*target.Target) error {
 	log.Infof("Trying to lock %d targets", len(targets))
 	req := newReq(jobID, targets)
 	req.timeout = tl.lockTimeout
+	req.limit = uint(len(targets))
 	tl.lockRequests <- &req
 	return <-req.err
 }
 
 // Lock locks the specified targets.
-func (tl *InMemory) TryLock(jobID types.JobID, targets []*target.Target) ([]string, error) {
+func (tl *InMemory) TryLock(jobID types.JobID, targets []*target.Target, limit uint) ([]string, error) {
 	log.Infof("Trying to trylock %d targets", len(targets))
 	req := newReq(jobID, targets)
 	req.timeout = tl.lockTimeout
 	req.allowConflicts = true
+	req.limit = limit
 	tl.lockRequests <- &req
 	// wait for result
 	err := <-req.err
@@ -206,6 +214,7 @@ func (tl *InMemory) RefreshLocks(jobID types.JobID, targets []*target.Target) er
 	log.Infof("Trying to refresh locks on %d targets by %s", len(targets), tl.refreshTimeout)
 	req := newReq(jobID, targets)
 	req.timeout = tl.refreshTimeout
+	req.limit = uint(len(targets))
 	// refreshing a lock is just a lock operation with the same owner and a new
 	// duration.
 	tl.lockRequests <- &req
