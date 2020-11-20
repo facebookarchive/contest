@@ -34,14 +34,14 @@ type Locker interface {
 	// Locks are reentrant, locking existing locks (with the same owner)
 	// extends the deadline.
 	Lock(types.JobID, []*Target) error
-	// TryLock attempts to lock all given targets.
+	// TryLock attempts to lock up to limit of the given targets.
 	// The job ID is the owner of the lock.
-	// This function attempts to lock as many of the given targets as possible,
+	// This function attempts to lock up to limit of the given targets,
 	// and returns a list of target IDs that it was able to lock.
 	// This function does not return an error if it was not able to lock any targets.
 	// Locks are reentrant, locking existing locks (with the same owner)
 	// extends the deadline.
-	TryLock(types.JobID, []*Target) ([]string, error)
+	TryLock(jobID types.JobID, targets []*Target, limit uint) ([]string, error)
 	// Unlock unlocks the specificied targets if they are held by the given owner.
 	// Unlock silently skips expired locks and targets that are not locked at all.
 	// Unlock does not fail if a valid lock is held on one of the targets.
