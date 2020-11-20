@@ -127,24 +127,24 @@ func (r *RDBMS) GetJobReport(jobID types.JobID) (*job.JobReport, error) {
 	// get final reports
 	selectStatement = "select success, report_time, reporter_name, data from final_reports where job_id = ?"
 	log.Debugf("Executing query: %s", selectStatement)
-	rows, err = r.db.Query(selectStatement, jobID)
+	rows2, err := r.db.Query(selectStatement, jobID)
 	if err != nil {
 		return nil, fmt.Errorf("could not get final report for job %v: %v", jobID, err)
 	}
 	defer func() {
-		if err := rows.Close(); err != nil {
-			log.Warningf("failed to close rows from query statement: %v", err)
+		if err := rows2.Close(); err != nil {
+			log.Warningf("failed to close rows2 from query statement: %v", err)
 		}
 	}()
-	for rows.Next() {
-		if err := rows.Err(); err != nil {
+	for rows2.Next() {
+		if err := rows2.Err(); err != nil {
 			return nil, fmt.Errorf("could not fetch final report for job %d: %v", jobID, err)
 		}
 		var (
 			report job.Report
 			data   string
 		)
-		err = rows.Scan(
+		err = rows2.Scan(
 			&report.Success,
 			&report.ReportTime,
 			&report.ReporterName,
