@@ -6,9 +6,9 @@
 package plugins
 
 import (
-	"errors"
-
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
+	"github.com/facebookincubator/contest/pkg/userfunctions/donothing"
+	"github.com/facebookincubator/contest/pkg/userfunctions/ocp"
 
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -53,16 +53,9 @@ var reporters = []job.ReporterLoader{
 	noop.Load,
 }
 
-// user-defined functions that will be made available to plugins for advanced
-// expressions in config parameters.
-var userFunctions = map[string]interface{}{
-	// sample function to prove that function registration works.
-	"do_nothing": func(a ...string) (string, error) {
-		if len(a) == 0 {
-			return "", errors.New("do_nothing: no arg specified")
-		}
-		return a[0], nil
-	},
+var userFunctions = []map[string]interface{}{
+	ocp.Load(),
+	donothing.Load(),
 }
 
 // Init initializes the plugin registry
@@ -98,9 +91,11 @@ func Init(pluginRegistry *pluginregistry.PluginRegistry, log *logrus.Entry) {
 	}
 
 	// user-defined function registration
-	for name, fn := range userFunctions {
-		if err := test.RegisterFunction(name, fn); err != nil {
-			log.Fatal(err)
+	for _, userFunction := range userFunctions {
+		for name, fn := range userFunction {
+			if err := test.RegisterFunction(name, fn); err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
 
