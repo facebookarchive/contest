@@ -53,7 +53,7 @@ type eventCmdStartPayload struct {
 type Cmd struct {
 	executable string
 	args       []test.Param
-	dir        string
+	dir        *test.Param
 }
 
 // Name returns the plugin name.
@@ -79,10 +79,14 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 			args = append(args, expArg)
 		}
 		cmd := exec.CommandContext(ctx, ts.executable, args...)
-		cmd.Dir = ts.dir
+		pwd, err := ts.dir.Expand(target)
+		if err != nil {
+			return fmt.Errorf("failed to expand argument dir '%s': %v", ts.dir, err)
+		}
+		cmd.Dir = pwd
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
-		if ts.dir != "" {
+		if pwd != "" {
 			log.Printf("Running command '%+v' in directory '%+v'", cmd, cmd.Dir)
 		} else {
 			log.Printf("Running command '%+v'", cmd)
@@ -149,8 +153,11 @@ func (ts *Cmd) validateAndPopulate(params test.TestStepParameters) error {
 		ts.executable = p
 	}
 	ts.args = params.Get("args")
-	dir := params.GetOne("dir")
-	ts.dir = dir.String()
+	if !params.GetOne("dir").IsEmpty() {
+		ts.dir = params.GetOne("dir")
+	} else {
+		ts.dir = test.NewParam("")
+	}
 	return nil
 }
 
