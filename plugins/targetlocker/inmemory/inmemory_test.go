@@ -19,8 +19,8 @@ var (
 	jobID      = types.JobID(123)
 	otherJobID = types.JobID(456)
 
-	targetOne  = target.Target{Name: "target001", ID: "001"}
-	targetTwo  = target.Target{Name: "target002", ID: "002"}
+	targetOne  = target.Target{ID: "001"}
+	targetTwo  = target.Target{ID: "002"}
 	oneTarget  = []*target.Target{&targetOne}
 	twoTargets = []*target.Target{&targetOne, &targetTwo}
 )

@@ -7,6 +7,8 @@ package target
 
 import (
 	"fmt"
+	"net"
+	"strings"
 
 	"github.com/facebookincubator/contest/pkg/event"
 )
@@ -31,18 +33,36 @@ type ErrPayload struct {
 	Error string
 }
 
-// Target represents a target to run tests on
+// Target represents a target to run tests on.
+// ID is required and must be unique. This is used to identify targets, some storage plugins use it as primary key.
+// Common choices include IDs from inventory management systems, (fully qualified) hostnames, or textual representations of IP addresses.
+// No assumptions about the format of IDs should be made (except being unique and not empty).
+// FQDN, PrimaryIPv4, and PrimaryIPv6 are used by plugins to contact the target, set as many as possible for maximum plugin compatibility.
+// Plugins are generally expected to attempt contacting devices via FQDN, IPv4, and IPv6. Note there is no way to enforce this and more specialized plugins might only support a subset.
 type Target struct {
-	Name string
-	ID   string
-	FQDN string
+	ID string
+    FQDN string
+    PrimaryIPv4, PrimaryIPv6 net.IP
 }
 
 func (t *Target) String() string {
 	if t == nil {
 		return "(*Target)(nil)"
 	}
-	return fmt.Sprintf("Target{Name: \"%s\", ID: \"%s\", FQDN: \"%s\"}", t.Name, t.ID, t.FQDN)
+	var res strings.Builder
+	res.WriteString(fmt.Sprintf("Target{ID: \"%s\"", t.ID))
+	// deref params if they are set, to be more useful than %v
+	if t.FQDN != "" {
+		res.WriteString(fmt.Sprintf(", FQDN: \"%s\"", t.FQDN))
+	}
+	if t.PrimaryIPv4 != nil {
+		res.WriteString(fmt.Sprintf(", PrimaryIPv4: \"%v\"", t.PrimaryIPv4))
+	}
+	if t.PrimaryIPv6 != nil {
+		res.WriteString(fmt.Sprintf(", PrimaryIPv6: \"%v\"", t.PrimaryIPv6))
+	}
+	res.WriteString("}")
+	return res.String()
 }
 
 // FilterTargets - Filter targets from targets based on targetIDs

@@ -59,23 +59,21 @@ type TargetList struct {
 	targets []*target.Target
 }
 
-// ValidateAcquireParameters performs sanity checks on the fields of the
-// parameters that will be passed to Acquire.
+// ValidateAcquireParameters valides parameters that will be passed to Acquire.
 func (t TargetList) ValidateAcquireParameters(params []byte) (interface{}, error) {
 	var ap AcquireParameters
 	if err := json.Unmarshal(params, &ap); err != nil {
 		return nil, err
 	}
 	for _, target := range ap.Targets {
-		if strings.TrimSpace(target.Name) == "" {
-			return nil, errors.New("invalid target with empty name")
+		if strings.TrimSpace(target.ID) == "" {
+			return nil, errors.New("invalid target with empty ID")
 		}
 	}
 	return ap, nil
 }
 
-// ValidateReleaseParameters performs sanity checks on the fields of the
-// parameters that will be passed to Release.
+// ValidateReleaseParameters valides parameters that will be passed to Release.
 func (t TargetList) ValidateReleaseParameters(params []byte) (interface{}, error) {
 	var rp ReleaseParameters
 	if err := json.Unmarshal(params, &rp); err != nil {
@@ -84,8 +82,7 @@ func (t TargetList) ValidateReleaseParameters(params []byte) (interface{}, error
 	return rp, nil
 }
 
-// Acquire implements contest.TargetManager.Acquire, reading one entry per line
-// from a text file. Each input record has a hostname, a space, and a host ID.
+// Acquire implements contest.TargetManager.Acquire
 func (t *TargetList) Acquire(jobID types.JobID, cancel <-chan struct{}, parameters interface{}, tl target.Locker) ([]*target.Target, error) {
 	acquireParameters, ok := parameters.(AcquireParameters)
 	if !ok {

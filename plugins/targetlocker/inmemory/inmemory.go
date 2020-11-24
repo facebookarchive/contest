@@ -67,7 +67,7 @@ func validateRequest(req *request) error {
 // access to the locks map, in accordance with Go's "share memory by
 // communicating" principle.
 func broker(lockRequests, unlockRequests <-chan *request, done <-chan struct{}) {
-	locks := make(map[target.Target]lock)
+	locks := make(map[string]lock)
 	for {
 		select {
 		case <-done:
@@ -83,7 +83,7 @@ func broker(lockRequests, unlockRequests <-chan *request, done <-chan struct{}) 
 			// newLocks is the state of the locks that have been modified by this transaction
 			// If there is an error, we discard newLocks leaving the state of 'locks' untouched
 			// otherwise we update 'locks' with the modifed locks after the transaction has completed
-			newLocks := make(map[target.Target]lock)
+			newLocks := make(map[string]lock)
 			for _, t := range req.targets {
 				// don't go over limit
 				if uint(len(newLocks)) >= req.limit {
@@ -91,12 +91,12 @@ func broker(lockRequests, unlockRequests <-chan *request, done <-chan struct{}) 
 				}
 				now := time.Now()
 
-				if l, ok := locks[*t]; ok {
+				if l, ok := locks[t.ID]; ok {
 					// target has been locked before. Is it still locked, or did
 					// it expire?
 					if now.After(l.expiresAt) {
 						// lock has expired, consider it unlocked
-						newLocks[*t] = lock{
+						newLocks[t.ID] = lock{
 							owner:     req.owner,
 							lockedAt:  now,
 							expiresAt: now.Add(req.timeout),
@@ -106,7 +106,7 @@ func broker(lockRequests, unlockRequests <-chan *request, done <-chan struct{}) 
 						if l.owner == req.owner {
 							// we are trying to extend a lock.
 							l.expiresAt = time.Now().Add(req.timeout)
-							newLocks[*t] = l
+							newLocks[t.ID] = l
 						} else {
 							// already locked
 							if !req.allowConflicts {
@@ -118,7 +118,7 @@ func broker(lockRequests, unlockRequests <-chan *request, done <-chan struct{}) 
 					}
 				} else {
 					// target not locked and never seen, create new lock
-					newLocks[*t] = lock{
+					newLocks[t.ID] = lock{
 						owner:     req.owner,
 						lockedAt:  now,
 						expiresAt: now.Add(req.timeout),
@@ -128,9 +128,9 @@ func broker(lockRequests, unlockRequests <-chan *request, done <-chan struct{}) 
 			req.locked = make([]string, 0, len(newLocks))
 			if lockErr == nil {
 				// everything in this transaction was OK - update the locks
-				for t, l := range newLocks {
-					locks[t] = l
-					req.locked = append(req.locked, t.ID)
+				for id, l := range newLocks {
+					locks[id] = l
+					req.locked = append(req.locked, id)
 				}
 			}
 			req.err <- lockErr
@@ -142,9 +142,9 @@ func broker(lockRequests, unlockRequests <-chan *request, done <-chan struct{}) 
 			log.Debugf("Requested to transactionally unlock %d targets: %v", len(req.targets), req.targets)
 			var unlockErr error
 			for _, t := range req.targets {
-				if l, ok := locks[*t]; ok {
+				if l, ok := locks[t.ID]; ok {
 					if l.owner == req.owner {
-						delete(locks, *t)
+						delete(locks, t.ID)
 					} else {
 						unlockErr = fmt.Errorf("unlock request: denying unlock request from job ID %d on lock owned by job ID %d", req.owner, l.owner)
 					}

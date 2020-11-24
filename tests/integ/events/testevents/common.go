@@ -33,8 +33,8 @@ func populateTestEvents(backend storage.Storage, emitTime time.Time) error {
 	data := []byte("{ 'test_key': 'test_value' }")
 	payload := (*json.RawMessage)(&data)
 
-	testTargetFirst := target.Target{Name: "ATargetName", ID: "ATargetID", FQDN: "AFQDN"}
-	testTargetSecond := target.Target{Name: "BTargetName", ID: "BTargetID", FQDN: "BFQDN"}
+	testTargetFirst := target.Target{ID: "ATargetID", FQDN: "AFQDN"}
+	testTargetSecond := target.Target{ID: "BTargetID", FQDN: "BFQDN"}
 
 	hdrFirst := testevent.Header{JobID: 1, TestName: "ATestName", TestStepLabel: "TestStepLabel"}
 	dataFirst := testevent.Data{EventName: event.Name("AEventName"), Target: &testTargetFirst, Payload: payload}
@@ -61,7 +61,6 @@ func assertTestEvents(t *testing.T, ev []testevent.Event, emitTime time.Time) {
 	assert.Equal(t, "ATestName", ev[0].Header.TestName)
 	assert.Equal(t, "TestStepLabel", ev[0].Header.TestStepLabel)
 	assert.Equal(t, event.Name("AEventName"), ev[0].Data.EventName)
-	assert.Equal(t, "ATargetName", ev[0].Data.Target.Name)
 	assert.Equal(t, "ATargetID", ev[0].Data.Target.ID)
 	assert.Equal(t, payload, ev[0].Data.Payload)
 	assert.Equal(t, emitTime.UTC(), ev[0].EmitTime.UTC())
@@ -71,7 +70,6 @@ func assertTestEvents(t *testing.T, ev []testevent.Event, emitTime time.Time) {
 		assert.Equal(t, "BTestName", ev[1].Header.TestName)
 		assert.Equal(t, "TestStepLabel", ev[1].Header.TestStepLabel)
 		assert.Equal(t, event.Name("BEventName"), ev[1].Data.EventName)
-		assert.Equal(t, "BTargetName", ev[1].Data.Target.Name)
 		assert.Equal(t, "BTargetID", ev[1].Data.Target.ID)
 		assert.Equal(t, payload, ev[1].Data.Payload)
 		assert.Equal(t, emitTime.UTC(), ev[1].EmitTime.UTC())

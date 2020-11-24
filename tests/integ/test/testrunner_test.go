@@ -84,11 +84,11 @@ func TestMain(m *testing.M) {
 	}
 	// Setup test Targets and empty parameters
 	targets = []*target.Target{
-		&target.Target{Name: "host001", ID: "001", FQDN: "host001.facebook.com"},
-		&target.Target{Name: "host002", ID: "002", FQDN: "host002.facebook.com"},
-		&target.Target{Name: "host003", ID: "003", FQDN: "host003.facebook.com"},
-		&target.Target{Name: "host004", ID: "004", FQDN: "host004.facebook.com"},
-		&target.Target{Name: "host005", ID: "005", FQDN: "host005.facebook.com"},
+		&target.Target{ID: "001", FQDN: "host001.facebook.com"},
+		&target.Target{ID: "002", FQDN: "host002.facebook.com"},
+		&target.Target{ID: "003", FQDN: "host003.facebook.com"},
+		&target.Target{ID: "004", FQDN: "host004.facebook.com"},
+		&target.Target{ID: "005", FQDN: "host005.facebook.com"},
 	}
 
 	// Configure the storage layer to be in-memory for TestRunner integration tests.

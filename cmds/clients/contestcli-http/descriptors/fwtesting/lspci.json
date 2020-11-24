@@ -9,7 +9,7 @@
             "TargetManagerAcquireParameters": {
                 "Targets": [
                     {
-                        "Name": "dut1",
+                        "FQDN": "dut1",
                         "ID": "12345"
                     }
                 ]
@@ -24,7 +24,7 @@
                         "name": "sshcmd",
                         "parameters": {
                                 "user": ["sesame"],
-                                "host": ["{{ .Name }}"],
+                                "host": ["{{ .FQDN }}"],
                                 "password": [""],
                                 "executable": ["lspci"],
                                 "expect": ["DDRIO Global Broadcast"]

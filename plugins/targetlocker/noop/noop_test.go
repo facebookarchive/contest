@@ -29,11 +29,11 @@ func TestNoopLock(t *testing.T) {
 	require.Nil(t, tl.Lock(jobID, nil))
 	require.Nil(t, tl.Lock(jobID, []*target.Target{}))
 	require.Nil(t, tl.Lock(jobID, []*target.Target{
-		&target.Target{Name: "blah"},
+		&target.Target{ID: "blah"},
 	}))
 	require.Nil(t, tl.Lock(jobID, []*target.Target{
-		&target.Target{Name: "blah"},
-		&target.Target{Name: "bleh"},
+		&target.Target{ID: "blah"},
+		&target.Target{ID: "bleh"},
 	}))
 }
 
@@ -48,12 +48,12 @@ func TestNoopTryLock(t *testing.T) {
 	_, err = tl.TryLock(jobID, []*target.Target{}, 0)
 	require.Nil(t, err)
 	_, err = tl.TryLock(jobID, []*target.Target{
-		&target.Target{Name: "blah"},
+		&target.Target{ID: "blah"},
 	}, 1)
 	require.Nil(t, err)
 	_, err = tl.TryLock(jobID, []*target.Target{
-		&target.Target{Name: "blah"},
-		&target.Target{Name: "bleh"},
+		&target.Target{ID: "blah"},
+		&target.Target{ID: "bleh"},
 	}, 2)
 	require.Nil(t, err)
 }
@@ -67,10 +67,10 @@ func TestNoopUnlock(t *testing.T) {
 	require.Nil(t, tl.Unlock(jobID, nil))
 	require.Nil(t, tl.Unlock(jobID, []*target.Target{}))
 	require.Nil(t, tl.Unlock(jobID, []*target.Target{
-		&target.Target{Name: "blah"},
+		&target.Target{ID: "blah"},
 	}))
 	require.Nil(t, tl.Unlock(jobID, []*target.Target{
-		&target.Target{Name: "blah"},
-		&target.Target{Name: "bleh"},
+		&target.Target{ID: "blah"},
+		&target.Target{ID: "bleh"},
 	}))
 }

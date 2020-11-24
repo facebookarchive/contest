@@ -156,14 +156,6 @@ func TestEventName(ev testevent.Event) interface{} {
 	return ev.Data.EventName
 }
 
-// TestEventTargetName returns the target name from an events.TestEvent object
-func TestEventTargetName(ev testevent.Event) interface{} {
-	if ev.Data == nil || ev.Data.Target == nil {
-		return nil
-	}
-	return ev.Data.Target.Name
-}
-
 // TestEventTargetID returns the target id from an events.TestEvent object
 func TestEventTargetID(ev testevent.Event) interface{} {
 	if ev.Data == nil || ev.Data.Target == nil {
@@ -206,7 +198,7 @@ func (r *RDBMS) flushTestEvents() error {
 	r.lockTx()
 	defer r.unlockTx()
 
-	insertStatement := "insert into test_events (job_id, run_id, test_name, test_step_label, event_name, target_name, target_id, payload, emit_time) values (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	insertStatement := "insert into test_events (job_id, run_id, test_name, test_step_label, event_name, target_id, payload, emit_time) values (?, ?, ?, ?, ?, ?, ?, ?)"
 	for _, event := range r.buffTestEvents {
 		_, err := r.db.Exec(
 			insertStatement,
@@ -215,7 +207,6 @@ func (r *RDBMS) flushTestEvents() error {
 			TestEventTestName(event),
 			TestEventTestStepLabel(event),
 			TestEventName(event),
-			TestEventTargetName(event),
 			TestEventTargetID(event),
 			TestEventPayload(event),
 			TestEventEmitTime(event))
@@ -244,7 +235,7 @@ func (r *RDBMS) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, e
 	defer r.unlockTx()
 
 	baseQuery := bytes.Buffer{}
-	baseQuery.WriteString("select event_id, job_id, run_id, test_name, test_step_label, event_name, target_name, target_id, payload, emit_time from test_events")
+	baseQuery.WriteString("select event_id, job_id, run_id, test_name, test_step_label, event_name, target_id, payload, emit_time from test_events")
 	query, fields, err := buildTestEventQuery(baseQuery, eventQuery)
 	if err != nil {
 		return nil, fmt.Errorf("could not execute select query for test events: %v", err)
@@ -257,9 +248,8 @@ func (r *RDBMS) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, e
 		return nil, err
 	}
 
-	// TargetName and TargetID might be null, so a type which supports null should be used with Scan
+	// TargetID might be null, so a type which supports null should be used with Scan
 	var (
-		targetName sql.NullString
 		targetID   sql.NullString
 		payload    sql.NullString
 	)
@@ -283,7 +273,6 @@ func (r *RDBMS) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, e
 			&header.TestName,
 			&header.TestStepLabel,
 			&data.EventName,
-			&targetName,
 			&targetID,
 			&payload,
 			&event.EmitTime,
@@ -291,8 +280,8 @@ func (r *RDBMS) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, e
 		if err != nil {
 			return nil, fmt.Errorf("could not read results from db: %v", err)
 		}
-		if targetName.Valid || targetID.Valid {
-			t := target.Target{Name: targetName.String, ID: targetID.String}
+		if targetID.Valid {
+			t := target.Target{ID: targetID.String}
 			data.Target = &t
 		}
 
