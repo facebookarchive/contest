@@ -97,7 +97,7 @@ processing:
 			wg.Add(1)
 			go func(t *target.Target) {
 				defer wg.Done()
-				log.Infof("Waiting %v for target %s", sleep, t.Name)
+				log.Infof("Waiting %v for target %s", sleep, t.ID)
 				select {
 				case <-cancel:
 					log.Infof("Returning because cancellation is requested")

@@ -35,7 +35,7 @@ func (jr *JobRunner) buildTargetStatuses(coordinates job.TestStepCoordinates, ta
 		// Update the TargetStatus object associated to the Target. If there is no TargetStatus associated yet, append it
 		var targetStatus *job.TargetStatus
 		for index, candidateStatus := range targetStatuses {
-			if *candidateStatus.Target == *testEvent.Data.Target {
+			if candidateStatus.Target.ID == testEvent.Data.Target.ID {
 				targetStatus = &targetStatuses[index]
 				break
 			}
@@ -170,21 +170,21 @@ func (jr *JobRunner) buildTestStatus(coordinates job.TestCoordinates, currentJob
 	var targetStatuses []job.TargetStatus
 
 	// Keep track of the last TargetStatus seen for each Target
-	targetMap := make(map[target.Target]job.TargetStatus)
+	targetMap := make(map[string]job.TargetStatus)
 	for _, testStepStatus := range testStatus.TestStepStatuses {
 		for _, targetStatus := range testStepStatus.TargetStatuses {
-			targetMap[*targetStatus.Target] = targetStatus
+			targetMap[targetStatus.Target.ID] = targetStatus
 		}
 	}
 
 	for _, targetEvent := range targetAcquiredEvents {
 		t := *targetEvent.Data.Target
-		if _, ok := targetMap[t]; !ok {
+		if _, ok := targetMap[t.ID]; !ok {
 			// This Target is not associated to any TargetStatus, we assume it has not
 			// started the test
-			targetMap[t] = job.TargetStatus{}
+			targetMap[t.ID] = job.TargetStatus{}
 		}
-		targetStatuses = append(targetStatuses, targetMap[t])
+		targetStatuses = append(targetStatuses, targetMap[t.ID])
 	}
 
 	testStatus.TargetStatuses = targetStatuses

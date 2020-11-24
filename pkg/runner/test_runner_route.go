@@ -66,7 +66,7 @@ func (r *stepRouter) routeIn(terminate <-chan struct{}) (int, error) {
 	targets := list.New()
 
 	// `ingressTarget` is used to keep track of ingress times of a target into a test step
-	ingressTarget := make(map[*target.Target]time.Time)
+	ingressTarget := make(map[string]time.Time)
 
 	// Channel that the injection goroutine uses to communicate back to `routeIn` the results
 	// of asynchronous injection
@@ -126,7 +126,7 @@ func (r *stepRouter) routeIn(terminate <-chan struct{}) (int, error) {
 		}
 
 		t := targets.Back().Value.(*target.Target)
-		ingressTarget[t] = time.Now()
+		ingressTarget[t.ID] = time.Now()
 		targets.Remove(targets.Back())
 		log.Debugf("writing target %v into test step", t)
 		routeInProgress = true
@@ -190,7 +190,7 @@ func (r *stepRouter) routeOut(terminate <-chan struct{}) (int, error) {
 
 	log.Debugf("initializing routeOut for %s", stepLabel)
 	// `egressTarget` is used to keep track of egress times of a target from a test step
-	egressTarget := make(map[*target.Target]time.Time)
+	egressTarget := make(map[string]time.Time)
 
 	for {
 		select {
@@ -203,7 +203,7 @@ func (r *stepRouter) routeOut(terminate <-chan struct{}) (int, error) {
 				break
 			}
 
-			if _, targetPresent := egressTarget[t]; targetPresent {
+			if _, targetPresent := egressTarget[t.ID]; targetPresent {
 				err = fmt.Errorf("step %s returned target %+v multiple times", r.bundle.TestStepLabel, t)
 				break
 			}
@@ -212,7 +212,7 @@ func (r *stepRouter) routeOut(terminate <-chan struct{}) (int, error) {
 				log.Warningf("could not emit out event for target %v: %v", *t, err)
 			}
 			// Register egress time and forward target to the next routing block
-			egressTarget[t] = time.Now()
+			egressTarget[t.ID] = time.Now()
 			if err := targetWriter.writeTimeout(terminate, r.routingChannels.routeOut, t, r.timeouts.MessageTimeout); err != nil {
 				log.Panicf("could not forward target to the test runner: %+v", err)
 			}
@@ -223,13 +223,13 @@ func (r *stepRouter) routeOut(terminate <-chan struct{}) (int, error) {
 				break
 			}
 
-			if _, targetPresent := egressTarget[targetError.Target]; targetPresent {
+			if _, targetPresent := egressTarget[targetError.Target.ID]; targetPresent {
 				err = fmt.Errorf("step %s returned target %+v multiple times", r.bundle.TestStepLabel, targetError.Target)
 			} else {
 				if err := r.emitOutEvent(targetError.Target, targetError.Err); err != nil {
 					log.Warningf("could not emit err event for target: %v", *targetError.Target)
 				}
-				egressTarget[targetError.Target] = time.Now()
+				egressTarget[targetError.Target.ID] = time.Now()
 				if err := targetWriter.writeTargetError(terminate, r.routingChannels.targetErr, targetError, r.timeouts.MessageTimeout); err != nil {
 					log.Panicf("could not forward target (%+v) to the test runner: %v", targetError.Target, err)
 				}

@@ -32,7 +32,7 @@ moment).
 
 ## Quick Start
 
-We offer a few Docker files to help setup ConTest. The fastest way to 
+We offer a few Docker files to help setup ConTest. The fastest way to
 have a ConTest instance up and running is to bring up the server and MySQL
 containers via the docker-compose configuration: just run
 `docker-compose up --build` from the root of the source tree.
@@ -348,7 +348,7 @@ commented for clarity:
             // on the actual plugin.
             "TargetManagerAcquireParameters": {
                 // the URI for the CSV file that contains a list of targets in
-                the format "ip,hostname". This is intentionally very simple.
+                the format "id,fqdn,ipv4,ipv6". This is intentionally very simple.
                 "FileURI": "hosts02.csv",
                 // The minimum number of targets needed for the test. If we
                 // don't get at least this number of devices, the job will fail.
@@ -519,20 +519,20 @@ Every job is associated to a list of targets, and what actions (and how) are
 executed on each target depends on the plugin.
 
 Targets are currently defined with three properties:
-* **Name**: a mnemonic name associated to the target. It could be its DNS short or
-  fully-qualified name, or any other name that can be associated to it.
-* **ID**: an identifier for the target. It should be unique, however this is not
-  enforced by the framework. For example, an identifier could be the target's
-  asset ID, a hardware fingerprint, but again, it can really be anything that
-  makes sense to the user.
-* **FQDN**: this field can be used to attribute a fully-qualified domain name to
-  the target. The presence and the well-formedness of this field are not
-  checked nor enforced.
+* **ID**: primary identifier for the target. Must be unique within the scope of this ConTest instance.
+  Common choices are IDs from inventory management systems, DNS short or full names,
+  or textual representations of ipv4/ipv6 addresses. Storage plugins might enforce uniqueness.
+* **FQDN**: DNS-resolvable name of the target, ideally a FQDN. Plugins can use
+  this field to contact the test target.
+* **PrimaryIPv6**/**PrimaryIPv4**: Raw IP address used by plugins to contact the test target.
+
+Only **ID** is required, but it is recommended to set as many fields as possible
+for maximum plugin compatibility. Note that no validation is done on FQDNs or IP addresses.
 
 The `Target` structure is defined in [pkg/target](pkg/target/target.go). Plugin
 configurations can access the specific fields via Go templates, as explained in
 more detail in the [Templates in test step arguments](#templates-in-plugin-configurations)
-section. For example, to print a target's name and ID with the `cmd` plugin:
+section. For example, to print a target's ID and FQDN with the `cmd` plugin:
 
 ```
 {
@@ -542,7 +542,7 @@ section. For example, to print a target's name and ID with the `cmd` plugin:
             "label": "some label",
             "parameters": {
                 "executable": ["echo"],
-                "args": ["Name is {{ .Name }} and ID is {{ .ID }}"]
+                "args": ["ID is {{ .ID }} and FQDN is {{ .FQDN }}"]
             }
         }
     ]
@@ -575,7 +575,7 @@ plugin executes a command on the ConTest server, not on the targets.
         "label": "some label",
         "parameters: {
             "executable": ["echo"],
-            "args": ["My name is {{ .Name }}"]
+            "args": ["My ID is {{ .ID }}"]
         }"
     }
 ...
@@ -592,9 +592,9 @@ Let's dissect the above.
 * the "args" parameter is the list of arguments to pass to the program execution
 
 Note that "args" contains only one argument, and this argument uses the Go
-templating syntax. `.Name` expands to the value contained in `Target.Name`,
+templating syntax. `.ID` expands to the value contained in `Target.ID`,
 since the target is the root object passed to the template. This means that you
-can also use `.ID` or `.FQDN` if you want to access other members of the target
+can also use `.FQDN` or `.PrimaryIPv6` if you want to access other members of the target
 structure.
 After the name expansion is done, the resulting string will be unique per
 target, and ConTest will execute the "echo" command with this customized output
@@ -612,15 +612,15 @@ write:
         "label": "some label",
         "parameters: {
             "executable": ["echo"],
-            "args": ["The first four letters of my name are {{ slice .Name 0 4 }}"]
+            "args": ["The first four letters of my FQDN are {{ slice .FQDN 0 4 }}"]
         }"
     }
 ...
 ```
 
 ConTest defines additional built-in functions in
-[pkg/test](pkg/test/functions.go). For example, to print the target name after
-capitalzing its letter, one can write:
+[pkg/test](pkg/test/functions.go). For example, to print the target FQDN after
+capitalzing its letters, one can write:
 
 ```
 ...
@@ -629,7 +629,7 @@ capitalzing its letter, one can write:
         "label": "some label",
         "parameters: {
             "executable": ["echo"],
-            "args": ["My capitalized name is {{ ToUpper .Name }}"]
+            "args": ["My capitalized name is {{ ToUpper .FQDN }}"]
         }"
     }
 ...
@@ -646,7 +646,7 @@ write a custom template function to get this information. There is no limitation
 on how to implement it: it can be simple string substitution, or it can be
 retrieved from a backend service requiring authentication.
 For example, imagine that we wrote a custom template function called `jumphost`,
-that receives the target name as input and returns the jump host (or an error),
+that receives the target fqdn as input and returns the jump host (or an error),
 we can use it as follows. Note that the "sshcmd" plugin runs a command on a
 remote host.
 
@@ -657,7 +657,7 @@ remote host.
         "label": "some label...",
         "parameters: {
             "user": "contest",
-            "host": "{{ jumphost .Name }}",
+            "host": "{{ jumphost .FQDN }}",
             "private_key_file": "/path/to/id_dsa",
             "executable": ["echo"],
             "args": ["ConTest was here"]

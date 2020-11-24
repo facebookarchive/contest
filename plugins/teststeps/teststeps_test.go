@@ -54,7 +54,7 @@ func TestForEachTargetOneTarget(t *testing.T) {
 		return nil
 	}
 	go func() {
-		d.inCh <- &target.Target{Name: "target001"}
+		d.inCh <- &target.Target{ID: "target001"}
 		// signal end of input
 		d.inCh <- nil
 	}()
@@ -82,7 +82,7 @@ func TestForEachTargetOneTargetAllFail(t *testing.T) {
 		return fmt.Errorf("error with target %+v", t)
 	}
 	go func() {
-		d.inCh <- &target.Target{Name: "target001"}
+		d.inCh <- &target.Target{ID: "target001"}
 		// signal end of input
 		d.inCh <- nil
 	}()
@@ -111,7 +111,7 @@ func TestForEachTargetTenTargets(t *testing.T) {
 	}
 	go func() {
 		for i := 0; i < 10; i++ {
-			d.inCh <- &target.Target{Name: fmt.Sprintf("target%00d", i)}
+			d.inCh <- &target.Target{ID: fmt.Sprintf("target%00d", i)}
 		}
 		// signal end of input
 		d.inCh <- nil
@@ -142,7 +142,7 @@ func TestForEachTargetTenTargetsAllFail(t *testing.T) {
 	}
 	go func() {
 		for i := 0; i < 10; i++ {
-			d.inCh <- &target.Target{Name: fmt.Sprintf("target%00d", i)}
+			d.inCh <- &target.Target{ID: fmt.Sprintf("target%00d", i)}
 		}
 		// signal end of input
 		d.inCh <- nil
@@ -171,14 +171,14 @@ func TestForEachTargetTenTargetsOneFails(t *testing.T) {
 	failingTarget := "target004"
 	fn := func(cancel, pause <-chan struct{}, tgt *target.Target) error {
 		log.Printf("Handling target %+v", tgt)
-		if tgt.Name == failingTarget {
+		if tgt.ID == failingTarget {
 			return fmt.Errorf("error with target %+v", tgt)
 		}
 		return nil
 	}
 	go func() {
 		for i := 0; i < 10; i++ {
-			d.inCh <- &target.Target{Name: fmt.Sprintf("target%03d", i)}
+			d.inCh <- &target.Target{ID: fmt.Sprintf("target%03d", i)}
 		}
 		// signal end of input
 		d.inCh <- nil
@@ -189,13 +189,13 @@ func TestForEachTargetTenTargetsOneFails(t *testing.T) {
 			case <-d.done:
 				return
 			case tgt := <-d.outCh:
-				if tgt.Name == failingTarget {
+				if tgt.ID == failingTarget {
 					t.Errorf("Step for target %+v expected to fail but completed successfully instead", tgt)
 				} else {
 					log.Printf("Step for target %+v completed as expected", tgt)
 				}
 			case err := <-d.errCh:
-				if err.Target.Name == failingTarget {
+				if err.Target.ID == failingTarget {
 					log.Printf("Step for target failed as expected: %v", err)
 				} else {
 					t.Errorf("Expected no error but got one: %v", err)
@@ -233,7 +233,7 @@ func TestForEachTargetTenTargetsParallelism(t *testing.T) {
 	numTargets := 10
 	go func() {
 		for i := 0; i < numTargets; i++ {
-			d.inCh <- &target.Target{Name: fmt.Sprintf("target%03d", i)}
+			d.inCh <- &target.Target{ID: fmt.Sprintf("target%03d", i)}
 		}
 		// signal end of input
 		d.inCh <- nil
@@ -310,7 +310,7 @@ func TestForEachTargetCancelSignalPropagation(t *testing.T) {
 
 	go func() {
 		for i := 0; i < numTargets; i++ {
-			d.inCh <- &target.Target{Name: fmt.Sprintf("target%03d", i)}
+			d.inCh <- &target.Target{ID: fmt.Sprintf("target%03d", i)}
 		}
 		d.inCh <- nil
 	}()
@@ -351,7 +351,7 @@ func TestForEachTargetCancelBeforeInputChannelClosed(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		for i := 0; i < numTargets; i++ {
-			d.inCh <- &target.Target{Name: fmt.Sprintf("target%03d", i)}
+			d.inCh <- &target.Target{ID: fmt.Sprintf("target%03d", i)}
 		}
 		wg.Wait() //Don't close the input channel until ForEachTarget returned
 	}()

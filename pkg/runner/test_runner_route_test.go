@@ -122,9 +122,9 @@ func (suite *TestRunnerSuite) TestRouteInRoutesAllTargets() {
 
 	// test that all targets are routed to step input channel without delay, in order
 	targets := []*target.Target{
-		{Name: "host001", ID: "001", FQDN: "host001.facebook.com"},
-		{Name: "host002", ID: "002", FQDN: "host002.facebook.com"},
-		{Name: "host003", ID: "003", FQDN: "host003.facebook.com"},
+		{ID: "001", FQDN: "host001.facebook.com"},
+		{ID: "002", FQDN: "host002.facebook.com"},
+		{ID: "003", FQDN: "host003.facebook.com"},
 	}
 
 	routeInResult := make(chan error)
@@ -205,9 +205,9 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllSuccessfulTargets() {
 	// test that all targets are routed in output from a test step are received by
 	// the routing logic and forwarded to the next routing block
 	targets := []*target.Target{
-		&target.Target{Name: "host001", ID: "001", FQDN: "host001.facebook.com"},
-		&target.Target{Name: "host002", ID: "002", FQDN: "host002.facebook.com"},
-		&target.Target{Name: "host003", ID: "003", FQDN: "host003.facebook.com"},
+		{ID: "001", FQDN: "host001.facebook.com"},
+		{ID: "002", FQDN: "host002.facebook.com"},
+		{ID: "003", FQDN: "host003.facebook.com"},
 	}
 
 	terminate := make(chan struct{})
@@ -263,7 +263,7 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllSuccessfulTargets() {
 					routeResult <- fmt.Errorf("more targets returned than injected")
 					return
 				}
-				if t.Name != targets[numTargets].Name || t.ID != targets[numTargets].ID {
+				if t.ID != targets[numTargets].ID {
 					routeResult <- fmt.Errorf("targets returned in wrong order")
 					return
 				}
@@ -301,9 +301,9 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllFailedTargets() {
 	// test that all targets are routed in output from a test step are received by
 	// the routing logic and forwarded to the next routing block
 	targets := []*target.Target{
-		&target.Target{Name: "host001", ID: "001", FQDN: "host001.facebook.com"},
-		&target.Target{Name: "host002", ID: "002", FQDN: "host002.facebook.com"},
-		&target.Target{Name: "host003", ID: "003", FQDN: "host003.facebook.com"},
+		{ID: "001", FQDN: "host001.facebook.com"},
+		{ID: "002", FQDN: "host002.facebook.com"},
+		{ID: "003", FQDN: "host003.facebook.com"},
 	}
 
 	terminate := make(chan struct{})
@@ -353,7 +353,7 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllFailedTargets() {
 					routeResult <- fmt.Errorf("more targets returned than injected")
 					return
 				}
-				if targetErr.Target.Name != targets[numTargets].Name || targetErr.Target.ID != targets[numTargets].ID {
+				if targetErr.Target.ID != targets[numTargets].ID {
 					routeResult <- fmt.Errorf("targets returned in wrong order")
 					return
 				}

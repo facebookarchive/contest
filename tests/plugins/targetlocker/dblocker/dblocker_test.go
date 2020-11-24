@@ -22,8 +22,8 @@ import (
 var (
 	jobID = types.JobID(123)
 
-	targetOne  = target.Target{Name: "target001", ID: "001"}
-	targetTwo  = target.Target{Name: "target002", ID: "002"}
+	targetOne  = target.Target{ID: "001"}
+	targetTwo  = target.Target{ID: "002"}
 	oneTarget  = []*target.Target{&targetOne}
 	twoTargets = []*target.Target{&targetOne, &targetTwo}
 
@@ -73,7 +73,7 @@ func TestLockInvalidJobIDAndOneTarget(t *testing.T) {
 
 func TestLockValidJobIDAndEmptyIDTarget(t *testing.T) {
 	tl.ResetAllLocks()
-	assert.Error(t, tl.Lock(jobID, []*target.Target{&target.Target{Name: "test", ID: ""}}))
+	assert.Error(t, tl.Lock(jobID, []*target.Target{&target.Target{ID: ""}}))
 }
 
 func TestLockValidJobIDAndOneTarget(t *testing.T) {

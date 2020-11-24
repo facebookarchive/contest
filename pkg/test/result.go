@@ -20,7 +20,7 @@ func GetResult(targets map[*target.Target]error, ignore []*target.Target, expres
 		var skip bool
 		for _, ignoreTarget := range ignore {
 			skip = false
-			if *t == *ignoreTarget {
+			if t.ID == ignoreTarget.ID {
 				skip = true
 				break
 			}
