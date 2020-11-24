@@ -86,7 +86,7 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 		cmd.Dir = pwd
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
-		if pwd != "" {
+		if cmd.Dir != "" {
 			log.Printf("Running command '%+v' in directory '%+v'", cmd, cmd.Dir)
 		} else {
 			log.Printf("Running command '%+v'", cmd)
@@ -153,11 +153,7 @@ func (ts *Cmd) validateAndPopulate(params test.TestStepParameters) error {
 		ts.executable = p
 	}
 	ts.args = params.Get("args")
-	if !params.GetOne("dir").IsEmpty() {
-		ts.dir = params.GetOne("dir")
-	} else {
-		ts.dir = test.NewParam("")
-	}
+	ts.dir = params.GetOne("dir")
 	return nil
 }
 
