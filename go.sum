@@ -138,6 +138,8 @@ github.com/insomniacslk/xjson v0.0.0-20190510162823-f016a4991179 h1:/chUAu1Yt4ip
 github.com/insomniacslk/xjson v0.0.0-20190510162823-f016a4991179/go.mod h1:G8c61yEjNgzQNF0lOvul8ls5IHE/MxbGx7M98ADBVEA=
 github.com/insomniacslk/xjson v0.0.0-20210105111737-0de92d6adda5 h1:SwY4nNgXJQAj1AyWTHVp1DYt+qe0rZs33gNlCDLiLz0=
 github.com/insomniacslk/xjson v0.0.0-20210105111737-0de92d6adda5/go.mod h1:G8c61yEjNgzQNF0lOvul8ls5IHE/MxbGx7M98ADBVEA=
+github.com/insomniacslk/xjson v0.0.0-20210106140854-1589ccfd1a1a h1:SnoF1lbXJyorSE5e8thJwM4OSsmhx2aEOSb+tsH3aho=
+github.com/insomniacslk/xjson v0.0.0-20210106140854-1589ccfd1a1a/go.mod h1:G8c61yEjNgzQNF0lOvul8ls5IHE/MxbGx7M98ADBVEA=
 github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af/go.mod h1:Nht3zPeWKUH0NzdCt2Blrr5ys8VGpn0CEB0cQHVjt7k=
 github.com/jonboulle/clockwork v0.1.0/go.mod h1:Ii8DK3G1RaLaWxj9trq07+26W01tbo22gdxWY5EU2bo=
 github.com/jpillora/backoff v1.0.0/go.mod h1:J/6gKK9jxlEcS3zixgDgUAsiuZ7yrSoa/FX5e0EB2j4=
