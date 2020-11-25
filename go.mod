@@ -7,7 +7,7 @@ require (
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/insomniacslk/termhook v0.0.0-20190716141402-454368e885ec
-	github.com/insomniacslk/xjson v0.0.0-20210105111737-0de92d6adda5
+	github.com/insomniacslk/xjson v0.0.0-20210106140854-1589ccfd1a1a
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 	github.com/kr/pretty v0.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.6 // indirect

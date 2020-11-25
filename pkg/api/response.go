@@ -8,6 +8,8 @@ package api
 import (
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/types"
+
+	"github.com/insomniacslk/xjson"
 )
 
 // ResponseType defines the storage type of a response type.
@@ -92,4 +94,42 @@ type ResponseDataVersion struct {
 // Type returns the response type.
 func (r ResponseDataVersion) Type() ResponseType {
 	return ResponseTypeVersion
+}
+
+// Typesafe versions of Response, to replace the untyped Response in the future
+// already used by client Transport interface
+
+// StatusResponse is a typesafe version of Response with a Status payload
+type StatusResponse struct {
+	ServerID string
+	Data     ResponseDataStatus
+	Err      *xjson.Error
+}
+
+// StartResponse is a typesafe version of Response with a Status payload
+type StartResponse struct {
+	ServerID string
+	Data     ResponseDataStart
+	Err      *xjson.Error
+}
+
+// StopResponse is a typesafe version of Response with a Status payload
+type StopResponse struct {
+	ServerID string
+	Data     ResponseDataStop
+	Err      *xjson.Error
+}
+
+// RetryResponse is a typesafe version of Response with a Status payload
+type RetryResponse struct {
+	ServerID string
+	Data     ResponseDataRetry
+	Err      *xjson.Error
+}
+
+// VersionResponse is a typesafe version of Response with a Status payload
+type VersionResponse struct {
+	ServerID string
+	Data     ResponseDataVersion
+	Err      *xjson.Error
 }

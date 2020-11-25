@@ -417,7 +417,7 @@ func (jm *JobManager) emitErrEvent(jobID types.JobID, eventName event.Name, err 
 	)
 	if err != nil {
 		log.Errorf(err.Error())
-		payload := ErrorEventPayload{Err: xjson.NewError(err)}
+		payload := ErrorEventPayload{Err: *xjson.NewError(err)}
 		payloadJSON, err := json.Marshal(payload)
 		if err != nil {
 			log.Warningf("Could not serialize payload for event %s: %v", eventName, err)
