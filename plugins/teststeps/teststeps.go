@@ -6,6 +6,7 @@
 package teststeps
 
 import (
+	"context"
 	"sync/atomic"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
@@ -119,4 +120,39 @@ func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.Tes
 			reportResults = false
 		}
 	}
+}
+
+// PerTargetFunc is a function type that is called on each target by the
+// ForEachNonResumingTarget function below.
+type NonResumingPerTargetFunc func(ctx context.Context, target *target.Target) error
+
+// ForEachNonResumingTarget is a facility provided to simplify plugin implementations for non-resuming plugins.
+// This function wraps the logic that handles target routing through the in/out/err
+// test step channels, and also handles cancellation and pausing.
+// The user of this function has to pass the cancel, pause, and test step
+// channels as received in the Run method of the plugin, and additionally
+// provide an implementation of a per-target function that will be called on
+// each target. The implementation of the per-target function is responsible for
+// handling internal cancellation and pausing.
+func ForEachNonResumingTarget(pluginName string, cancel, pause <-chan struct{}, ch test.TestStepChannels, f NonResumingPerTargetFunc) error {
+	ctx, cancelFunc := newTerminateContext(cancel, pause)
+	defer cancelFunc()
+
+	return ForEachTarget(pluginName, cancel, pause, ch, func(cancel, pause <-chan struct{}, target *target.Target) error {
+		return f(ctx, target)
+	})
+}
+
+func newTerminateContext(cancel, pause <-chan struct{}) (context.Context, context.CancelFunc) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	go func() {
+		select {
+		case <-cancel:
+			cancelFunc()
+		case <-pause:
+			cancelFunc()
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, cancelFunc
 }

@@ -66,9 +66,7 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 	if err := ts.validateAndPopulate(params); err != nil {
 		return err
 	}
-	f := func(cancel, pause <-chan struct{}, target *target.Target) error {
-		ctx, ctxCancel := context.WithCancel(context.Background())
-		defer ctxCancel()
+	f := func(ctx context.Context, target *target.Target) error {
 		// expand args
 		var args []string
 		for _, arg := range ts.args {
@@ -88,47 +86,37 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 			log.Printf("Running command '%+v'", cmd)
 		}
 
-		errCh := make(chan error)
-		go func() {
-			// Emit EventCmdStart
-			payload, err := json.Marshal(eventCmdStartPayload{Path: cmd.Path, Args: cmd.Args, Dir: cmd.Dir})
-			if err != nil {
-				log.Warningf("Cannot encode payload for EventCmdStart: %v", err)
-			} else {
-				rm := json.RawMessage(payload)
-				evData := testevent.Data{
-					EventName: EventCmdStart,
-					Target:    target,
-					Payload:   &rm,
-				}
-				if err := ev.Emit(evData); err != nil {
-					log.Warningf("Cannot emit event EventCmdStart: %v", err)
-				}
-			}
-			// Run the command
-			errCh <- cmd.Run()
-			// Emit EventCmdEnd
+		// Emit EventCmdStart
+		payload, err := json.Marshal(eventCmdStartPayload{Path: cmd.Path, Args: cmd.Args, Dir: cmd.Dir})
+		if err != nil {
+			log.Warningf("Cannot encode payload for EventCmdStart: %v", err)
+		} else {
+			rm := json.RawMessage(payload)
 			evData := testevent.Data{
-				EventName: EventCmdEnd,
+				EventName: EventCmdStart,
 				Target:    target,
-				Payload:   nil,
+				Payload:   &rm,
 			}
 			if err := ev.Emit(evData); err != nil {
-				log.Warningf("Cannot emit event EventCmdEnd: %v", err)
+				log.Warningf("Cannot emit event EventCmdStart: %v", err)
 			}
-			log.Infof("Stdout of command '%s' with args '%s' is '%s'", cmd.Path, cmd.Args, stdout.Bytes())
-		}()
-		select {
-		case err := <-errCh:
-			log.Warningf("Stderr of command '%+v' is: '%s'", cmd, stderr.Bytes())
-			return err
-		case <-cancel:
-			return nil
-		case <-pause:
-			return nil
 		}
+		// Run the command
+		resultErr := cmd.Run()
+
+		// Emit EventCmdEnd
+		evData := testevent.Data{
+			EventName: EventCmdEnd,
+			Target:    target,
+			Payload:   nil,
+		}
+		if err := ev.Emit(evData); err != nil {
+			log.Warningf("Cannot emit event EventCmdEnd: %v", err)
+		}
+		log.Infof("Stdout of command '%s' with args '%s' is '%s'", cmd.Path, cmd.Args, stdout.Bytes())
+		return resultErr
 	}
-	return teststeps.ForEachTarget(Name, cancel, pause, ch, f)
+	return teststeps.ForEachNonResumingTarget(Name, cancel, pause, ch, f)
 }
 
 func (ts *Cmd) validateAndPopulate(params test.TestStepParameters) error {
