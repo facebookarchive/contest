@@ -180,7 +180,7 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 		session.Stdout, session.Stderr = &stdout, &stderr
 		cmd := shellquote.Join(append([]string{executable}, args...)...)
 		log.Printf("Running remote SSH command on %s: '%v'", addr, cmd)
-		errCh := make(chan error)
+		errCh := make(chan error, 1)
 		go func() {
 			innerErr := session.Run(cmd)
 			errCh <- innerErr
