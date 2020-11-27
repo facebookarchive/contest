@@ -7,11 +7,9 @@ package ocp
 
 import (
 	"encoding/json"
-	"errors"
 	"io/ioutil"
 )
 
-var name = "OCP"
 var parameterFile = "parameters.json"
 
 type fqdnParameter struct {
@@ -29,13 +27,7 @@ type contestParameter struct {
 }
 
 var userFunctions = map[string]interface{}{
-	"getPrivateKeyFile": func(a ...string) (string, error) {
-		if len(a) == 0 {
-			return "", errors.New("hostparam: no arg specified")
-		}
-		if len(a) > 1 {
-			return "", errors.New("hostparam: too many parameters")
-		}
+	"getPrivateKeyFile": func(a string) (string, error) {
 		fb, err := ioutil.ReadFile(parameterFile)
 		if err != nil {
 			return "", err
@@ -46,20 +38,14 @@ var userFunctions = map[string]interface{}{
 			return "", err
 		}
 		for _, value := range parameter {
-			if value.ID == a[0] {
+			if value.ID == a {
 				return value.Parameter.PrivateKeyFile, nil
 			}
 		}
 
 		return "", nil
 	},
-	"getBmcHost": func(a ...string) (string, error) {
-		if len(a) == 0 {
-			return "", errors.New("hostparam: no arg specified")
-		}
-		if len(a) > 1 {
-			return "", errors.New("hostparam: too many parameters")
-		}
+	"getBmcHost": func(a string) (string, error) {
 		fb, err := ioutil.ReadFile(parameterFile)
 		if err != nil {
 			return "", err
@@ -70,19 +56,13 @@ var userFunctions = map[string]interface{}{
 			return "", err
 		}
 		for _, value := range parameter {
-			if value.ID == a[0] {
+			if value.ID == a {
 				return value.Parameter.BmcHost, nil
 			}
 		}
 		return "", nil
 	},
-	"getBmcUser": func(a ...string) (string, error) {
-		if len(a) == 0 {
-			return "", errors.New("hostparam: no arg specified")
-		}
-		if len(a) > 1 {
-			return "", errors.New("hostparam: too many parameters")
-		}
+	"getBmcUser": func(a string) (string, error) {
 		fb, err := ioutil.ReadFile(parameterFile)
 		if err != nil {
 			return "", err
@@ -93,19 +73,13 @@ var userFunctions = map[string]interface{}{
 			return "", err
 		}
 		for _, value := range parameter {
-			if value.ID == a[0] {
+			if value.ID == a {
 				return value.Parameter.BmcUser, nil
 			}
 		}
 		return "", nil
 	},
-	"getBmcPassword": func(a ...string) (string, error) {
-		if len(a) == 0 {
-			return "", errors.New("hostparam: no arg specified")
-		}
-		if len(a) > 1 {
-			return "", errors.New("hostparam: too many parameters")
-		}
+	"getBmcPassword": func(a string) (string, error) {
 		fb, err := ioutil.ReadFile(parameterFile)
 		if err != nil {
 			return "", err
@@ -116,19 +90,13 @@ var userFunctions = map[string]interface{}{
 			return "", err
 		}
 		for _, value := range parameter {
-			if value.ID == a[0] {
+			if value.ID == a {
 				return value.Parameter.BmcPassword, nil
 			}
 		}
 		return "", nil
 	},
-	"getSlotToTest": func(a ...string) (string, error) {
-		if len(a) == 0 {
-			return "", errors.New("hostparam: no arg specified")
-		}
-		if len(a) > 1 {
-			return "", errors.New("hostparam: too many parameters")
-		}
+	"getSlotToTest": func(a string) (string, error) {
 		fb, err := ioutil.ReadFile(parameterFile)
 		if err != nil {
 			return "", err
@@ -139,19 +107,13 @@ var userFunctions = map[string]interface{}{
 			return "", err
 		}
 		for _, value := range parameter {
-			if value.ID == a[0] {
+			if value.ID == a {
 				return value.Parameter.SlotToTest, nil
 			}
 		}
 		return "", nil
 	},
-	"getGithubRepo": func(a ...string) (string, error) {
-		if len(a) == 0 {
-			return "", errors.New("hostparam: no arg specified")
-		}
-		if len(a) > 1 {
-			return "", errors.New("hostparam: too many parameters")
-		}
+	"getGithubRepo": func(a string) (string, error) {
 		fb, err := ioutil.ReadFile(parameterFile)
 		if err != nil {
 			return "", err
@@ -162,19 +124,13 @@ var userFunctions = map[string]interface{}{
 			return "", err
 		}
 		for _, value := range parameter {
-			if value.ID == a[0] {
+			if value.ID == a {
 				return value.Parameter.GithubRepo, nil
 			}
 		}
 		return "", nil
 	},
-	"getTty": func(a ...string) (string, error) {
-		if len(a) == 0 {
-			return "", errors.New("hostparam: no arg specified")
-		}
-		if len(a) > 1 {
-			return "", errors.New("hostparam: too many parameters")
-		}
+	"getTty": func(a string) (string, error) {
 		fb, err := ioutil.ReadFile(parameterFile)
 		if err != nil {
 			return "", err
@@ -185,7 +141,7 @@ var userFunctions = map[string]interface{}{
 			return "", err
 		}
 		for _, value := range parameter {
-			if value.ID == a[0] {
+			if value.ID == a {
 				switch value.Parameter.SlotToTest {
 				case "slot1":
 					return "/dev/ttyS1", nil
@@ -200,11 +156,6 @@ var userFunctions = map[string]interface{}{
 		}
 		return "", nil
 	},
-}
-
-// Name - Return the Name of the UDFs
-func Name() string {
-	return name
 }
 
 // Load - Return the user-defined functions
