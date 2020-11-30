@@ -70,6 +70,9 @@ func (ts *TerminalExpect) Run(cancel, pause <-chan struct{}, ch test.TestStepCha
 		errCh := make(chan error)
 		go func() {
 			errCh <- hook.Run()
+			if closeErr := hook.Close(); closeErr != nil {
+				log.Errorf("Failed to close hook, err: %v", closeErr)
+			}
 		}()
 		select {
 		case err := <-errCh:
