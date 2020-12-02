@@ -3,10 +3,12 @@ Runs: 3
 RunInterval: 3s
 Tags: [test, csv]
 TestDescriptors:
-    - TargetManagerName: csvtargetmanager
+    - TargetManagerName: csvfiletargetmanager
       TargetManagerAcquireParameters:
         FileURI: hosts.csv
         Shuffle: true
+        MinNumberDevices: 1
+        MaxNumberDevices: 1
       TargetManagerReleaseParameters:
       TestFetcherName: literal
       TestFetcherFetchParameters:
@@ -17,6 +19,8 @@ TestDescriptors:
                 parameters:
                     executable: [echo]
                     args: ["Title={{ Title .Name }}, ToUpper={{ ToUpper .Name }}"]
+                    emit_stdout: [true]
+                    emit_stderr: [true]
 Reporting:
     RunReporters:
         - name: TargetSuccess

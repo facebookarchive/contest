@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
@@ -31,14 +32,18 @@ var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
 // event names for this plugin.
 const (
-	EventCmdStart = event.Name("CmdStart")
-	EventCmdEnd   = event.Name("CmdEnd")
+	EventCmdStart  = event.Name("CmdStart")
+	EventCmdEnd    = event.Name("CmdEnd")
+	EventCmdStdout = event.Name("CmdStdout")
+	EventCmdStderr = event.Name("CmdStderr")
 )
 
 // Events defines the events that a TestStep is allow to emit
 var Events = []event.Name{
 	EventCmdStart,
 	EventCmdEnd,
+	EventCmdStdout,
+	EventCmdStderr,
 }
 
 // eventCmdStartPayload is the payload of an EventStartCmd event, and it
@@ -49,16 +54,42 @@ type eventCmdStartPayload struct {
 	Dir  string
 }
 
+type eventCmdStdoutPayload struct {
+	Msg string
+}
+
+type eventCmdStderrPayload struct {
+	Msg string
+}
+
 // Cmd is used to run arbitrary commands as test steps.
 type Cmd struct {
-	executable string
-	args       []test.Param
-	dir        *test.Param
+	executable             string
+	args                   []test.Param
+	dir                    *test.Param
+	emitStdout, emitStderr bool
 }
 
 // Name returns the plugin name.
 func (ts Cmd) Name() string {
 	return Name
+}
+
+func emitEvent(name event.Name, payload interface{}, tgt *target.Target, ev testevent.Emitter) error {
+	payloadStr, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("cannot encode payload for event '%s': %v", name, err)
+	}
+	rm := json.RawMessage(payloadStr)
+	evData := testevent.Data{
+		EventName: name,
+		Target:    tgt,
+		Payload:   &rm,
+	}
+	if err := ev.Emit(evData); err != nil {
+		return fmt.Errorf("cannot emit event EventCmdStart: %v", err)
+	}
+	return nil
 }
 
 // Run executes the cmd step.
@@ -95,30 +126,26 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 		errCh := make(chan error)
 		go func() {
 			// Emit EventCmdStart
-			payload, err := json.Marshal(eventCmdStartPayload{Path: cmd.Path, Args: cmd.Args, Dir: cmd.Dir})
-			if err != nil {
-				log.Warningf("Cannot encode payload for EventCmdStart: %v", err)
-			} else {
-				rm := json.RawMessage(payload)
-				evData := testevent.Data{
-					EventName: EventCmdStart,
-					Target:    target,
-					Payload:   &rm,
-				}
-				if err := ev.Emit(evData); err != nil {
-					log.Warningf("Cannot emit event EventCmdStart: %v", err)
-				}
+			if err := emitEvent(EventCmdStart, eventCmdStartPayload{Path: cmd.Path, Args: cmd.Args, Dir: cmd.Dir}, target, ev); err != nil {
+				log.Warningf("Failed to emit event: %v", err)
 			}
 			// Run the command
 			errCh <- cmd.Run()
 			// Emit EventCmdEnd
-			evData := testevent.Data{
-				EventName: EventCmdEnd,
-				Target:    target,
-				Payload:   nil,
+			if err := emitEvent(EventCmdEnd, nil, target, ev); err != nil {
+				log.Warningf("Failed to emit event: %v", err)
 			}
-			if err := ev.Emit(evData); err != nil {
-				log.Warningf("Cannot emit event EventCmdEnd: %v", err)
+			if ts.emitStdout {
+				log.Infof("Emitting stdout event")
+				if err := emitEvent(EventCmdStdout, eventCmdStdoutPayload{Msg: stdout.String()}, target, ev); err != nil {
+					log.Warningf("Failed to emit event: %v", err)
+				}
+			}
+			if ts.emitStderr {
+				log.Infof("Emitting stderr event")
+				if err := emitEvent(EventCmdStderr, eventCmdStderrPayload{Msg: stderr.String()}, target, ev); err != nil {
+					log.Warningf("Failed to emit event: %v", err)
+				}
 			}
 			log.Infof("Stdout of command '%s' with args '%s' is '%s'", cmd.Path, cmd.Args, stdout.Bytes())
 		}()
@@ -154,6 +181,24 @@ func (ts *Cmd) validateAndPopulate(params test.TestStepParameters) error {
 	}
 	ts.args = params.Get("args")
 	ts.dir = params.GetOne("dir")
+	// validate emit_stdout
+	emitStdoutParam := params.GetOne("emit_stdout")
+	if !emitStdoutParam.IsEmpty() {
+		v, err := strconv.ParseBool(emitStdoutParam.String())
+		if err != nil {
+			return fmt.Errorf("invalid non-boolean `emit_stdout` parameter: %v", err)
+		}
+		ts.emitStdout = v
+	}
+	// validate emit_stderr
+	emitStderrParam := params.GetOne("emit_stderr")
+	if !emitStderrParam.IsEmpty() {
+		v, err := strconv.ParseBool(emitStderrParam.String())
+		if err != nil {
+			return fmt.Errorf("invalid non-boolean `emit_stderr` parameter: %v", err)
+		}
+		ts.emitStderr = v
+	}
 	return nil
 }
 

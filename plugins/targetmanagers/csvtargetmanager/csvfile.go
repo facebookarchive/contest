@@ -148,6 +148,7 @@ func (tf *CSVFileTargetManager) Acquire(jobID types.JobID, cancel <-chan struct{
 			len(hosts),
 		)
 	}
+	log.Printf("Found %d targets in %s", len(hosts), acquireParameters.FileURI.Path)
 	if acquireParameters.Shuffle {
 		log.Info("Shuffling targets")
 		rand.Shuffle(len(hosts), func(i, j int) {
