@@ -141,6 +141,7 @@ func (tf *CSVFileTargetManager) Acquire(jobID types.JobID, cancel <-chan struct{
 			}
 		}
 	}
+
 	if uint32(len(hosts)) < acquireParameters.MinNumberDevices {
 		return nil, fmt.Errorf("not enough hosts found in CSV file '%s', want %d, got %d",
 			acquireParameters.FileURI.Path,
@@ -155,15 +156,24 @@ func (tf *CSVFileTargetManager) Acquire(jobID types.JobID, cancel <-chan struct{
 			hosts[i], hosts[j] = hosts[j], hosts[i]
 		})
 	}
-	if uint32(len(hosts)) > acquireParameters.MaxNumberDevices {
-		hosts = hosts[:acquireParameters.MaxNumberDevices]
+
+	// feed all devices into new API call `TryLock`, with desired limit
+	lockedString, err := tl.TryLock(jobID, hosts, uint(acquireParameters.MaxNumberDevices))
+	locked, err := target.FilterTargets(lockedString, hosts)
+
+	// check if we got enough
+	if len(locked) >= int(acquireParameters.MinNumberDevices) {
+		// done, we got enough and they are locked
+	} else {
+		// not enough, unlock what we got and fail
+		if len(locked) > 0 {
+			tl.Unlock(jobID, locked)
+		}
+		return nil, fmt.Errorf("can't lock enough targets")
 	}
 
-	if err := tl.Lock(jobID, hosts); err != nil {
-		return nil, fmt.Errorf("failed to lock %d targets: %v", len(hosts), err)
-	}
-	tf.hosts = hosts
-	return hosts, nil
+	tf.hosts = locked
+	return locked, nil
 }
 
 // Release releases the acquired resources.
