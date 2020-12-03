@@ -189,7 +189,7 @@ func (tl *InMemory) Lock(jobID types.JobID, targets []*target.Target) error {
 
 // Lock locks the specified targets.
 func (tl *InMemory) TryLock(jobID types.JobID, targets []*target.Target, limit uint) ([]string, error) {
-	log.Infof("Trying to trylock %d targets", len(targets))
+	log.Infof("Trying to trylock on %d targets", len(targets))
 	req := newReq(jobID, targets)
 	req.timeout = tl.lockTimeout
 	req.allowConflicts = true
