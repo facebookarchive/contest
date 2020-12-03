@@ -56,6 +56,7 @@ func FilterTargets(targetIDs []string, targets []*Target) ([]*Target, error) {
 			if target.ID == targetID {
 				targetList = append(targetList, target)
 				found = true
+				break
 			}
 		}
 

@@ -160,7 +160,7 @@ func (tf *CSVFileTargetManager) Acquire(jobID types.JobID, cancel <-chan struct{
 	// feed all devices into new API call `TryLock`, with desired limit
 	lockedString, err := tl.TryLock(jobID, hosts, uint(acquireParameters.MaxNumberDevices))
 	if err != nil {
-		return nil, fmt.Errorf("can't lock enough targets")
+		return nil, fmt.Errorf("failed to lock targets: %w", err)
 	}
 	locked, err := target.FilterTargets(lockedString, hosts)
 	if err != nil {
