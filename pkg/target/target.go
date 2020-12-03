@@ -44,3 +44,25 @@ func (t *Target) String() string {
 	}
 	return fmt.Sprintf("Target{Name: \"%s\", ID: \"%s\", FQDN: \"%s\"}", t.Name, t.ID, t.FQDN)
 }
+
+// FilterTargets - Filter targets from targets based on targetIDs
+func FilterTargets(targetIDs []string, targets []*Target) ([]*Target, error) {
+
+	var targetList []*Target
+
+	for _, targetID := range targetIDs {
+		found := false
+		for _, target := range targets {
+			if target.ID == targetID {
+				targetList = append(targetList, target)
+				found = true
+			}
+		}
+
+		if !found {
+			return nil, fmt.Errorf("unable to match target id %s to target", targetID)
+		}
+	}
+
+	return targetList, nil
+}
