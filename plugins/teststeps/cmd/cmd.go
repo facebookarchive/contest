@@ -64,9 +64,13 @@ type eventCmdStderrPayload struct {
 
 // Cmd is used to run arbitrary commands as test steps.
 type Cmd struct {
-	executable             string
-	args                   []test.Param
-	dir                    *test.Param
+	executable string
+	args       []test.Param
+	dir        *test.Param
+	// warning: if you enable emit_stdout and emit_stderr in your plugin
+	// configuration, be aware that the emitted payload is saved to the
+	// ConTest database, and that it might be a very long string. Depending on
+	// the output length, it could be truncated in order to store it.
 	emitStdout, emitStderr bool
 }
 
