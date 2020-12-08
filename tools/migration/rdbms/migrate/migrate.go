@@ -15,6 +15,8 @@ import (
 type Migrate interface {
 	Up(tx *sql.Tx) error
 	Down(tx *sql.Tx) error
+	UpNoTx(db *sql.DB) error
+	DownNoTx(db *sql.DB) error
 }
 
 // Factory defines a factory type of an object implementing Migration interface
