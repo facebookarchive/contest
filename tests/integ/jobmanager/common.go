@@ -222,7 +222,8 @@ func (suite *TestJobManagerSuite) SetupTest() {
 	suite.sigs = sigs
 
 	suite.txStorage = common.InitStorage(suite.storage)
-	storage.SetStorage(suite.txStorage)
+	err = storage.SetStorage(suite.txStorage)
+	require.NoError(suite.T(), err)
 }
 
 func (suite *TestJobManagerSuite) TearDownTest() {

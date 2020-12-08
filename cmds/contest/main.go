@@ -48,7 +48,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("could not initialize database: %v", err)
 	}
-	storage.SetStorage(s)
+	if err := storage.SetStorage(s); err != nil {
+		log.Fatalf("could not set storage: %v", err)
+	}
 
 	dbVer, err := s.Version()
 	if err != nil {

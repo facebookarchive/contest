@@ -17,6 +17,7 @@ import (
 	"github.com/facebookincubator/contest/plugins/storage/memory"
 	"github.com/facebookincubator/contest/plugins/targetlocker/inmemory"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -30,7 +31,8 @@ func TestJobManagerSuiteMemoryStorage(t *testing.T) {
 
 	}
 	testSuite.storage = storagelayer
-	storage.SetStorage(storagelayer)
+	err = storage.SetStorage(storagelayer)
+	require.NoError(t, err)
 
 	targetLocker := inmemory.New(10*time.Second, 10*time.Second)
 	target.SetLocker(targetLocker)

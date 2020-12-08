@@ -6,6 +6,7 @@
 package storage
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -54,12 +55,14 @@ func (n *nullStorage) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]fra
 	return nil, nil
 }
 
-func (m *nullStorage) Version() (int64, error) {
+func (n *nullStorage) Version() (uint64, error) {
 	return 0, nil
 }
 
 func TestMain(m *testing.M) {
-	SetStorage(&nullStorage{})
+	if err := SetStorage(&nullStorage{}); err != nil {
+		panic(fmt.Sprintf("could not configure storage: %v", err))
+	}
 	os.Exit(m.Run())
 }
 

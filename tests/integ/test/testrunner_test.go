@@ -97,7 +97,10 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(fmt.Sprintf("could not initialize in-memory storage layer: %v", err))
 	}
-	storage.SetStorage(s)
+	err = storage.SetStorage(s)
+	if err != nil {
+		panic(fmt.Sprintf("could not set storage memory layer: %v", err))
+	}
 
 	os.Exit(m.Run())
 }

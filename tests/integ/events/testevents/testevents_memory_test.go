@@ -13,6 +13,7 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/plugins/storage/memory"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -25,7 +26,8 @@ func TestTestEventsSuiteMemoryStorage(t *testing.T) {
 		panic(fmt.Sprintf("could not initialize in-memory storage layer: %v", err))
 	}
 	testSuite.storage = storagelayer
-	storage.SetStorage(storagelayer)
+	err = storage.SetStorage(storagelayer)
+	require.NoError(t, err)
 
 	suite.Run(t, &testSuite)
 }

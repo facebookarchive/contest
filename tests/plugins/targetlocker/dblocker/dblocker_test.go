@@ -140,7 +140,6 @@ func TestLockUnlockDifferentJobID(t *testing.T) {
 	assert.Error(t, tl.Lock(jobID+1, twoTargets))
 }
 
-
 func TestTryLockOne(t *testing.T) {
 	tl.ResetAllLocks()
 	res, err := tl.TryLock(jobID, oneTarget, 1)
