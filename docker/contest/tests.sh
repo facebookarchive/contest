@@ -18,7 +18,7 @@ attempts=0
 max_attempts=5
 while true; do
   echo "Waiting for mysql to settle"
-  mysqladmin -h mysql -P 3306 -u contest --protocol tcp --password=contest ping && break || true
+  mysqladmin -h localhost -P 3306 -u contest --protocol tcp --password=contest ping && break || true
   if test ${attempts} -eq ${max_attempts}; then
     echo "MySQL is not healthy after ${max_attempts} attempts"
     exit 1
