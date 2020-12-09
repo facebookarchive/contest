@@ -37,10 +37,15 @@ type Job struct {
 	// whether work should be stopped or not.
 	Done chan struct{}
 
-	// TODO: these channels should be owned by the JobManager
+	// TODO: StateCtx should be owned by the JobManager
+	// pause is a job-wide channel used to request and detect job's state change.
+	StateCtx StateContext
+
+	// TODO: Remove it
 	// cancel is a job-wide channel used to request and detect job cancellation.
 	CancelCh chan struct{}
 
+	// TODO: Remove it
 	// pause is a job-wide channel used to request and detect job pausing.
 	PauseCh chan struct{}
 
@@ -68,31 +73,23 @@ type Job struct {
 
 // Cancel closes the cancel channel to signal cancellation
 func (j *Job) Cancel() {
+	j.StateCtx.cancel()
 	close(j.CancelCh)
 }
 
 // Pause closes the pause channel to signal pause
 func (j *Job) Pause() {
+	j.StateCtx.pause()
 	close(j.PauseCh)
 }
 
 // IsCancelled returns whether the job has been cancelled
 func (j *Job) IsCancelled() bool {
-	select {
-	case <-j.CancelCh:
-		return true
-	default:
-		return false
-	}
+	return j.StateCtx.State() == StateCanceled
 }
 
 func (j *Job) IsPaused() bool {
-	select {
-	case <-j.PauseCh:
-		return true
-	default:
-		return false
-	}
+	return j.StateCtx.State() == StatePaused
 }
 
 // InfoFetcher defines how to fetch job information

@@ -153,16 +153,20 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			go func(j *job.Job, tl target.Locker, targets []*target.Target, refreshInterval time.Duration) {
 				for {
 					select {
-					case <-j.CancelCh:
-						// unlock targets
-						if err := tl.Unlock(j.ID, targets); err != nil {
-							jobLog.Warningf("Failed to unlock targets (%v) for job ID %d: %v", targets, j.ID, err)
+					case <-j.StateCtx.Done():
+						switch j.StateCtx.State() {
+						case job.StateCanceled:
+							// unlock targets
+							if err := tl.Unlock(j.ID, targets); err != nil {
+								jobLog.Warningf("Failed to unlock targets (%v) for job ID %d: %v", targets, j.ID, err)
+							}
+						case job.StatePaused:
+							// do not unlock targets, we can resume later, or let
+							// them expire
+							jobLog.Debugf("Received pause request, NOT releasing targets so the job can be resumed")
+						default:
+							panic("Unexpected job's state")
 						}
-						return
-					case <-j.PauseCh:
-						// do not unlock targets, we can resume later, or let
-						// them expire
-						jobLog.Debugf("Received pause request, NOT releasing targets so the job can be resumed")
 						return
 					case <-done:
 						if err := tl.Unlock(j.ID, targets); err != nil {
