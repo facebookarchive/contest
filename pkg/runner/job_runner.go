@@ -199,7 +199,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				errCh <- bundle.TargetManager.Release(j.ID, j.CancelCh, bundle.ReleaseParameters)
 				// signal that we are done to the goroutine that refreshes the
 				// locks.
-				done <- struct{}{}
+				close(done)
 			}()
 			select {
 			case err := <-errCh:
