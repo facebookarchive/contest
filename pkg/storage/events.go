@@ -77,7 +77,7 @@ func NewTestEventEmitterFetcher(header testevent.Header) testevent.EmitterFetche
 	}
 }
 
-// NewTestEventEmitterFetcher creates a new EmitterFetcher object associated with a Header
+// NewTestEventEmitterFetcherWithAllowedEvents creates a new EmitterFetcher object associated with a Header
 func NewTestEventEmitterFetcherWithAllowedEvents(header testevent.Header, allowedEvents *map[event.Name]bool) testevent.EmitterFetcher {
 	return TestEventEmitterFetcher{
 		TestEventEmitter{header: header},

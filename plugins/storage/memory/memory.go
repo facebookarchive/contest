@@ -220,7 +220,7 @@ func (m *Memory) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]framewor
 }
 
 // Version returns the version of the memory storage layer.
-func (m *Memory) Version() (int64, error) {
+func (m *Memory) Version() (uint64, error) {
 	return 0, nil
 }
 

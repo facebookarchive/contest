@@ -97,7 +97,8 @@ func (suite *TestRunnerSuite) SetupTest() {
 
 	s, err := memory.New()
 	require.NoError(suite.T(), err)
-	storage.SetStorage(s)
+	err = storage.SetStorage(s)
+	require.NoError(suite.T(), err)
 
 	header := testevent.Header{
 		JobID:         1,

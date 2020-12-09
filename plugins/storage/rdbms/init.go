@@ -122,11 +122,8 @@ func (r *RDBMS) Rollback() error {
 }
 
 // Version returns the current version of the RDBMS schema
-func (r *RDBMS) Version() (int64, error) {
-	if sqlDB, ok := r.db.(*sql.DB); ok {
-		return migrationlib.DBVersion(sqlDB)
-	}
-	return 0, fmt.Errorf("db object (%T) is not a sql.DB", r.db)
+func (r *RDBMS) Version() (uint64, error) {
+	return migrationlib.DBVersion(r.db)
 }
 
 func (r *RDBMS) init() error {
