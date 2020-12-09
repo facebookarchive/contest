@@ -1,4 +1,4 @@
-package job
+package types
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 )
 
 func TestStateContext(t *testing.T) {
-	ctx := newStateContext()
+	ctx, _, _ := NewStateContext()
 	require.NotNil(t, ctx)
 
 	require.NoError(t, ctx.Err())
@@ -27,11 +27,11 @@ func TestStateContext(t *testing.T) {
 }
 
 func TestStateContextActions(t *testing.T) {
-	testScenario := func(action func(ctx StateContext), expectedState State, expectedError error) {
-		ctx := newStateContext()
+	testScenario := func(action func(pause func(), cancel func()), expectedState State, expectedError error) {
+		ctx, pause, cancel := NewStateContext()
 		require.NotNil(t, ctx)
 
-		action(ctx)
+		action(pause, cancel)
 
 		<-ctx.Done()
 
@@ -40,14 +40,14 @@ func TestStateContextActions(t *testing.T) {
 	}
 
 	t.Run("pause", func(t *testing.T) {
-		testScenario(func(ctx StateContext) {
-			ctx.pause()
+		testScenario(func(pause func(), cancel func()) {
+			pause()
 		}, StatePaused, ErrPaused)
 	})
 
 	t.Run("cancel", func(t *testing.T) {
-		testScenario(func(ctx StateContext) {
-			ctx.cancel()
+		testScenario(func(pause func(), cancel func()) {
+			cancel()
 		}, StateCanceled, ErrCanceled)
 	})
 }
