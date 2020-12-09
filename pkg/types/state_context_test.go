@@ -15,7 +15,8 @@ func TestStateContext(t *testing.T) {
 	require.NoError(t, ctx.Err())
 	require.Equal(t, StateActive, ctx.State())
 
-	timeoutCtx, _ := context.WithTimeout(context.Background(), 10*time.Microsecond)
+	timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 10*time.Microsecond)
+	defer timeoutCancel()
 
 	var blockedOnDone bool
 	select {
