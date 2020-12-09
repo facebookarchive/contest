@@ -152,7 +152,7 @@ func newTargetWriter(log *logrus.Entry, timeouts TestRunnerTimeouts) *targetWrit
 
 // Run implements the main logic of the TestRunner, i.e. the instantiation and
 // connection of the TestSteps, routing blocks and pipeline runner.
-func (tr *TestRunner) Run(cancel, pause <-chan struct{}, test *test.Test, targets []*target.Target, jobID types.JobID, runID types.RunID) error {
+func (tr *TestRunner) Run(ctx types.StateContext, test *test.Test, targets []*target.Target, jobID types.JobID, runID types.RunID) error {
 
 	if len(test.TestStepsBundles) == 0 {
 		return fmt.Errorf("no steps to run for test")
@@ -169,8 +169,8 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, test *test.Test, target
 	testPipeline := newPipeline(logging.AddField(rootLog, "entity", "test_pipeline"), test.TestStepsBundles, test, jobID, runID, tr.timeouts)
 
 	log.Infof("setting up pipeline")
-	completedTargets := make(chan *target.Target)
-	inCh := testPipeline.init(cancel, pause)
+	completedTargets := make(chan *target.Target, 1)
+	inCh := testPipeline.init()
 
 	// inject targets in the step
 	terminateInjectionCh := make(chan struct{})
@@ -178,17 +178,17 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, test *test.Test, target
 		defer close(inputChannel)
 		log := logging.AddField(log, "step", "injection")
 		writer := newTargetWriter(log, tr.timeouts)
-		for _, target := range targets {
-			if err := writer.writeTimeout(terminate, inputChannel, target, tr.timeouts.MessageTimeout); err != nil {
-				log.Debugf("could not inject target %+v into first routing block: %+v", target, err)
+		for _, t := range targets {
+			if err := writer.writeTimeout(terminate, inputChannel, t, tr.timeouts.MessageTimeout); err != nil {
+				log.Debugf("could not inject target %+v into first routing block: %+v", t, err)
 			}
 		}
 	}(terminateInjectionCh, inCh)
 
-	errCh := make(chan error)
+	errCh := make(chan error, 1)
 	go func() {
 		log.Infof("running pipeline")
-		errCh <- testPipeline.run(cancel, pause, completedTargets)
+		errCh <- testPipeline.run(ctx, completedTargets)
 	}()
 
 	defer close(terminateInjectionCh)
@@ -197,19 +197,11 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, test *test.Test, target
 	// the pipeline.
 	for {
 		select {
-		case <-cancel:
-			err := <-errCh
-			log.Debugf("test runner terminated, returning %v", err)
-			return err
-		case <-pause:
-			err := <-errCh
-			log.Debugf("test runner terminated, returning %v", err)
-			return err
 		case err := <-errCh:
 			log.Debugf("test runner terminated, returning %v", err)
 			return err
-		case target := <-completedTargets:
-			log.Infof("test runner completed target: %v", target)
+		case t := <-completedTargets:
+			log.Infof("test runner completed target: %v", t)
 		}
 	}
 }

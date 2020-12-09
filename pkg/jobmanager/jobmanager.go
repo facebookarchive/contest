@@ -187,7 +187,7 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 		return nil, fmt.Errorf("failed to marshal test descriptors: %w", err)
 	}
 
-	job := job.Job{
+	j := job.Job{
 		ID:          types.JobID(0),
 		Name:        jd.JobName,
 		Tags:        jd.Tags,
@@ -200,12 +200,9 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 		FinalReporterBundles: nil,
 	}
 
-	job.Done = make(chan struct{})
-
-	job.CancelCh = make(chan struct{})
-	job.PauseCh = make(chan struct{})
-
-	return &job, nil
+	j.Done = make(chan struct{})
+	j.StateCtx, j.StateCtxPause, j.StateCtxCancel = types.NewStateContext()
+	return &j, nil
 }
 
 // NewJob returns a new Job object and the fetched test descriptors

@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
-package job
+package types
 
 import (
 	"context"
@@ -30,15 +30,16 @@ type StateContext interface {
 
 	State() State
 
-	cancel()
 	pause()
+	cancel()
 }
 
-func newStateContext() StateContext {
-	return &stateCtx{
+func NewStateContext() (ctx StateContext, pause func(), cancel func()) {
+	resCtx := &stateCtx{
 		done:  make(chan struct{}),
 		state: StateActive,
 	}
+	return resCtx, func() { resCtx.pause() }, func() { resCtx.cancel() }
 }
 
 type stateCtx struct {
