@@ -9,10 +9,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/tools/migration/rdbms/migrate"
 
 	"github.com/facebookincubator/contest/cmds/plugins"
@@ -60,19 +62,29 @@ type DescriptorMigration struct {
 	log *logrus.Entry
 }
 
+type dbConn interface {
+	Exec(query string, args ...interface{}) (sql.Result, error)
+	Query(query string, args ...interface{}) (*sql.Rows, error)
+}
+
+type jobDescriptorPair struct {
+	jobID              types.JobID
+	extendedDescriptor string
+}
+
 func ms(d time.Duration) float64 {
 	return float64(d.Microseconds()) / 1000.0
 }
 
 // fetchJobs fetches job requests based on limit and offset
-func fetchJobs(tx *sql.Tx, limit, offset uint64, log *logrus.Entry) ([]job.Request, error) {
+func (m *DescriptorMigration) fetchJobs(db dbConn, limit, offset uint64, log *logrus.Entry) ([]job.Request, error) {
 
 	log.Debugf("fetching shard limit: %d, offset: %d", limit, offset)
 	selectStatement := "select job_id, name, requestor, server_id, request_time, descriptor, teststeps from jobs limit ? offset ?"
 	log.Debugf("running query: %s", selectStatement)
 
 	start := time.Now()
-	rows, err := tx.Query(selectStatement, limit, offset)
+	rows, err := db.Query(selectStatement, limit, offset)
 
 	elapsed := time.Since(start)
 	log.Debugf("select query executed in: %.3f ms", ms(elapsed))
@@ -89,6 +101,12 @@ func fetchJobs(tx *sql.Tx, limit, offset uint64, log *logrus.Entry) ([]job.Reque
 	start = time.Now()
 	for rows.Next() {
 		job := job.Request{}
+
+		// `teststeps` column was added relateively late to the `jobs` table, so
+		// pre-existing columns have acquired a NULL value. This needs to be taken
+		// into account during migration
+		testDescriptors := sql.NullString{}
+
 		err := rows.Scan(
 			&job.JobID,
 			&job.JobName,
@@ -96,10 +114,13 @@ func fetchJobs(tx *sql.Tx, limit, offset uint64, log *logrus.Entry) ([]job.Reque
 			&job.ServerID,
 			&job.RequestTime,
 			&job.JobDescriptor,
-			&job.TestDescriptors,
+			&testDescriptors,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("could not scan job request (limit %d, offset %d): %w", limit, offset, err)
+		}
+		if testDescriptors.Valid {
+			job.TestDescriptors = testDescriptors.String
 		}
 		jobs = append(jobs, job)
 	}
@@ -115,10 +136,12 @@ func fetchJobs(tx *sql.Tx, limit, offset uint64, log *logrus.Entry) ([]job.Reque
 	return jobs, nil
 }
 
-func migrateJobs(tx *sql.Tx, requests []job.Request, registry *pluginregistry.PluginRegistry, log *logrus.Entry) error {
+func (m *DescriptorMigration) migrateJobs(db dbConn, requests []job.Request, registry *pluginregistry.PluginRegistry, log *logrus.Entry) error {
 
 	log.Debugf("migrating %d jobs", len(requests))
 	start := time.Now()
+
+	var updates []jobDescriptorPair
 	for _, request := range requests {
 
 		// Merge JobDescriptor and TestStepDescriptor(s) into a single ExtendedDescriptor.
@@ -146,6 +169,14 @@ func migrateJobs(tx *sql.Tx, requests []job.Request, registry *pluginregistry.Pl
 		var jobDesc job.JobDescriptor
 		if err := json.Unmarshal([]byte(request.JobDescriptor), &jobDesc); err != nil {
 			return fmt.Errorf("failed to unmarshal job descriptor (%+v): %w", jobDesc, err)
+		}
+
+		if len(request.TestDescriptors) == 0 {
+			// These TestDescriptors were problably acquired from entries which pre-existed
+			// in ConTest db before adding the `teststeps` column. Just skip the migration
+			// of these entries.
+			log.Debugf("job request with job id %d has null teststeps value, skipping migration", request.JobID)
+			continue
 		}
 
 		var stepDescs [][]*test.StepDescriptor
@@ -210,28 +241,78 @@ func migrateJobs(tx *sql.Tx, requests []job.Request, registry *pluginregistry.Pl
 			return fmt.Errorf("could not serialize extended descriptor for jobID %d (%+v): %w", request.JobID, extendedDescriptor, err)
 		}
 
-		insertStatement := "update jobs set extended_descriptor = ?  where job_id = ?"
-		log.Debugf("running insert statement: %s, descriptor: %s, jobID: %d", insertStatement, extendedDescriptorJSON, request.JobID)
-
-		insertStart := time.Now()
-		_, err = tx.Exec(insertStatement, extendedDescriptorJSON, request.JobID)
-		elapsed := time.Since(insertStart)
-		log.Debugf("insert statement executed in %.3f ms", ms(elapsed))
-
-		if err != nil {
-			return fmt.Errorf("could not store extended descriptor for job_id %d: %w", request.JobID, err)
-		}
+		updates = append(updates, jobDescriptorPair{jobID: request.JobID, extendedDescriptor: string(extendedDescriptorJSON)})
 	}
 
-	elapsed := time.Since(start)
-	log.Debugf("completed migrating %d jobs in %.3f ms", len(requests), ms(elapsed))
+	if len(updates) == 0 {
+		return nil
+	}
+
+	var (
+		casePlaceholders  []string
+		wherePlaceholders []string
+	)
+
+	for range updates {
+		casePlaceholders = append(casePlaceholders, "when ? then ?")
+		wherePlaceholders = append(wherePlaceholders, "?")
+	}
+	insertStatement := fmt.Sprintf("update jobs set extended_descriptor = case job_id %s end where job_id in (%s)", strings.Join(casePlaceholders, " "), strings.Join(wherePlaceholders, ","))
+	log.Debugf("running insert statement with updates: %s, updates: %+v", insertStatement, updates)
+
+	insertStart := time.Now()
+	var args []interface{}
+
+	for _, v := range updates {
+		args = append(args, v.jobID)
+		args = append(args, v.extendedDescriptor)
+	}
+
+	for _, v := range updates {
+		args = append(args, v.jobID)
+	}
+
+	_, err := db.Exec(insertStatement, args...)
+	if err != nil {
+		var jobIDs []types.JobID
+		for _, v := range updates {
+			jobIDs = append(jobIDs, v.jobID)
+		}
+		return fmt.Errorf("could not store extended descriptor (%w) for job ids: %v", err, jobIDs)
+	}
+
+	elapsed := time.Since(insertStart)
+	log.Debugf("insert statement executed in %.3f ms", ms(elapsed))
+
+	elapsedStart := time.Since(start)
+	log.Debugf("completed migrating %d jobs in %.3f ms", len(requests), ms(elapsedStart))
 
 	return nil
 }
 
 // Up implements the forward migration
 func (m *DescriptorMigration) Up(tx *sql.Tx) error {
+	return m.up(tx)
+}
 
+// UpNoTx implements the forward migration in a non-transactional manner
+func (m *DescriptorMigration) UpNoTx(db *sql.DB) error {
+	return m.up(db)
+}
+
+// Down implements the down migration of DescriptorMigration
+func (m *DescriptorMigration) Down(tx *sql.Tx) error {
+	return nil
+}
+
+// DownNoTx implements the down migration of DescriptorMigration in a non-transactional manner
+func (m *DescriptorMigration) DownNoTx(db *sql.DB) error {
+	return nil
+}
+
+// up implements the actual migration logic via dbConn interface, which could implement a
+// transactional or non-transactional connection, depending on what the caller decided.
+func (m *DescriptorMigration) up(db dbConn) error {
 	// Count how many entries we have in jobs table that we need to migrate. Split them into
 	// shards of size shardSize for migration. Can't be done online within a single transaction,
 	// as there cannot be two active queries on the same connection at the same time
@@ -240,7 +321,7 @@ func (m *DescriptorMigration) Up(tx *sql.Tx) error {
 	count := uint64(0)
 	m.log.Debugf("counting the number of jobs to migrate")
 	start := time.Now()
-	rows, err := tx.Query("select count(*) from jobs")
+	rows, err := db.Query("select count(*) from jobs")
 	if err != nil {
 		return fmt.Errorf("could not fetch number of records to migrate: %w", err)
 	}
@@ -254,7 +335,9 @@ func (m *DescriptorMigration) Up(tx *sql.Tx) error {
 	if err := rows.Scan(&count); err != nil {
 		return fmt.Errorf("could not fetch number of records to migrate: %w", err)
 	}
-	rows.Close()
+	if err := rows.Close(); err != nil {
+		m.log.Warningf("could not close rows after count(*) query")
+	}
 
 	// Create a new plugin registry. This is necessary because some information that need to be
 	// associated with the extended_descriptor is not available in the db and can only be looked
@@ -265,20 +348,16 @@ func (m *DescriptorMigration) Up(tx *sql.Tx) error {
 	elapsed := time.Since(start)
 	m.log.Debugf("total number of jobs to migrate: %d, fetched in %.3f ms", count, ms(elapsed))
 	for offset := uint64(0); offset < count; offset += shardSize {
-		jobs, err := fetchJobs(tx, shardSize, offset, m.log)
+		jobs, err := m.fetchJobs(db, shardSize, offset, m.log)
 		if err != nil {
 			return fmt.Errorf("could not fetch events in range offset %d limit %d: %w", offset, shardSize, err)
 		}
-		err = migrateJobs(tx, jobs, registry, m.log)
+		err = m.migrateJobs(db, jobs, registry, m.log)
 		if err != nil {
 			return fmt.Errorf("could not migrate events in range offset %d limit %d: %w", offset, shardSize, err)
 		}
+		m.log.Infof("migrated %d/%d", offset, count)
 	}
-	return nil
-}
-
-// Down implements the down transition of DescriptorMigration
-func (m *DescriptorMigration) Down(tx *sql.Tx) error {
 	return nil
 }
 
