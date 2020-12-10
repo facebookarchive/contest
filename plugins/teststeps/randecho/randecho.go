@@ -16,6 +16,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/types"
 )
 
 // Name is the name used to look this plugin up.
@@ -55,7 +56,7 @@ func (e Step) Name() string {
 }
 
 // Run executes the step
-func (e Step) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (e Step) Run(ctx types.StateContext, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	for {
 		select {
 		case target := <-ch.In:
@@ -83,9 +84,7 @@ func (e Step) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, param
 				log.Infof("Run: target %s failed: %s", target, params.GetOne("text"))
 				ch.Err <- cerrors.TargetError{Target: target, Err: fmt.Errorf("target randomly failed")}
 			}
-		case <-cancel:
-			return nil
-		case <-pause:
+		case <-ctx.Done():
 			return nil
 		}
 	}

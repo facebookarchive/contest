@@ -6,6 +6,7 @@
 package runner
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -129,11 +130,10 @@ func (suite *TestRunnerSuite) TestRouteInRoutesAllTargets() {
 
 	routeInResult := make(chan error)
 	stepInResult := make(chan error)
-	terminate := make(chan struct{})
 
 	go func() {
 		// start routing
-		_, _ = suite.router.routeIn(terminate)
+		_, _ = suite.router.routeIn(context.Background())
 	}()
 
 	// inject targets
@@ -210,11 +210,9 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllSuccessfulTargets() {
 		{ID: "003", FQDN: "host003.facebook.com"},
 	}
 
-	terminate := make(chan struct{})
-
 	go func() {
 		// start routing
-		_, _ = suite.router.routeOut(terminate)
+		_, _ = suite.router.routeOut(context.Background())
 	}()
 
 	stepResult := make(chan error)
@@ -306,11 +304,9 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllFailedTargets() {
 		{ID: "003", FQDN: "host003.facebook.com"},
 	}
 
-	terminate := make(chan struct{})
-
 	go func() {
 		// start routing
-		_, _ = suite.router.routeOut(terminate)
+		_, _ = suite.router.routeOut(context.Background())
 	}()
 
 	stepResult := make(chan error)

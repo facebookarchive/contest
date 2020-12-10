@@ -6,6 +6,7 @@
 package runner
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -89,12 +90,11 @@ type pipelineCtrlCh struct {
 	stepResultCh    <-chan stepResult
 	targetOut       <-chan *target.Target
 	targetErr       <-chan cerrors.TargetError
-	// cancelRouting is a control channel used to cancel routing blocks in the pipeline
-	cancelRoutingCh chan struct{}
-	// cancelStep is a control channel used to cancel the steps of the pipeline
-	cancelStepsCh chan struct{}
-	// pauseSteps is a control channel used to pause the steps of the pipeline
-	pauseStepsCh chan struct{}
+
+	// stateCtx  is a control context used to cancel/pause the steps of the pipeline
+	stateCtx types.StateContext
+	pause    func()
+	cancel   func()
 }
 
 // TestRunner is the main runner of TestSteps in ConTest. `results` collects
@@ -109,11 +109,11 @@ type targetWriter struct {
 	timeouts TestRunnerTimeouts
 }
 
-func (w *targetWriter) writeTimeout(terminate <-chan struct{}, ch chan<- *target.Target, target *target.Target, timeout time.Duration) error {
+func (w *targetWriter) writeTimeout(ctx context.Context, ch chan<- *target.Target, target *target.Target, timeout time.Duration) error {
 	w.log.Debugf("writing target %+v, timeout %v", target, timeout)
 	start := time.Now()
 	select {
-	case <-terminate:
+	case <-ctx.Done():
 		w.log.Debugf("terminate requested while writing target %+v", target)
 	case ch <- target:
 	case <-time.After(timeout):
@@ -126,10 +126,10 @@ func (w *targetWriter) writeTimeout(terminate <-chan struct{}, ch chan<- *target
 // writeTargetWithResult attempts to deliver a Target on the input channel of a step,
 // returning the result of the operation on the result channel wrapped in the
 // injectionCh argument
-func (w *targetWriter) writeTargetWithResult(terminate <-chan struct{}, target *target.Target, ch injectionCh) {
-	err := w.writeTimeout(terminate, ch.stepIn, target, w.timeouts.StepInjectTimeout)
+func (w *targetWriter) writeTargetWithResult(ctx context.Context, target *target.Target, ch injectionCh) {
+	err := w.writeTimeout(ctx, ch.stepIn, target, w.timeouts.StepInjectTimeout)
 	select {
-	case <-terminate:
+	case <-ctx.Done():
 	case ch.resultCh <- injectionResult{target: target, err: err}:
 	case <-time.After(w.timeouts.MessageTimeout):
 		w.log.Panicf("timeout while writing result for target %+v after %v", target, w.timeouts.MessageTimeout)
@@ -137,9 +137,9 @@ func (w *targetWriter) writeTargetWithResult(terminate <-chan struct{}, target *
 }
 
 // writeTargetError writes a TargetError object to a TargetError channel with timeout
-func (w *targetWriter) writeTargetError(terminate <-chan struct{}, ch chan<- cerrors.TargetError, targetError cerrors.TargetError, timeout time.Duration) error {
+func (w *targetWriter) writeTargetError(ctx context.Context, ch chan<- cerrors.TargetError, targetError cerrors.TargetError, timeout time.Duration) error {
 	select {
-	case <-terminate:
+	case <-ctx.Done():
 	case ch <- targetError:
 	case <-time.After(timeout):
 		return fmt.Errorf("timeout while writing targetError %+v", targetError)
@@ -174,17 +174,17 @@ func (tr *TestRunner) Run(ctx statectx.Context, test *test.Test, targets []*targ
 	inCh := testPipeline.init()
 
 	// inject targets in the step
-	terminateInjectionCh := make(chan struct{})
-	go func(terminate <-chan struct{}, inputChannel chan<- *target.Target) {
+	terminateInjectionCtx, terminateInjection := context.WithCancel(context.Background())
+	go func(ctx context.Context, inputChannel chan<- *target.Target) {
 		defer close(inputChannel)
 		log := logging.AddField(log, "step", "injection")
 		writer := newTargetWriter(log, tr.timeouts)
 		for _, t := range targets {
-			if err := writer.writeTimeout(terminate, inputChannel, t, tr.timeouts.MessageTimeout); err != nil {
+			if err := writer.writeTimeout(ctx, inputChannel, t, tr.timeouts.MessageTimeout); err != nil {
 				log.Debugf("could not inject target %+v into first routing block: %+v", t, err)
 			}
 		}
-	}(terminateInjectionCh, inCh)
+	}(terminateInjectionCtx, inCh)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -192,7 +192,7 @@ func (tr *TestRunner) Run(ctx statectx.Context, test *test.Test, targets []*targ
 		errCh <- testPipeline.run(ctx, completedTargets)
 	}()
 
-	defer close(terminateInjectionCh)
+	defer terminateInjection()
 	// Receive targets from the completed channel controlled by the pipeline, while
 	// waiting for termination signals or fatal errors encountered while running
 	// the pipeline.

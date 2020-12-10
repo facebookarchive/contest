@@ -18,6 +18,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/plugins/teststeps"
 	"github.com/insomniacslk/termhook"
 )
@@ -56,7 +57,7 @@ func match(match string) termhook.LineHandler {
 }
 
 // Run executes the terminal step.
-func (ts *TerminalExpect) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *TerminalExpect) Run(ctx types.StateContext, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	if err := ts.validateAndPopulate(params); err != nil {
 		return err
 	}
@@ -66,7 +67,7 @@ func (ts *TerminalExpect) Run(cancel, pause <-chan struct{}, ch test.TestStepCha
 	}
 	hook.ReadOnly = true
 	// f implements plugins.PerTargetFunc
-	f := func(cancel, pause <-chan struct{}, target *target.Target) error {
+	f := func(ctx types.StateContext, target *target.Target) error {
 		errCh := make(chan error)
 		go func() {
 			errCh <- hook.Run()
@@ -79,14 +80,12 @@ func (ts *TerminalExpect) Run(cancel, pause <-chan struct{}, ch test.TestStepCha
 			return err
 		case <-time.After(ts.Timeout):
 			return fmt.Errorf("timed out after %s", ts.Timeout)
-		case <-cancel:
-			return nil
-		case <-pause:
+		case <-ctx.Done():
 			return nil
 		}
 	}
 	log.Printf("%s: waiting for string '%s' with timeout %s", Name, ts.Match, ts.Timeout)
-	return teststeps.ForEachTarget(Name, cancel, pause, ch, f)
+	return teststeps.ForEachTarget(Name, ctx, ch, f)
 }
 
 func (ts *TerminalExpect) validateAndPopulate(params test.TestStepParameters) error {
