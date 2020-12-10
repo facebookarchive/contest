@@ -199,7 +199,7 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 	}
 	go func() {
 		tr := runner.NewTestRunnerWithTimeouts(timeouts)
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
@@ -231,7 +231,7 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 		test.TestStepBundle{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
 	}
 
-	stateCtx, _, _ := types.NewStateContext()
+	stateCtx, _, cancel := types.NewStateContext()
 	errCh := make(chan error, 1)
 
 	var (
@@ -262,7 +262,7 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 	case <-time.After(testTimeout):
 		// Assert cancellation signal and expect the TestRunner to return within
 		// testShutdownTimeout
-		close(cancel)
+		cancel()
 		select {
 		case err = <-errCh:
 			// The test timed out, which is an error from the perspective of the JobManager
@@ -334,7 +334,7 @@ func TestCmdPlugin(t *testing.T) {
 		test.TestStepBundle{TestStep: ts1, Parameters: params},
 	}
 
-	stateCtx, _, _ := types.NewStateContext()
+	stateCtx, _, cancel := types.NewStateContext()
 	errCh := make(chan error, 1)
 
 	go func() {
@@ -345,7 +345,7 @@ func TestCmdPlugin(t *testing.T) {
 
 	go func() {
 		time.Sleep(time.Second)
-		close(cancel)
+		cancel()
 	}()
 
 	select {
