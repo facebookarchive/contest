@@ -571,10 +571,13 @@ func (p *pipeline) run(ctx types.StateContext, completedTargetsCh chan<- *target
 		} else {
 			p.log.Infof("test terminated correctly after %s signal", signal)
 		}
-		return ctx.Err()
+		if completionError != nil {
+			return completionError
+		}
+		return terminationError
 	}
+	p.log.Infof("completed")
 	return completionError
-
 }
 
 func newPipeline(log *logrus.Entry, bundles []test.TestStepBundle, test *test.Test, jobID types.JobID, runID types.RunID, timeouts TestRunnerTimeouts) *pipeline {
