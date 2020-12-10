@@ -557,7 +557,7 @@ func (p *pipeline) run(ctx types.StateContext, completedTargetsCh chan<- *target
 
 	// If either cancellation or pause have been asserted, we need to wait for the
 	// pipeline to terminate
-	if cancellationAsserted || pauseAsserted {
+	if cancellationAsserted || pauseAsserted || completionError != nil {
 		go func() {
 			errCh <- p.waitTermination()
 		}()
@@ -577,7 +577,7 @@ func (p *pipeline) run(ctx types.StateContext, completedTargetsCh chan<- *target
 		return terminationError
 	}
 	p.log.Infof("completed")
-	return completionError
+	return nil
 }
 
 func newPipeline(log *logrus.Entry, bundles []test.TestStepBundle, test *test.Test, jobID types.JobID, runID types.RunID, timeouts TestRunnerTimeouts) *pipeline {
