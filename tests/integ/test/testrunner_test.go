@@ -124,13 +124,12 @@ func TestSuccessfulCompletion(t *testing.T) {
 		test.TestStepBundle{TestStep: ts3, TestStepLabel: "ThirdStage", Parameters: params},
 	}
 
-	errCh := make(chan error)
-	cancel := make(chan struct{})
-	pause := make(chan struct{})
+	errCh := make(chan error, 1)
+	stateCtx := types.NewStateContext()
 
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
@@ -157,13 +156,12 @@ func TestPanicStep(t *testing.T) {
 		test.TestStepBundle{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
 	}
 
-	cancel := make(chan struct{})
-	pause := make(chan struct{})
+	errCh := make(chan error, 1)
+	stateCtx := types.NewStateContext()
 
-	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
@@ -190,10 +188,9 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 		test.TestStepBundle{TestStep: ts2, Parameters: params, TestStepLabel: "Example"},
 	}
 
-	cancel := make(chan struct{})
-	pause := make(chan struct{})
+	stateCtx := types.NewStateContext()
+	errCh := make(chan error, 1)
 
-	errCh := make(chan error)
 	timeouts := runner.TestRunnerTimeouts{
 		StepInjectTimeout:   30 * time.Second,
 		MessageTimeout:      5 * time.Second,
@@ -234,10 +231,8 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 		test.TestStepBundle{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
 	}
 
-	cancel := make(chan struct{})
-	pause := make(chan struct{})
-
-	errCh := make(chan error)
+	stateCtx := types.NewStateContext()
+	errCh := make(chan error, 1)
 
 	var (
 		StepInjectTimeout   = 30 * time.Second
@@ -254,7 +249,7 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 
 	go func() {
 		tr := runner.NewTestRunnerWithTimeouts(timeouts)
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
@@ -298,13 +293,12 @@ func TestStepClosesChannels(t *testing.T) {
 		test.TestStepBundle{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
 	}
 
-	cancel := make(chan struct{})
-	pause := make(chan struct{})
+	stateCtx := types.NewStateContext()
+	errCh := make(chan error, 1)
 
-	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
@@ -340,13 +334,12 @@ func TestCmdPlugin(t *testing.T) {
 		test.TestStepBundle{TestStep: ts1, Parameters: params},
 	}
 
-	cancel := make(chan struct{})
-	pause := make(chan struct{})
+	stateCtx := types.NewStateContext()
+	errCh := make(chan error, 1)
 
-	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
@@ -378,13 +371,12 @@ func TestNoRunTestStepIfNoTargets(t *testing.T) {
 		{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
 	}
 
-	cancel := make(chan struct{})
-	pause := make(chan struct{})
+	stateCtx := types.NewStateContext()
+	errCh := make(chan error, 1)
 
-	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
