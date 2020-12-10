@@ -125,7 +125,7 @@ func TestSuccessfulCompletion(t *testing.T) {
 	}
 
 	errCh := make(chan error, 1)
-	stateCtx := types.NewStateContext()
+	stateCtx, _, _ := types.NewStateContext()
 
 	go func() {
 		tr := runner.NewTestRunner()
@@ -157,7 +157,7 @@ func TestPanicStep(t *testing.T) {
 	}
 
 	errCh := make(chan error, 1)
-	stateCtx := types.NewStateContext()
+	stateCtx, _, _ := types.NewStateContext()
 
 	go func() {
 		tr := runner.NewTestRunner()
@@ -188,7 +188,7 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 		test.TestStepBundle{TestStep: ts2, Parameters: params, TestStepLabel: "Example"},
 	}
 
-	stateCtx := types.NewStateContext()
+	stateCtx, _, _ := types.NewStateContext()
 	errCh := make(chan error, 1)
 
 	timeouts := runner.TestRunnerTimeouts{
@@ -231,7 +231,7 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 		test.TestStepBundle{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
 	}
 
-	stateCtx := types.NewStateContext()
+	stateCtx, _, _ := types.NewStateContext()
 	errCh := make(chan error, 1)
 
 	var (
@@ -293,7 +293,7 @@ func TestStepClosesChannels(t *testing.T) {
 		test.TestStepBundle{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
 	}
 
-	stateCtx := types.NewStateContext()
+	stateCtx, _, _ := types.NewStateContext()
 	errCh := make(chan error, 1)
 
 	go func() {
@@ -334,7 +334,7 @@ func TestCmdPlugin(t *testing.T) {
 		test.TestStepBundle{TestStep: ts1, Parameters: params},
 	}
 
-	stateCtx := types.NewStateContext()
+	stateCtx, _, _ := types.NewStateContext()
 	errCh := make(chan error, 1)
 
 	go func() {
@@ -371,7 +371,7 @@ func TestNoRunTestStepIfNoTargets(t *testing.T) {
 		{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
 	}
 
-	stateCtx := types.NewStateContext()
+	stateCtx, _, _ := types.NewStateContext()
 	errCh := make(chan error, 1)
 
 	go func() {
