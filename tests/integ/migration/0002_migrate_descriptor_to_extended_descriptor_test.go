@@ -90,6 +90,7 @@ func (suite *TestDescriptorMigrationSuite) TestUpMigratesToExtendedDescriptor() 
 	// fetching extended descriptor and unmarshalling it into ExtendedDescriptor structure
 	selectStatement := "select extended_descriptor from jobs"
 	rows, err := suite.tx.Query(selectStatement)
+	defer rows.Close()
 
 	require.NoError(suite.T(), err)
 
