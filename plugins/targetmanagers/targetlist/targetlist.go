@@ -28,6 +28,7 @@
 package targetlist
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -83,7 +84,7 @@ func (t TargetList) ValidateReleaseParameters(params []byte) (interface{}, error
 }
 
 // Acquire implements contest.TargetManager.Acquire
-func (t *TargetList) Acquire(jobID types.JobID, cancel <-chan struct{}, parameters interface{}, tl target.Locker) ([]*target.Target, error) {
+func (t *TargetList) Acquire(ctx context.Context, jobID types.JobID, parameters interface{}, tl target.Locker) ([]*target.Target, error) {
 	acquireParameters, ok := parameters.(AcquireParameters)
 	if !ok {
 		return nil, fmt.Errorf("Acquire expects %T object, got %T", acquireParameters, parameters)
@@ -99,7 +100,7 @@ func (t *TargetList) Acquire(jobID types.JobID, cancel <-chan struct{}, paramete
 }
 
 // Release releases the acquired resources.
-func (t *TargetList) Release(jobID types.JobID, cancel <-chan struct{}, params interface{}) error {
+func (t *TargetList) Release(ctx context.Context, jobID types.JobID, params interface{}) error {
 	log.Infof("Released %d targets", len(t.targets))
 	return nil
 }

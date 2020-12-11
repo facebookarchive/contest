@@ -18,6 +18,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/runner"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
@@ -124,13 +125,12 @@ func TestSuccessfulCompletion(t *testing.T) {
 		test.TestStepBundle{TestStep: ts3, TestStepLabel: "ThirdStage", Parameters: params},
 	}
 
-	errCh := make(chan error)
-	cancel := make(chan struct{})
-	pause := make(chan struct{})
+	errCh := make(chan error, 1)
+	stateCtx, _, _ := statectx.NewContext()
 
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
@@ -157,13 +157,12 @@ func TestPanicStep(t *testing.T) {
 		test.TestStepBundle{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
 	}
 
-	cancel := make(chan struct{})
-	pause := make(chan struct{})
+	errCh := make(chan error, 1)
+	stateCtx, _, _ := statectx.NewContext()
 
-	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
@@ -190,10 +189,9 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 		test.TestStepBundle{TestStep: ts2, Parameters: params, TestStepLabel: "Example"},
 	}
 
-	cancel := make(chan struct{})
-	pause := make(chan struct{})
+	stateCtx, _, _ := statectx.NewContext()
+	errCh := make(chan error, 1)
 
-	errCh := make(chan error)
 	timeouts := runner.TestRunnerTimeouts{
 		StepInjectTimeout:   30 * time.Second,
 		MessageTimeout:      5 * time.Second,
@@ -202,7 +200,7 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 	}
 	go func() {
 		tr := runner.NewTestRunnerWithTimeouts(timeouts)
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
@@ -234,10 +232,8 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 		test.TestStepBundle{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
 	}
 
-	cancel := make(chan struct{})
-	pause := make(chan struct{})
-
-	errCh := make(chan error)
+	stateCtx, _, cancel := statectx.NewContext()
+	errCh := make(chan error, 1)
 
 	var (
 		StepInjectTimeout   = 30 * time.Second
@@ -254,7 +250,7 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 
 	go func() {
 		tr := runner.NewTestRunnerWithTimeouts(timeouts)
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
@@ -267,7 +263,7 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 	case <-time.After(testTimeout):
 		// Assert cancellation signal and expect the TestRunner to return within
 		// testShutdownTimeout
-		close(cancel)
+		cancel()
 		select {
 		case err = <-errCh:
 			// The test timed out, which is an error from the perspective of the JobManager
@@ -298,13 +294,12 @@ func TestStepClosesChannels(t *testing.T) {
 		test.TestStepBundle{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
 	}
 
-	cancel := make(chan struct{})
-	pause := make(chan struct{})
+	stateCtx, _, _ := statectx.NewContext()
+	errCh := make(chan error, 1)
 
-	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
@@ -340,19 +335,18 @@ func TestCmdPlugin(t *testing.T) {
 		test.TestStepBundle{TestStep: ts1, Parameters: params},
 	}
 
-	cancel := make(chan struct{})
-	pause := make(chan struct{})
+	stateCtx, _, cancel := statectx.NewContext()
+	errCh := make(chan error, 1)
 
-	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
 	go func() {
 		time.Sleep(time.Second)
-		close(cancel)
+		cancel()
 	}()
 
 	select {
@@ -378,13 +372,12 @@ func TestNoRunTestStepIfNoTargets(t *testing.T) {
 		{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
 	}
 
-	cancel := make(chan struct{})
-	pause := make(chan struct{})
+	stateCtx, _, _ := statectx.NewContext()
+	errCh := make(chan error, 1)
 
-	errCh := make(chan error)
 	go func() {
 		tr := runner.NewTestRunner()
-		err := tr.Run(cancel, pause, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 

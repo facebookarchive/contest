@@ -103,7 +103,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				// the Acquire semantic is synchronous, so that the implementation
 				// is simpler on the user's side. We run it in a goroutine in
 				// order to use a timeout for target acquisition.
-				targets, err := bundle.TargetManager.Acquire(j.ID, j.CancelCh, bundle.AcquireParameters, tl)
+				targets, err := bundle.TargetManager.Acquire(j.StateCtx, j.ID, bundle.AcquireParameters, tl)
 				if err != nil {
 					errCh <- err
 					targetsCh <- nil
@@ -139,7 +139,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 
 			case <-time.After(config.TargetManagerTimeout):
 				return nil, nil, fmt.Errorf("target manager acquire timed out after %s", config.TargetManagerTimeout)
-			case <-j.CancelCh:
+			case <-j.StateCtx.Done():
 				jobLog.Infof("cancellation requested for job ID %v", j.ID)
 				return nil, nil, nil
 			}
@@ -153,15 +153,11 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			go func(j *job.Job, tl target.Locker, targets []*target.Target, refreshInterval time.Duration) {
 				for {
 					select {
-					case <-j.CancelCh:
-						// unlock targets
+					case <-j.StateCtx.Done():
 						if err := tl.Unlock(j.ID, targets); err != nil {
 							jobLog.Warningf("Failed to unlock targets (%v) for job ID %d: %v", targets, j.ID, err)
 						}
-						return
-					case <-j.PauseCh:
-						// do not unlock targets, we can resume later, or let
-						// them expire
+					case <-j.StateCtx.Paused():
 						jobLog.Debugf("Received pause request, NOT releasing targets so the job can be resumed")
 						return
 					case <-done:
@@ -187,7 +183,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			if runErr = jr.emitAcquiredTargets(testEventEmitter, targets); runErr == nil {
 				jobLog.Infof("Run #%d: running test #%d for job '%s' (job ID: %d) on %d targets", run+1, idx, j.Name, j.ID, len(targets))
 				testRunner := NewTestRunner()
-				runErr = testRunner.Run(j.CancelCh, j.PauseCh, t, targets, j.ID, types.RunID(run+1))
+				runErr = testRunner.Run(j.StateCtx, t, targets, j.ID, types.RunID(run+1))
 			}
 
 			// Job is done, release all the targets
@@ -196,7 +192,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				// is simpler on the user's side. We run it in a goroutine in
 				// order to use a timeout for target acquisition. If Release fails, whether
 				// due to an error or for a timeout, the whole Job is considered failed
-				errCh <- bundle.TargetManager.Release(j.ID, j.CancelCh, bundle.ReleaseParameters)
+				errCh <- bundle.TargetManager.Release(j.StateCtx, j.ID, bundle.ReleaseParameters)
 				// signal that we are done to the goroutine that refreshes the
 				// locks.
 				close(done)
@@ -210,7 +206,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				}
 			case <-time.After(config.TargetManagerTimeout):
 				return nil, nil, fmt.Errorf("target manager release timed out after %s", config.TargetManagerTimeout)
-			case <-j.CancelCh:
+			case <-j.StateCtx.Done():
 				jobLog.Infof("cancellation requested for job ID %v", j.ID)
 				return nil, nil, nil
 			}
@@ -233,7 +229,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				jobLog.Warningf("could not build run status for job %d: %v. Run report will not execute", j.ID, err)
 				continue
 			}
-			success, data, err := bundle.Reporter.RunReport(j.CancelCh, bundle.Parameters, runStatus, ev)
+			success, data, err := bundle.Reporter.RunReport(j.StateCtx, bundle.Parameters, runStatus, ev)
 			if err != nil {
 				jobLog.Warningf("Run reporter failed while calculating run results, proceeding anyway: %v", err)
 			} else {
@@ -281,7 +277,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			continue
 		}
 
-		success, data, err := bundle.Reporter.FinalReport(j.CancelCh, bundle.Parameters, runStatuses, ev)
+		success, data, err := bundle.Reporter.FinalReport(j.StateCtx, bundle.Parameters, runStatuses, ev)
 		if err != nil {
 			jobLog.Warningf("Final reporter failed while calculating test results, proceeding anyway: %v", err)
 		} else {

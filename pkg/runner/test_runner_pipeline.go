@@ -15,6 +15,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
@@ -409,7 +410,7 @@ func (p *pipeline) waitSteps() error {
 // init initializes the pipeline by connecting steps and routing blocks. The result of pipeline
 // initialization is a set of control/result channels assigned to the pipeline object. The pipeline
 // input channel is returned.
-func (p *pipeline) init(cancel, pause <-chan struct{}) (routeInFirst chan *target.Target) {
+func (p *pipeline) init() (routeInFirst chan *target.Target) {
 	p.log.Debugf("starting")
 
 	if p.ctrlChannels != nil {
@@ -501,8 +502,7 @@ func (p *pipeline) init(cancel, pause <-chan struct{}) (routeInFirst chan *targe
 }
 
 // run is a blocking method which executes the pipeline until successful or failed termination
-func (p *pipeline) run(cancel, pause <-chan struct{}, completedTargetsCh chan<- *target.Target) error {
-
+func (p *pipeline) run(ctx statectx.Context, completedTargetsCh chan<- *target.Target) error {
 	p.log.Debugf("run")
 	if p.ctrlChannels == nil {
 		p.log.Panicf("pipeline is not initialized, control channels are not available")
@@ -521,32 +521,30 @@ func (p *pipeline) run(cancel, pause <-chan struct{}, completedTargetsCh chan<- 
 
 	cancelWaitTargetsCh := make(chan struct{})
 	// errCh collects errors coming from the routines which wait for the Test to complete
-	errCh := make(chan error)
+	errCh := make(chan error, 1)
 	go func() {
 		errCh <- p.waitTargets(cancelWaitTargetsCh, completedTargetsCh)
 	}()
 
 	select {
 	case completionError = <-errCh:
-	case <-cancel:
+	case <-ctx.PausedOrDone():
 		close(cancelWaitTargetsCh)
-		cancellationAsserted = true
 		completionError = <-errCh
-	case <-pause:
-		close(cancelWaitTargetsCh)
-		pauseAsserted = true
-		completionError = <-errCh
+
+		pauseAsserted = ctx.PausedOrDoneCtx().Err() == statectx.ErrPaused
+		cancellationAsserted = ctx.PausedOrDoneCtx().Err() == statectx.ErrCanceled
 	}
 
 	if completionError != nil || cancellationAsserted {
 		// If the Test has encountered an error or cancellation has been asserted,
 		// terminate routing and and propagate the cancel signal to the steps
-		cancellationAsserted = true
-		if completionError != nil {
-			p.log.Warningf("test failed to complete: %v. Forcing cancellation.", completionError)
-		} else {
+		if cancellationAsserted {
 			p.log.Infof("cancellation was asserted")
+		} else {
+			p.log.Warningf("test failed to complete: %v. Forcing cancellation.", completionError)
 		}
+
 		close(p.ctrlChannels.cancelStepsCh)
 		close(p.ctrlChannels.cancelRoutingCh)
 	}
@@ -560,7 +558,7 @@ func (p *pipeline) run(cancel, pause <-chan struct{}, completedTargetsCh chan<- 
 
 	// If either cancellation or pause have been asserted, we need to wait for the
 	// pipeline to terminate
-	if cancellationAsserted || pauseAsserted {
+	if cancellationAsserted || pauseAsserted || completionError != nil {
 		go func() {
 			errCh <- p.waitTermination()
 		}()
@@ -574,15 +572,13 @@ func (p *pipeline) run(cancel, pause <-chan struct{}, completedTargetsCh chan<- 
 		} else {
 			p.log.Infof("test terminated correctly after %s signal", signal)
 		}
-	} else {
-		p.log.Infof("completed")
+		if completionError != nil {
+			return completionError
+		}
+		return terminationError
 	}
-
-	if completionError != nil {
-		return completionError
-	}
-	return terminationError
-
+	p.log.Infof("completed")
+	return nil
 }
 
 func newPipeline(log *logrus.Entry, bundles []test.TestStepBundle, test *test.Test, jobID types.JobID, runID types.RunID, timeouts TestRunnerTimeouts) *pipeline {

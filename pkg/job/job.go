@@ -8,6 +8,7 @@ package job
 import (
 	"time"
 
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
 
@@ -33,16 +34,11 @@ type Job struct {
 	// subsequently use to search and aggregate.
 	Tags []string
 
-	// done is a job-wide channel that every stage should check to know
-	// whether work should be stopped or not.
-	Done chan struct{}
-
-	// TODO: these channels should be owned by the JobManager
-	// cancel is a job-wide channel used to request and detect job cancellation.
-	CancelCh chan struct{}
-
-	// pause is a job-wide channel used to request and detect job pausing.
-	PauseCh chan struct{}
+	// TODO: StateCtx should be owned by the JobManager
+	// cancel or pause is a job-wide channel used to request and detect job's state change.
+	StateCtx       statectx.Context
+	StateCtxPause  func()
+	StateCtxCancel func()
 
 	// How many times a job has to run. 0 means infinite.
 	// A "run" is the execution of a sequence of tests. For example, setting
@@ -68,31 +64,21 @@ type Job struct {
 
 // Cancel closes the cancel channel to signal cancellation
 func (j *Job) Cancel() {
-	close(j.CancelCh)
+	j.StateCtxCancel()
 }
 
 // Pause closes the pause channel to signal pause
 func (j *Job) Pause() {
-	close(j.PauseCh)
+	j.StateCtxPause()
 }
 
 // IsCancelled returns whether the job has been cancelled
 func (j *Job) IsCancelled() bool {
-	select {
-	case <-j.CancelCh:
-		return true
-	default:
-		return false
-	}
+	return j.StateCtx.Err() == statectx.ErrCanceled
 }
 
 func (j *Job) IsPaused() bool {
-	select {
-	case <-j.PauseCh:
-		return true
-	default:
-		return false
-	}
+	return j.StateCtx.PausedCtx().Err() == statectx.ErrPaused
 }
 
 // InfoFetcher defines how to fetch job information

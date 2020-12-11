@@ -7,6 +7,7 @@ package job
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"time"
 
@@ -48,8 +49,8 @@ type Reporter interface {
 
 	Name() string
 
-	RunReport(cancel <-chan struct{}, parameters interface{}, runStatus *RunStatus, ev testevent.Fetcher) (bool, interface{}, error)
-	FinalReport(cancel <-chan struct{}, parameters interface{}, runStatuses []RunStatus, ev testevent.Fetcher) (bool, interface{}, error)
+	RunReport(ctx context.Context, parameters interface{}, runStatus *RunStatus, ev testevent.Fetcher) (bool, interface{}, error)
+	FinalReport(ctx context.Context, parameters interface{}, runStatuses []RunStatus, ev testevent.Fetcher) (bool, interface{}, error)
 }
 
 // ReporterBundle bundles the selected Reporter together with its parameters

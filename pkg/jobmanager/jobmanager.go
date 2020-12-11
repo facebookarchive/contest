@@ -23,6 +23,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/runner"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/storage/limits"
 	"github.com/facebookincubator/contest/pkg/test"
@@ -187,7 +188,7 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 		return nil, fmt.Errorf("failed to marshal test descriptors: %w", err)
 	}
 
-	job := job.Job{
+	j := job.Job{
 		ID:          types.JobID(0),
 		Name:        jd.JobName,
 		Tags:        jd.Tags,
@@ -200,12 +201,8 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 		FinalReporterBundles: nil,
 	}
 
-	job.Done = make(chan struct{})
-
-	job.CancelCh = make(chan struct{})
-	job.PauseCh = make(chan struct{})
-
-	return &job, nil
+	j.StateCtx, j.StateCtxPause, j.StateCtxCancel = statectx.NewContext()
+	return &j, nil
 }
 
 // NewJob returns a new Job object and the fetched test descriptors
