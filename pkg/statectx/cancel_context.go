@@ -43,14 +43,14 @@ func (c *cancelContext) Err() error {
 }
 
 func (c *cancelContext) cancel(err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	select {
 	case <-c.done:
 		return // already canceled
 	default:
 	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	c.err = err
 	close(c.done)

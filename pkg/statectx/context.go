@@ -19,33 +19,32 @@ var ErrPaused = errors.New("job is paused")
 
 // statectx.Context implements context.Context interface that acts as context for cancellation signal
 // It also implements:
-// - OnPause()/PauseCtx() that alert in case of pause happened
-// - Any()/AnyCtx() that alert in case of pause/cancel events
-// - State()
+// - Paused()/PausedCtx() that alert in case of pause happened
+// - PausedOrDone()/PausedOrDoneCtx() that alert in case of pause/cancel events
 type Context interface {
 	context.Context
 
-	OnPause() <-chan struct{}
-	PauseCtx() context.Context
+	Paused() <-chan struct{}
+	PausedCtx() context.Context
 
-	Any() <-chan struct{}
-	AnyCtx() context.Context
+	PausedOrDone() <-chan struct{}
+	PausedOrDoneCtx() context.Context
 }
 
 func NewContext() (Context, func(), func()) {
 	cancelCtx, cancel := newCancelContext()
 	pauseCtx, pause := newCancelContext()
-	anyCtx, any := newCancelContext()
+	pauseOrDoneCtx, pauseOrDone := newCancelContext()
 
 	resCtx := &stateCtx{
-		cancelCtx: cancelCtx,
-		pauseCtx:  pauseCtx,
-		anyCtx:    anyCtx,
+		cancelCtx:      cancelCtx,
+		pauseCtx:       pauseCtx,
+		pauseOrDoneCtx: pauseOrDoneCtx,
 	}
 
 	wrap := func(action func(err error), err error) func() {
 		return func() {
-			any(err)
+			pauseOrDone(err)
 			action(err)
 		}
 	}
@@ -53,9 +52,9 @@ func NewContext() (Context, func(), func()) {
 }
 
 type stateCtx struct {
-	cancelCtx context.Context
-	pauseCtx  context.Context
-	anyCtx    context.Context
+	cancelCtx      context.Context
+	pauseCtx       context.Context
+	pauseOrDoneCtx context.Context
 }
 
 func (c *stateCtx) Deadline() (deadline time.Time, ok bool) {
@@ -74,18 +73,18 @@ func (c *stateCtx) Err() error {
 	return c.cancelCtx.Err()
 }
 
-func (c *stateCtx) OnPause() <-chan struct{} {
+func (c *stateCtx) Paused() <-chan struct{} {
 	return c.pauseCtx.Done()
 }
 
-func (c *stateCtx) PauseCtx() context.Context {
+func (c *stateCtx) PausedCtx() context.Context {
 	return c.pauseCtx
 }
 
-func (c *stateCtx) Any() <-chan struct{} {
-	return c.anyCtx.Done()
+func (c *stateCtx) PausedOrDone() <-chan struct{} {
+	return c.pauseOrDoneCtx.Done()
 }
 
-func (c *stateCtx) AnyCtx() context.Context {
-	return c.anyCtx
+func (c *stateCtx) PausedOrDoneCtx() context.Context {
+	return c.pauseOrDoneCtx
 }

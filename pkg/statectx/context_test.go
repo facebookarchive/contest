@@ -22,14 +22,14 @@ func TestContextBlocked(t *testing.T) {
 	case <-timeoutCtx.Done():
 		blockedOnDone = true
 	case <-ctx.Done():
-	case <-ctx.Any():
-	case <-ctx.OnPause():
+	case <-ctx.PausedOrDone():
+	case <-ctx.Paused():
 	}
 	require.True(t, blockedOnDone)
 
 	require.Nil(t, ctx.Err())
-	require.Nil(t, ctx.PauseCtx().Err())
-	require.Nil(t, ctx.AnyCtx().Err())
+	require.Nil(t, ctx.PausedCtx().Err())
+	require.Nil(t, ctx.PausedOrDoneCtx().Err())
 }
 
 func TestContextCanceled(t *testing.T) {
@@ -39,15 +39,15 @@ func TestContextCanceled(t *testing.T) {
 	cancel()
 
 	<-ctx.Done()
-	<-ctx.Any()
+	<-ctx.PausedOrDone()
 
 	require.Equal(t, ErrCanceled, ctx.Err())
-	require.Nil(t, ctx.PauseCtx().Err())
-	require.Equal(t, ErrCanceled, ctx.AnyCtx().Err())
+	require.Nil(t, ctx.PausedCtx().Err())
+	require.Equal(t, ErrCanceled, ctx.PausedOrDoneCtx().Err())
 
 	var paused bool
 	select {
-	case <-ctx.OnPause():
+	case <-ctx.Paused():
 		paused = true
 	default:
 	}
@@ -60,12 +60,12 @@ func TestContextPaused(t *testing.T) {
 
 	pause()
 
-	<-ctx.OnPause()
-	<-ctx.Any()
+	<-ctx.Paused()
+	<-ctx.PausedOrDone()
 
 	require.Nil(t, ctx.Err())
-	require.Equal(t, ErrPaused, ctx.PauseCtx().Err())
-	require.Equal(t, ErrPaused, ctx.AnyCtx().Err())
+	require.Equal(t, ErrPaused, ctx.PausedCtx().Err())
+	require.Equal(t, ErrPaused, ctx.PausedOrDoneCtx().Err())
 
 	var canceled bool
 	select {
@@ -74,4 +74,22 @@ func TestContextPaused(t *testing.T) {
 	default:
 	}
 	require.False(t, canceled)
+}
+
+func TestMultipleCancelPause(t *testing.T) {
+	ctx, pause, cancel := NewContext()
+	require.NotNil(t, ctx)
+
+	pause()
+	cancel()
+	pause()
+	cancel()
+
+	<-ctx.Done()
+	<-ctx.PausedOrDone()
+	<-ctx.Paused()
+
+	require.Equal(t, ErrCanceled, ctx.Err())
+	require.Equal(t, ErrPaused, ctx.PausedCtx().Err())
+	require.Equal(t, ErrPaused, ctx.PausedOrDoneCtx().Err())
 }

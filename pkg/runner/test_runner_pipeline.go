@@ -528,12 +528,12 @@ func (p *pipeline) run(ctx statectx.Context, completedTargetsCh chan<- *target.T
 
 	select {
 	case completionError = <-errCh:
-	case <-ctx.Any():
+	case <-ctx.PausedOrDone():
 		close(cancelWaitTargetsCh)
 		completionError = <-errCh
 
-		pauseAsserted = ctx.AnyCtx().Err() == statectx.ErrPaused
-		cancellationAsserted = ctx.AnyCtx().Err() == statectx.ErrCanceled
+		pauseAsserted = ctx.PausedOrDoneCtx().Err() == statectx.ErrPaused
+		cancellationAsserted = ctx.PausedOrDoneCtx().Err() == statectx.ErrCanceled
 	}
 
 	if completionError != nil || cancellationAsserted {
