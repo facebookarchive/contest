@@ -7,6 +7,7 @@ package example
 
 import (
 	"fmt"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"math/rand"
 	"strings"
 
@@ -15,7 +16,6 @@ import (
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/test"
-	"github.com/facebookincubator/contest/pkg/types"
 )
 
 // Name is the name used to look this plugin up.
@@ -49,7 +49,7 @@ func (ts Step) Name() string {
 }
 
 // Run executes the example step.
-func (ts *Step) Run(ctx types.StateContext, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *Step) Run(ctx statectx.Context, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.Emitter) error {
 	for {
 
 		r := rand.Intn(3)
@@ -67,7 +67,7 @@ func (ts *Step) Run(ctx types.StateContext, ch test.TestStepChannels, _ test.Tes
 			}
 			if r == 1 {
 				select {
-				case <-ctx.Done():
+				case <-ctx.PausedOrDone():
 					return nil
 				case ch.Err <- cerrors.TargetError{Target: target, Err: fmt.Errorf("target failed")}:
 					if err := ev.Emit(testevent.Data{EventName: FinishedEvent, Target: target, Payload: nil}); err != nil {
@@ -76,7 +76,7 @@ func (ts *Step) Run(ctx types.StateContext, ch test.TestStepChannels, _ test.Tes
 				}
 			} else {
 				select {
-				case <-ctx.Done():
+				case <-ctx.PausedOrDone():
 					return nil
 				case ch.Out <- target:
 					if err := ev.Emit(testevent.Data{EventName: FailedEvent, Target: target, Payload: nil}); err != nil {
@@ -84,7 +84,7 @@ func (ts *Step) Run(ctx types.StateContext, ch test.TestStepChannels, _ test.Tes
 					}
 				}
 			}
-		case <-ctx.Done():
+		case <-ctx.PausedOrDone():
 			return nil
 		}
 	}

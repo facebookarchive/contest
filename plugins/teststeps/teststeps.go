@@ -10,16 +10,16 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
-	"github.com/facebookincubator/contest/pkg/types"
 )
 
 var log = logging.GetLogger("plugins/teststeps")
 
 // PerTargetFunc is a function type that is called on each target by the
 // ForEachTarget function below.
-type PerTargetFunc func(ctx types.StateContext, target *target.Target) error
+type PerTargetFunc func(ctx statectx.Context, target *target.Target) error
 
 // ForEachTarget is a facility provided to simplify plugin implementations. This
 // function wraps the logic that handles target routing through the in/out/err
@@ -29,7 +29,7 @@ type PerTargetFunc func(ctx types.StateContext, target *target.Target) error
 // provide an implementation of a per-target function that will be called on
 // each target. The implementation of the per-target function is responsible for
 // handling internal cancellation and pausing.
-func ForEachTarget(pluginName string, ctx types.StateContext, ch test.TestStepChannels, f PerTargetFunc) error {
+func ForEachTarget(pluginName string, ctx statectx.Context, ch test.TestStepChannels, f PerTargetFunc) error {
 	reportTarget := func(t *target.Target, err error) {
 		if err != nil {
 			log.Errorf("%s: ForEachTarget: failed to apply test step function on target %s: %v", pluginName, t, err)
@@ -42,7 +42,7 @@ func ForEachTarget(pluginName string, ctx types.StateContext, ch test.TestStepCh
 			log.Debugf("%s: ForEachTarget: target %s completed successfully", pluginName, t)
 			select {
 			case ch.Out <- t:
-			case <-ctx.Done():
+			case <-ctx.PausedOrDone():
 				log.Debugf("%s: ForEachTarget: received cancellation/pause signal while reporting success", pluginName)
 			}
 		}
@@ -68,6 +68,9 @@ func ForEachTarget(pluginName string, ctx types.StateContext, ch test.TestStepCh
 				}()
 			case <-ctx.Done():
 				log.Debugf("%s: ForEachTarget: incoming loop canceled", pluginName)
+				return
+			case <-ctx.Paused():
+				log.Debugf("%s: ForEachTarget: incoming loop paused", pluginName)
 				return
 			}
 		}

@@ -64,7 +64,7 @@ type pipeline struct {
 // indefinitely and does not respond to cancellation signals, the TestRunner will
 // flag it as misbehaving and return. If the TestStep returns once the TestRunner
 // has completed, it will timeout trying to write on the result channel.
-func (p *pipeline) runStep(ctx types.StateContext, jobID types.JobID, runID types.RunID, bundle test.TestStepBundle, stepCh stepCh, resultCh chan<- stepResult, ev testevent.EmitterFetcher) {
+func (p *pipeline) runStep(ctx statectx.Context, jobID types.JobID, runID types.RunID, bundle test.TestStepBundle, stepCh stepCh, resultCh chan<- stepResult, ev testevent.EmitterFetcher) {
 
 	stepLabel := bundle.TestStepLabel
 	log := logging.AddField(p.log, "step", stepLabel)
@@ -98,11 +98,9 @@ func (p *pipeline) runStep(ctx types.StateContext, jobID types.JobID, runID type
 		log.Debugf("first target received, will start step")
 		haveTargets = true
 	case <-ctx.Done():
-		if ctx.State() == types.StateCanceled {
-			log.Debugf("cancelled")
-		} else {
-			log.Debugf("paused")
-		}
+		log.Debugf("cancelled")
+	case <-ctx.Paused():
+		log.Debugf("paused")
 	case <-onNoTargetsChan:
 		log.Debugf("no targets")
 	}
@@ -121,26 +119,16 @@ func (p *pipeline) runStep(ctx types.StateContext, jobID types.JobID, runID type
 	}
 
 	log.Debugf("step %s returned", bundle.TestStepLabel)
-	var (
-		cancellationAsserted bool
-		pauseAsserted        bool
-	)
+
 	// Check if we are shutting down. If so, do not perform sanity checks on the
 	// channels but return immediately as the TestStep itself probably returned
 	// because it honored the termination signal.
-	select {
-	case <-ctx.Done():
-		if ctx.State() == types.StateActive {
-			log.Debugf("cancelled")
-			cancellationAsserted = true
-			if err == nil {
-				err = fmt.Errorf("test step cancelled")
-			}
-		} else {
-			log.Debugf("paused")
-			pauseAsserted = true
-		}
-	default:
+
+	cancellationAsserted := ctx.PausedOrDoneCtx().Err() == statectx.ErrCanceled
+	pauseAsserted := ctx.PausedOrDoneCtx().Err() == statectx.ErrPaused
+
+	if cancellationAsserted && err == nil {
+		err = fmt.Errorf("test step cancelled")
 	}
 
 	if cancellationAsserted || pauseAsserted {
@@ -174,15 +162,12 @@ func (p *pipeline) runStep(ctx types.StateContext, jobID types.JobID, runID type
 		}
 		// stepCh.stepIn is not closed, but the TestStep returned, which is a violation
 		// of the API. Record the error if no other error condition has been seen.
-		if err == nil {
-			err = fmt.Errorf("step %s returned, but input channel is not closed (api violation; case 0)", stepLabel)
-		}
+		err = fmt.Errorf("step %s returned, but input channel is not closed (api violation; case 0)", stepLabel)
+
 	default:
 		// stepCh.stepIn is not closed, and a read operation would block. The TestStep
 		// does not comply with the API (see above).
-		if err == nil {
-			err = fmt.Errorf("step %s returned, but input channel is not closed (api violation; case 1)", stepLabel)
-		}
+		err = fmt.Errorf("step %s returned, but input channel is not closed (api violation; case 1)", stepLabel)
 	}
 
 	select {
@@ -242,13 +227,13 @@ func (p *pipeline) waitTargets(ctx context.Context, completedCh chan<- *target.T
 	writer := newTargetWriter(log, p.timeouts)
 	for {
 		select {
-		case target, ok := <-outChannel:
+		case t, ok := <-outChannel:
 			if !ok {
 				log.Debugf("pipeline output channel was closed, no more targets will come through")
 				outChannel = nil
 				break
 			}
-			completedTarget = target
+			completedTarget = t
 		case <-ctx.Done():
 			// When termination is signaled just stop wait. It is up
 			// to the caller to decide how to further handle pipeline termination.
@@ -427,11 +412,7 @@ func (p *pipeline) init() (routeInFirst chan *target.Target) {
 		routeIn  chan *target.Target
 	)
 
-	// termination channels are used to signal termination to injection and routing
-	//routingCancelCh := make(chan struct{})
-	//stepsCancelCh := make(chan struct{})
-	//stepsPauseCh := make(chan struct{})
-	ctx, pause, cancel := types.NewStateContext()
+	ctx, pause, cancel := statectx.NewContext()
 
 	// result channels used to communicate result information from the routing blocks
 	// and step executors

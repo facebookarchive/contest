@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -21,7 +22,6 @@ import (
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
-	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/plugins/teststeps"
 )
 
@@ -97,11 +97,11 @@ func emitEvent(name event.Name, payload interface{}, tgt *target.Target, ev test
 }
 
 // Run executes the cmd step.
-func (ts *Cmd) Run(ctx types.StateContext, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *Cmd) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	if err := ts.validateAndPopulate(params); err != nil {
 		return err
 	}
-	f := func(ctx types.StateContext, target *target.Target) error {
+	f := func(ctx statectx.Context, target *target.Target) error {
 		// expand args
 		var args []string
 		for _, arg := range ts.args {

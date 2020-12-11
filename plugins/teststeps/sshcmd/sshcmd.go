@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"io"
 	"io/ioutil"
 	"net"
@@ -33,7 +34,6 @@ import (
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
-	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/plugins/teststeps"
 	shellquote "github.com/kballard/go-shellquote"
 	"golang.org/x/crypto/ssh"
@@ -71,7 +71,7 @@ func (ts SSHCmd) Name() string {
 }
 
 // Run executes the cmd step.
-func (ts *SSHCmd) Run(ctx types.StateContext, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *SSHCmd) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	// XXX: Dragons ahead! The target (%t) substitution, and function
 	// expression evaluations are done at run-time, so they may still fail
 	// despite passing at early validation time.
@@ -84,7 +84,7 @@ func (ts *SSHCmd) Run(ctx types.StateContext, ch test.TestStepChannels, params t
 		return err
 	}
 
-	f := func(ctx types.StateContext, target *target.Target) error {
+	f := func(ctx statectx.Context, target *target.Target) error {
 		// apply filters and substitutions to user, host, private key, and command args
 		user, err := ts.User.Expand(target)
 		if err != nil {
@@ -230,7 +230,7 @@ func (ts *SSHCmd) Run(ctx types.StateContext, ch test.TestStepChannels, params t
 					log.Warningf("Stderr of command '%s' is '%s'", cmd, stderr.Bytes())
 				}
 				return err
-			case <-ctx.Done():
+			case <-ctx.PausedOrDone():
 				return session.Signal(ssh.SIGKILL)
 			case <-time.After(250 * time.Millisecond):
 				keepAliveCnt++

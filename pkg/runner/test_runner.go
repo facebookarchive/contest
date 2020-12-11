@@ -92,7 +92,7 @@ type pipelineCtrlCh struct {
 	targetErr       <-chan cerrors.TargetError
 
 	// stateCtx  is a control context used to cancel/pause the steps of the pipeline
-	stateCtx types.StateContext
+	stateCtx statectx.Context
 	pause    func()
 	cancel   func()
 }

@@ -8,6 +8,7 @@ package slowecho
 import (
 	"context"
 	"errors"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,7 +20,6 @@ import (
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
-	"github.com/facebookincubator/contest/pkg/types"
 )
 
 // Name is the name used to look this plugin up.
@@ -81,7 +81,7 @@ func (e *Step) ValidateParameters(params test.TestStepParameters) error {
 }
 
 // Run executes the step
-func (e *Step) Run(ctx types.StateContext, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (e *Step) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	sleep, err := sleepTime(params.GetOne("sleep").String())
 	if err != nil {
 		return err
@@ -112,14 +112,12 @@ processing:
 
 				log.Infof("target %s: %s", t, params.GetOne("text"))
 				select {
-				case <-ctx.Done():
-					log.Debug("Returning because cancellation or is requested")
+				case <-ctx.PausedOrDone():
+					log.Debug("Returning because cancellation or pause is requested")
 					return
 				case ch.Out <- t:
 				}
 			}(t)
-		case <-ctx.Done():
-			log.Infof("")
 		case <-ctx.Done():
 			log.Infof("Requested cancellation or pause")
 			break processing

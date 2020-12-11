@@ -8,6 +8,7 @@ package terminalexpect
 import (
 	"errors"
 	"fmt"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"io"
 	"strings"
 	"time"
@@ -18,7 +19,6 @@ import (
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
-	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/plugins/teststeps"
 	"github.com/insomniacslk/termhook"
 )
@@ -57,7 +57,7 @@ func match(match string) termhook.LineHandler {
 }
 
 // Run executes the terminal step.
-func (ts *TerminalExpect) Run(ctx types.StateContext, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *TerminalExpect) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	if err := ts.validateAndPopulate(params); err != nil {
 		return err
 	}
@@ -67,8 +67,8 @@ func (ts *TerminalExpect) Run(ctx types.StateContext, ch test.TestStepChannels, 
 	}
 	hook.ReadOnly = true
 	// f implements plugins.PerTargetFunc
-	f := func(ctx types.StateContext, target *target.Target) error {
-		errCh := make(chan error)
+	f := func(ctx statectx.Context, target *target.Target) error {
+		errCh := make(chan error, 1)
 		go func() {
 			errCh <- hook.Run()
 			if closeErr := hook.Close(); closeErr != nil {
@@ -80,7 +80,7 @@ func (ts *TerminalExpect) Run(ctx types.StateContext, ch test.TestStepChannels, 
 			return err
 		case <-time.After(ts.Timeout):
 			return fmt.Errorf("timed out after %s", ts.Timeout)
-		case <-ctx.Done():
+		case <-ctx.PausedOrDone():
 			return nil
 		}
 	}

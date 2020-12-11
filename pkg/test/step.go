@@ -8,13 +8,13 @@ package test
 import (
 	"errors"
 	"fmt"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"strconv"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/target"
-	"github.com/facebookincubator/contest/pkg/types"
 )
 
 // TestStepParameters represents the parameters that a TestStep should consume
@@ -99,7 +99,7 @@ type TestStep interface {
 	// Name returns the name of the step
 	Name() string
 	// Run runs the test step. The test step is expected to be synchronous.
-	Run(ctx types.StateContext, ch TestStepChannels, params TestStepParameters, ev testevent.Emitter) error
+	Run(ctx statectx.Context, ch TestStepChannels, params TestStepParameters, ev testevent.Emitter) error
 	// CanResume signals whether a test step can be resumed.
 	CanResume() bool
 	// Resume is called if a test step resume is requested, and CanResume
