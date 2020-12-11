@@ -6,12 +6,12 @@
 package teststeps
 
 import (
-	"sync/atomic"
-
+	"context"
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"sync"
 )
 
 var log = logging.GetLogger("plugins/teststeps")
@@ -29,94 +29,66 @@ type PerTargetFunc func(cancel, pause <-chan struct{}, target *target.Target) er
 // each target. The implementation of the per-target function is responsible for
 // handling internal cancellation and pausing.
 func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.TestStepChannels, f PerTargetFunc) error {
-	type tgtErr struct {
-		target *target.Target
-		err    error
-	}
-	tgtErrCh := make(chan tgtErr)
-	tgtInFlight := int32(0)
-	noMoreTargetsCh := make(chan struct{})
+	// Temporary solution
+	ctx, cancelCtx := combineChannelsToContext(cancel, pause)
+	defer cancelCtx()
 
-	go func(tgtInFlight *int32) {
-		defer func() {
-			log.Debugf("%s: ForEachTarget: exiting incoming loop, targets inflight %d", pluginName, atomic.LoadInt32(tgtInFlight))
-		}()
+	reportTarget := func(t *target.Target, err error) {
+		if err != nil {
+			log.Errorf("%s: ForEachTarget: failed to apply test step function on target %s: %v", pluginName, t, err)
+			select {
+			case ch.Err <- cerrors.TargetError{Target: t, Err: err}:
+			case <-ctx.Done():
+				log.Debugf("%s: ForEachTarget: received cancellation/pause signal while reporting error", pluginName)
+			}
+		} else {
+			log.Debugf("%s: ForEachTarget: target %s completed successfully", pluginName, t)
+			select {
+			case ch.Out <- t:
+			case <-ctx.Done():
+				log.Debugf("%s: ForEachTarget: received cancellation/pause signal while reporting error", pluginName)
+			}
+		}
+	}
+
+	var wg sync.WaitGroup
+	func() {
 		for {
 			select {
 			case tgt := <-ch.In:
 				log.Debugf("%s: ForEachTarget: received target %s", pluginName, tgt)
 				if tgt == nil {
 					log.Debugf("%s: ForEachTarget: all targets have been received", pluginName)
-					noMoreTargetsCh <- struct{}{}
 					return
 				}
 
+				wg.Add(1)
 				go func() {
-					tgtErrCh <- tgtErr{target: tgt, err: f(cancel, pause, tgt)}
+					defer wg.Done()
+
+					err := f(cancel, pause, tgt)
+					reportTarget(tgt, err)
 				}()
-				atomic.AddInt32(tgtInFlight, 1)
-			case <-cancel:
-				log.Debugf("%s: ForEachTarget: incoming loop canceled", pluginName)
-				return
-			case <-pause:
-				log.Debugf("%s: ForEachTarget: incoming loop paused", pluginName)
+			case <-ctx.Done():
+				log.Debugf("launching new targets has been cancelled")
 				return
 			}
-
 		}
-	}(&tgtInFlight)
-
-	noMoreTargets := false
-	reportResults := true
-	defer func() {
-		log.Debugf("%s: ForEachTarget: exiting outgoing loop, targets inflight %d, the last target received %v", pluginName, atomic.LoadInt32(&tgtInFlight), noMoreTargets)
 	}()
-	for {
+	wg.Wait()
+	return nil
+}
+
+func combineChannelsToContext(cancel, pause <-chan struct{}) (context.Context, context.CancelFunc) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	go func() {
 		select {
-		case te := <-tgtErrCh:
-			atomic.AddInt32(&tgtInFlight, -1)
-			if reportResults {
-				if te.err != nil {
-					log.Errorf("%s: ForEachTarget: failed to apply test step function on target %s: %v", pluginName, te.target, te.err)
-					select {
-					case ch.Err <- cerrors.TargetError{Target: te.target, Err: te.err}:
-					case <-cancel:
-						log.Debugf("%s: ForEachTarget: received cancellation signal while reporting error", pluginName)
-						reportResults = false
-					case <-pause:
-						log.Debugf("%s: ForEachTarget: received pausing signal while reporting error", pluginName)
-						reportResults = false
-					}
-				} else {
-					log.Debugf("%s: ForEachTarget: target %s completed successfully", pluginName, te.target)
-					select {
-					case ch.Out <- te.target:
-					case <-cancel:
-						log.Debugf("%s: ForEachTarget: received cancellation signal while reporting success", pluginName)
-						reportResults = false
-					case <-pause:
-						log.Debugf("%s: ForEachTarget: received pausing signal while reporting success", pluginName)
-						reportResults = false
-					}
-				}
-			} else {
-				log.Debugf("%s: ForEachTarget: the result is ignored due to cancellation: %v", pluginName, te)
-			}
-			if atomic.LoadInt32(&tgtInFlight) == 0 && (noMoreTargets || !reportResults) {
-				return nil
-			}
-		case <-noMoreTargetsCh:
-			log.Debugf("%s: ForEachTarget: received noMoreTargets signal", pluginName)
-			if atomic.LoadInt32(&tgtInFlight) == 0 {
-				return nil
-			}
-			noMoreTargets = true
 		case <-cancel:
-			log.Debugf("%s: ForEachTarget: received cancellation signal while waiting for results", pluginName)
-			reportResults = false
+			cancelFunc()
 		case <-pause:
-			log.Debugf("%s: ForEachTarget: received pausing signal while waiting for results", pluginName)
-			reportResults = false
+			cancelFunc()
+		case <-ctx.Done():
 		}
-	}
+	}()
+	return ctx, cancelFunc
 }
