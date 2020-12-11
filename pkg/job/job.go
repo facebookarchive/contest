@@ -8,6 +8,7 @@ package job
 import (
 	"time"
 
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
 
@@ -39,7 +40,7 @@ type Job struct {
 
 	// TODO: StateCtx should be owned by the JobManager
 	// pause is a job-wide channel used to request and detect job's state change.
-	StateCtx       types.StateContext
+	StateCtx       statectx.Context
 	StateCtxPause  func()
 	StateCtxCancel func()
 
@@ -77,11 +78,11 @@ func (j *Job) Pause() {
 
 // IsCancelled returns whether the job has been cancelled
 func (j *Job) IsCancelled() bool {
-	return j.StateCtx.State() == types.StateCanceled
+	return j.StateCtx.AnyCtx().Err() == statectx.ErrCanceled
 }
 
 func (j *Job) IsPaused() bool {
-	return j.StateCtx.State() == types.StatePaused
+	return j.StateCtx.AnyCtx().Err() == statectx.ErrPaused
 }
 
 // InfoFetcher defines how to fetch job information

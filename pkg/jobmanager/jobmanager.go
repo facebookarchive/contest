@@ -23,6 +23,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/runner"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/storage/limits"
 	"github.com/facebookincubator/contest/pkg/test"
@@ -201,7 +202,7 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 	}
 
 	j.Done = make(chan struct{})
-	j.StateCtx, j.StateCtxPause, j.StateCtxCancel = types.NewStateContext()
+	j.StateCtx, j.StateCtxPause, j.StateCtxCancel = statectx.NewContext()
 	return &j, nil
 }
 

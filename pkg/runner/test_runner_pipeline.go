@@ -15,6 +15,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
@@ -501,7 +502,7 @@ func (p *pipeline) init() (routeInFirst chan *target.Target) {
 }
 
 // run is a blocking method which executes the pipeline until successful or failed termination
-func (p *pipeline) run(ctx types.StateContext, completedTargetsCh chan<- *target.Target) error {
+func (p *pipeline) run(ctx statectx.Context, completedTargetsCh chan<- *target.Target) error {
 	p.log.Debugf("run")
 	if p.ctrlChannels == nil {
 		p.log.Panicf("pipeline is not initialized, control channels are not available")
@@ -527,12 +528,12 @@ func (p *pipeline) run(ctx types.StateContext, completedTargetsCh chan<- *target
 
 	select {
 	case completionError = <-errCh:
-	case <-ctx.Done():
+	case <-ctx.Any():
 		close(cancelWaitTargetsCh)
 		completionError = <-errCh
 
-		pauseAsserted = ctx.State() == types.StatePaused
-		cancellationAsserted = ctx.State() == types.StateCanceled
+		pauseAsserted = ctx.AnyCtx().Err() == statectx.ErrPaused
+		cancellationAsserted = ctx.AnyCtx().Err() == statectx.ErrCanceled
 	}
 
 	if completionError != nil || cancellationAsserted {

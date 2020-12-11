@@ -18,6 +18,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/runner"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
@@ -125,7 +126,7 @@ func TestSuccessfulCompletion(t *testing.T) {
 	}
 
 	errCh := make(chan error, 1)
-	stateCtx, _, _ := types.NewStateContext()
+	stateCtx, _, _ := statectx.NewContext()
 
 	go func() {
 		tr := runner.NewTestRunner()
@@ -157,7 +158,7 @@ func TestPanicStep(t *testing.T) {
 	}
 
 	errCh := make(chan error, 1)
-	stateCtx, _, _ := types.NewStateContext()
+	stateCtx, _, _ := statectx.NewContext()
 
 	go func() {
 		tr := runner.NewTestRunner()
@@ -188,7 +189,7 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 		test.TestStepBundle{TestStep: ts2, Parameters: params, TestStepLabel: "Example"},
 	}
 
-	stateCtx, _, _ := types.NewStateContext()
+	stateCtx, _, _ := statectx.NewContext()
 	errCh := make(chan error, 1)
 
 	timeouts := runner.TestRunnerTimeouts{
@@ -231,7 +232,7 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 		test.TestStepBundle{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
 	}
 
-	stateCtx, _, cancel := types.NewStateContext()
+	stateCtx, _, cancel := statectx.NewContext()
 	errCh := make(chan error, 1)
 
 	var (
@@ -293,7 +294,7 @@ func TestStepClosesChannels(t *testing.T) {
 		test.TestStepBundle{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
 	}
 
-	stateCtx, _, _ := types.NewStateContext()
+	stateCtx, _, _ := statectx.NewContext()
 	errCh := make(chan error, 1)
 
 	go func() {
@@ -334,7 +335,7 @@ func TestCmdPlugin(t *testing.T) {
 		test.TestStepBundle{TestStep: ts1, Parameters: params},
 	}
 
-	stateCtx, _, cancel := types.NewStateContext()
+	stateCtx, _, cancel := statectx.NewContext()
 	errCh := make(chan error, 1)
 
 	go func() {
@@ -371,7 +372,7 @@ func TestNoRunTestStepIfNoTargets(t *testing.T) {
 		{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
 	}
 
-	stateCtx, _, _ := types.NewStateContext()
+	stateCtx, _, _ := statectx.NewContext()
 	errCh := make(chan error, 1)
 
 	go func() {

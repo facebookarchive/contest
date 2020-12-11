@@ -140,7 +140,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			case <-time.After(config.TargetManagerTimeout):
 				return nil, nil, fmt.Errorf("target manager acquire timed out after %s", config.TargetManagerTimeout)
 			case <-j.StateCtx.Done():
-				jobLog.Infof("%v state requested for job ID %v", j.StateCtx.State(), j.ID)
+				jobLog.Infof("cancellation requested for job ID %v", j.ID)
 				return nil, nil, nil
 			}
 
@@ -154,19 +154,11 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				for {
 					select {
 					case <-j.StateCtx.Done():
-						switch j.StateCtx.State() {
-						case types.StateCanceled:
-							// unlock targets
-							if err := tl.Unlock(j.ID, targets); err != nil {
-								jobLog.Warningf("Failed to unlock targets (%v) for job ID %d: %v", targets, j.ID, err)
-							}
-						case types.StatePaused:
-							// do not unlock targets, we can resume later, or let
-							// them expire
-							jobLog.Debugf("Received pause request, NOT releasing targets so the job can be resumed")
-						default:
-							panic("Unexpected job's state")
+						if err := tl.Unlock(j.ID, targets); err != nil {
+							jobLog.Warningf("Failed to unlock targets (%v) for job ID %d: %v", targets, j.ID, err)
 						}
+					case <-j.StateCtx.OnPause():
+						jobLog.Debugf("Received pause request, NOT releasing targets so the job can be resumed")
 						return
 					case <-done:
 						if err := tl.Unlock(j.ID, targets); err != nil {
@@ -215,7 +207,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			case <-time.After(config.TargetManagerTimeout):
 				return nil, nil, fmt.Errorf("target manager release timed out after %s", config.TargetManagerTimeout)
 			case <-j.StateCtx.Done():
-				jobLog.Infof("%v state requested for job ID %v", j.StateCtx.State(), j.ID)
+				jobLog.Infof("cancellation requested for job ID %v", j.ID)
 				return nil, nil, nil
 			}
 			// return the Run error only after releasing the targets, and only
