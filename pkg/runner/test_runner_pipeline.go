@@ -90,7 +90,7 @@ func (p *pipeline) runStep(ctx statectx.Context, jobID types.JobID, runID types.
 	// then we call `bundle.TestStep.Run()`.
 	//
 	// ITS: https://github.com/facebookincubator/contest/issues/101
-	stepIn, onFirstTargetChan, onNoTargetsChan := waitForFirstTarget(ctx, stepCh.stepIn)
+	stepIn, onFirstTargetChan, onNoTargetsChan := waitForFirstTarget(ctx.PausedOrDoneCtx(), stepCh.stepIn)
 
 	haveTargets := false
 	select {
@@ -468,7 +468,7 @@ func (p *pipeline) init() (routeInFirst chan *target.Target) {
 		ev := storage.NewTestEventEmitterFetcherWithAllowedEvents(Header, &testStepBundle.AllowedEvents)
 
 		router := newStepRouter(p.log, testStepBundle, routingChannels, ev, p.timeouts)
-		go router.route(ctx, routingResultCh)
+		go router.route(ctx.PausedOrDoneCtx(), routingResultCh)
 		go p.runStep(ctx, p.jobID, p.runID, testStepBundle, stepChannels, stepResultCh, ev)
 		// The input of the next routing block is the output of the current routing block
 		routeIn = routeOut

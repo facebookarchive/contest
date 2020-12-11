@@ -8,7 +8,6 @@ package terminalexpect
 import (
 	"errors"
 	"fmt"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"io"
 	"strings"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/plugins/teststeps"
@@ -124,7 +124,7 @@ func (ts *TerminalExpect) ValidateParameters(params test.TestStepParameters) err
 
 // Resume tries to resume a previously interrupted test step. TerminalExpect cannot
 // resume.
-func (ts *TerminalExpect) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *TerminalExpect) Resume(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

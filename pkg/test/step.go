@@ -8,12 +8,12 @@ package test
 import (
 	"errors"
 	"fmt"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"strconv"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 )
 
@@ -105,7 +105,7 @@ type TestStep interface {
 	// Resume is called if a test step resume is requested, and CanResume
 	// returns true. If resume is not supported, this method should return
 	// ErrResumeNotSupported.
-	Resume(cancel, pause <-chan struct{}, ch TestStepChannels, params TestStepParameters, ev testevent.EmitterFetcher) error
+	Resume(ctx statectx.Context, ch TestStepChannels, params TestStepParameters, ev testevent.EmitterFetcher) error
 	// ValidateParameters checks that the parameters are correct before passing
 	// them to Run.
 	ValidateParameters(params TestStepParameters) error

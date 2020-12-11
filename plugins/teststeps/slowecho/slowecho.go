@@ -8,7 +8,6 @@ package slowecho
 import (
 	"context"
 	"errors"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,6 +17,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 )
@@ -101,7 +101,7 @@ processing:
 				defer wg.Done()
 
 				log.Infof("Waiting %v for target %s", sleep, t.ID)
-				timeCtx, timeCancel := context.WithTimeout(ctx, sleep)
+				timeCtx, timeCancel := context.WithTimeout(ctx.PausedOrDoneCtx(), sleep)
 				defer timeCancel()
 				<-timeCtx.Done()
 
@@ -118,7 +118,7 @@ processing:
 				case ch.Out <- t:
 				}
 			}(t)
-		case <-ctx.Done():
+		case <-ctx.PausedOrDone():
 			log.Infof("Requested cancellation or pause")
 			break processing
 		}
@@ -136,6 +136,6 @@ func (e Step) CanResume() bool {
 
 // Resume tries to resume a previously interrupted test step. EchoStep cannot
 // resume.
-func (e Step) Resume(cancel, pause <-chan struct{}, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (e Step) Resume(ctx statectx.Context, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
