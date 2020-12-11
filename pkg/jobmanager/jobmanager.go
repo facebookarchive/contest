@@ -201,7 +201,6 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 		FinalReporterBundles: nil,
 	}
 
-	j.Done = make(chan struct{})
 	j.StateCtx, j.StateCtxPause, j.StateCtxCancel = statectx.NewContext()
 	return &j, nil
 }

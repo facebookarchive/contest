@@ -34,12 +34,8 @@ type Job struct {
 	// subsequently use to search and aggregate.
 	Tags []string
 
-	// done is a job-wide channel that every stage should check to know
-	// whether work should be stopped or not.
-	Done chan struct{}
-
 	// TODO: StateCtx should be owned by the JobManager
-	// pause is a job-wide channel used to request and detect job's state change.
+	// cancel or pause is a job-wide channel used to request and detect job's state change.
 	StateCtx       statectx.Context
 	StateCtxPause  func()
 	StateCtxCancel func()
