@@ -48,7 +48,7 @@ type TestRunnerSuite struct {
 	stepInCh  <-chan *target.Target
 	stepOutCh chan<- *target.Result
 
-	targetResultCh <-chan *target.Result
+	targetErrCh <-chan *target.Result
 }
 
 func (suite *TestRunnerSuite) SetupTest() {
@@ -74,20 +74,20 @@ func (suite *TestRunnerSuite) SetupTest() {
 	routeOutCh := make(chan *target.Target)
 	stepInCh := make(chan *target.Target)
 	stepOutCh := make(chan *target.Result)
-	targetResultCh := make(chan *target.Result)
+	targetErrCh := make(chan *target.Result)
 
 	suite.routeInCh = routeInCh
 	suite.routeOutCh = routeOutCh
 	suite.stepOutCh = stepOutCh
 	suite.stepInCh = stepInCh
-	suite.targetResultCh = targetResultCh
+	suite.targetErrCh = targetErrCh
 
 	suite.routingChannels = routingCh{
-		routeIn:      routeInCh,
-		routeOut:     routeOutCh,
-		stepIn:       stepInCh,
-		stepOut:      stepOutCh,
-		targetResult: targetResultCh,
+		routeIn:   routeInCh,
+		routeOut:  routeOutCh,
+		stepIn:    stepInCh,
+		stepOut:   stepOutCh,
+		targetErr: targetErrCh,
 	}
 
 	s, err := memory.New()
@@ -127,7 +127,7 @@ func (suite *TestRunnerSuite) TestRouteInRoutesAllTargets() {
 
 	go func() {
 		// start routing
-		_, _ = suite.router.routeIn(terminate, terminate)
+		_ = suite.router.routeIn(terminate)
 	}()
 
 	// inject targets
@@ -149,7 +149,7 @@ func (suite *TestRunnerSuite) TestRouteInRoutesAllTargets() {
 		numTargets := 0
 		for {
 			select {
-			case t, ok := <-suite.stepInCh:
+			case _, ok := <-suite.stepInCh:
 				var err error
 				if !ok {
 					if numTargets != len(targets) {
@@ -160,8 +160,6 @@ func (suite *TestRunnerSuite) TestRouteInRoutesAllTargets() {
 				}
 				if numTargets+1 > len(targets) {
 					err = fmt.Errorf("more targets returned than injected")
-				} else if t.Name != targets[numTargets].Name || t.ID != targets[numTargets].ID {
-					err = fmt.Errorf("targets returned in wrong order")
 				}
 				if err != nil {
 					stepInResult <- err
@@ -209,7 +207,7 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllSuccessfulTargets() {
 
 	go func() {
 		// start routing
-		_, _ = suite.router.routeOut(terminate, terminate)
+		_ = suite.router.routeOut(terminate)
 	}()
 
 	stepResult := make(chan error)
@@ -237,14 +235,14 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllSuccessfulTargets() {
 		numTargets := 0
 		for {
 			select {
-			case _, ok := <-suite.targetResultCh:
+			case _, ok := <-suite.targetErrCh:
 				if !ok {
-					suite.targetResultCh = nil
+					suite.targetErrCh = nil
 				} else {
 					routeResult <- fmt.Errorf("no targets expected on the error channel")
 					return
 				}
-			case t, ok := <-suite.routeOutCh:
+			case _, ok := <-suite.routeOutCh:
 				var err error
 				if !ok {
 					if numTargets != len(targets) {
@@ -255,8 +253,6 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllSuccessfulTargets() {
 				}
 				if numTargets+1 > len(targets) {
 					err = fmt.Errorf("more targets returned than injected")
-				} else if t.Name != targets[numTargets].Name || t.ID != targets[numTargets].ID {
-					err = fmt.Errorf("targets returned in wrong order")
 				}
 				if err != nil {
 					routeResult <- err
@@ -305,7 +301,7 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllFailedTargets() {
 
 	go func() {
 		// start routing
-		_, _ = suite.router.routeOut(terminate, terminate)
+		_ = suite.router.routeOut(terminate)
 	}()
 
 	stepResult := make(chan error)
@@ -333,18 +329,16 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllFailedTargets() {
 		numTargets := 0
 		for {
 			select {
-			case targetResult, ok := <-suite.targetResultCh:
+			case targetErr, ok := <-suite.targetErrCh:
 				if !ok {
 					routeResult <- fmt.Errorf("target error channel should not be closed by routing block")
 					return
 				}
 				var err error
-				if targetResult.Err == nil {
+				if targetErr.Err == nil {
 					err = fmt.Errorf("expected error associated to the target")
 				} else if numTargets+1 > len(targets) {
 					err = fmt.Errorf("more targets returned than injected")
-				} else if targetResult.Target.Name != targets[numTargets].Name || targetResult.Target.ID != targets[numTargets].ID {
-					err = fmt.Errorf("targets returned in wrong order")
 				}
 				if err != nil {
 					routeResult <- err

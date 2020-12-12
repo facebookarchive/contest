@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
@@ -25,10 +26,9 @@ import (
 // to collect results from routing blocks, steps and target completing the test and to
 //  signa cancellation to various pipeline subsystems
 type pipelineCtrlCh struct {
-	routingResultCh  <-chan routeResult
-	stepResultCh     <-chan stepResult
-	targetResultCh   <-chan *target.Result
-	targetExpectedCh <-chan uint64
+	routingResultCh chan routeResult
+	stepResultCh    chan stepResult
+	targetErrCh     chan *target.Result
 
 	// cancelInternal is a signal which triggers cancellation in the internal control logic and steps
 	cancelInternalCh chan struct{}
@@ -55,6 +55,13 @@ type pipeline struct {
 	// used to collect the results of routing blocks, steps and targets completing
 	// the pipeline. It's available only after having initialized the pipeline
 	ctrlChannels *pipelineCtrlCh
+}
+
+func closeAfter(ch chan struct{}, timeout time.Duration) {
+	select {
+	case <-time.After(timeout):
+		close(ch)
+	}
 }
 
 // runStep runs synchronously a Step and peforms sanity checks on the status
@@ -199,12 +206,9 @@ func (p *pipeline) runStep(cancel, pause <-chan struct{}, jobID types.JobID, run
 		close(stepCh.stepOut)
 	}
 
-	select {
-	case resultCh <- stepResult{jobID: jobID, runID: runID, bundle: bundle, err: err}:
-	case <-time.After(timeout):
-		log.Warningf("sending error back from step runner (%s) timed out after %v: %v", stepLabel, timeout, err)
-		return
-	}
+	// pipeline guarantees to collect all step results
+	resultCh <- stepResult{jobID: jobID, runID: runID, bundle: bundle, err: err}
+	log.Infof("sent result back from step runner (%s): %v", stepLabel, err)
 }
 
 // emitStepEvent emits a failure event if a step fail
@@ -235,30 +239,40 @@ func (p *pipeline) emitStepEvent(result *stepResult) error {
 	return ev.Emit(errEv)
 }
 
-// waitControl reads results coming from result channels (for steps and routing blocks)
-// until a timeout occurrs. The error handling is different depending on whether
-// a timeout has been set from outside: if not timeout it set, we return at the first error
-// encountered.
-func (p *pipeline) waitControl(terminate <-chan struct{}, routingResultCh <-chan routeResult, stepResultCh <-chan stepResult, returnOnErr bool) error {
+// waitStepsAndRouting reads results coming from result channels for steps and routing blocks
+// until a timeout occurrs.
+func (p *pipeline) waitStepsAndRouting(terminate <-chan struct{}, routingResultCh <-chan routeResult, stepResultCh <-chan stepResult, loopForever bool) error {
 
 	log := logging.AddField(p.log, "phase", "waitControl")
 
 	var err error
-
 	log.Debugf("waiting control logic")
-	for {
+	expected := len(p.bundles)
+	stepsTimeout := make(chan struct{})
 
-		numSteps := len(p.state.CompletedSteps())
-		numRouting := len(p.state.CompletedRouting())
-		expected := len(p.bundles)
-		log.Debugf("steps %d, routing %d, expected: %d", numSteps, numRouting, expected)
-		if numSteps == expected && numRouting == expected {
-			return nil
+	var engageTimeout sync.Once
+
+	for {
+		completedSteps := len(p.state.CompletedSteps()) == expected
+		completedRouting := len(p.state.CompletedRouting()) == expected
+		log.Debugf("steps %d, routing %d, expected: %d", len(p.state.CompletedSteps()), len(p.state.CompletedRouting()), expected)
+		if completedRouting && completedSteps {
+			// both routing and steps completed
+			break
+		}
+		if completedRouting && !completedSteps && !loopForever {
+			log.Debugf("engaging close after")
+			// routing completed, steps did not. We expect steps to return within a timeout.
+			// If we have been asked to loop forver, we'll just wait to be terminated
+			engageTimeout.Do(func() { go func() { closeAfter(stepsTimeout, p.timeouts.ShutdownTimeout) }() })
 		}
 
 		select {
 		case <-terminate:
 			return &ErrTerminationRequested{}
+		case <-stepsTimeout:
+			log.Debugf("steps timed out")
+			err = fmt.Errorf("steps did not completed within timeout")
 		case routingResult := <-routingResultCh:
 			log.Debugf("received routing block result for %s", routingResult.bundle.StepLabel)
 			p.state.SetRouting(routingResult.bundle.StepLabel, routingResult.err)
@@ -268,106 +282,24 @@ func (p *pipeline) waitControl(terminate <-chan struct{}, routingResultCh <-chan
 			p.state.SetStep(stepResult.bundle.StepLabel, stepResult.err)
 			err = stepResult.err
 			if err != nil {
-				eventErr := p.emitStepEvent(&stepResult)
-				if eventErr != nil {
+				if eventErr := p.emitStepEvent(&stepResult); eventErr != nil {
 					log.Warningf("failed to emit step vent error: %v", eventErr)
-					continue
 				}
 			}
 		}
-		if err != nil && returnOnErr {
+		if err != nil && !loopForever {
 			log.Debugf("step or channel returned fatal error %v", err)
 			return err
 		}
 	}
-}
 
-// wait reads results coming from results channels until all have completed or
-// an error occurs. If all Targets complete successfully, it checks whether
-// Steps and routing blocks have completed as well. If not, returns an error.
-// Termination is signalled via terminate channel.
-func (p *pipeline) waitTargets(terminate <-chan struct{}, targetResultCh <-chan *target.Result, targetExpectedCh <-chan uint64, outTargetCh chan<- *target.Target) error {
-
-	log := logging.AddField(p.log, "phase", "waitTargets")
-	var numTargets uint64
-
-	writer := newTargetWriter(log, p.timeouts)
-
-	for {
-		select {
-		case <-terminate:
-			return &ErrTerminationRequested{}
-		case numTargets = <-targetExpectedCh:
-			targetExpectedCh = nil
-		case targetResult, isChanOpen := <-targetResultCh:
-			if !isChanOpen {
-				log.Debugf("pipeline output channel was closed, no more targets will come through")
-				targetResultCh = nil
-			} else {
-				timeout := p.timeouts.MessageTimeout
-				p.state.SetTarget(targetResult.Target, targetResult.Err)
-				log.Debugf("completed taget %v", targetResult.Target)
-				if err := writer.writeTarget(terminate, outTargetCh, targetResult.Target, timeout); err != nil {
-					log.Panicf("could not write completed target: %v", err)
-				}
-			}
-		}
-		// if we have been told how many targets to expect, compare against how many we got
-		completed := uint64(len(p.state.CompletedTargets()))
-		expectedTargets := "unkonwn"
-		if numTargets != 0 {
-			expectedTargets = fmt.Sprintf("%d", numTargets)
-		}
-
-		log.Infof("targets completed %d, expected %s", completed, expectedTargets)
-		if targetExpectedCh == nil {
-			if numTargets == completed {
-				return nil
-			}
-			if targetResultCh == nil && numTargets != completed {
-				return fmt.Errorf("not all targets completed, but target channel is closed")
-			}
-		}
-	}
-}
-
-func (p *pipeline) setupRouteIn(routeOut, routeIn chan *target.Target, targetExpectedCh chan<- uint64, targetResultCh chan *target.Result) chan *target.Target {
-	// first step of the pipeline, keep track of the routeIn channel as this is
-	// going to be used to injects targets into the pipeline from outside. Also
-	// add an intermediate goroutine which keeps track of how many targets have
-	// been injected into the pipeline
-	routeInFirst := make(chan *target.Target)
-	routeInStep := routeIn
-	go func() {
-		defer close(routeInStep)
-		defer close(targetExpectedCh)
-		var completed uint64
-		for t := range routeInFirst {
-			p.log.Debugf("target in input to first routing block: %v", t)
-			routeInStep <- t
-			completed++
-		}
-		targetExpectedCh <- completed
-	}()
-	return routeInFirst
-}
-
-func (p *pipeline) setupRoutOut(routeOut, routeIn chan *target.Target, targetResultCh chan *target.Result) {
-	// test runner will be waiting for results on targetResultCh, so we need to
-	// forward all targets in output from the last routing block to the targetResultCh
-	go func() {
-		defer close(targetResultCh)
-		for t := range routeOut {
-			p.log.Debugf("target in output from the last routing block: %v", t)
-			targetResultCh <- &target.Result{Target: t}
-		}
-	}()
+	return nil
 }
 
 // init initializes the pipeline by connecting steps and routing blocks. The result of pipeline
 // initialization is a set of control/result channels assigned to the pipeline object. The pipeline
 // input channel is returned.
-func (p *pipeline) init(cancel, pause <-chan struct{}) (routeInFirst chan *target.Target) {
+func (p *pipeline) init(cancel, pause <-chan struct{}) (in chan *target.Target, out chan *target.Target) {
 	p.log.Debugf("starting")
 
 	if p.ctrlChannels != nil {
@@ -376,7 +308,6 @@ func (p *pipeline) init(cancel, pause <-chan struct{}) (routeInFirst chan *targe
 
 	var routeOut, routeIn chan *target.Target
 
-	targetExpectedCh := make(chan uint64)
 	cancelInternalCh := make(chan struct{})
 	pauseInternalCh := make(chan struct{})
 
@@ -384,9 +315,14 @@ func (p *pipeline) init(cancel, pause <-chan struct{}) (routeInFirst chan *targe
 	// and step executors
 	routingResultCh := make(chan routeResult)
 	stepResultCh := make(chan stepResult)
-	targetResultCh := make(chan *target.Result)
+	// error channel on which all failed targets will be forwarded
+	targetErrCh := make(chan *target.Result)
 
 	routeIn = make(chan *target.Target)
+
+	// output channel of the pipeline
+	out = make(chan *target.Target)
+
 	for position, testStepBundle := range p.bundles {
 
 		// Input and output channels for the Step
@@ -395,14 +331,11 @@ func (p *pipeline) init(cancel, pause <-chan struct{}) (routeInFirst chan *targe
 		routeOut = make(chan *target.Target)
 
 		if position == 0 {
-			routeInFirst = p.setupRouteIn(routeOut, routeIn, targetExpectedCh, targetResultCh)
-		}
-		if position == len(p.bundles)-1 {
-			p.setupRoutOut(routeOut, routeIn, targetResultCh)
+			in = routeIn
 		}
 
 		stepChannels := stepCh{stepIn: stepInCh, stepOut: stepOutCh}
-		routingChannels := routingCh{routeIn: routeIn, routeOut: routeOut, stepIn: stepInCh, stepOut: stepOutCh, targetResult: targetResultCh}
+		routingChannels := routingCh{routeIn: routeIn, routeOut: routeOut, stepIn: stepInCh, stepOut: stepOutCh, targetErr: targetErrCh}
 
 		// Build the Header that the the Step will be using for emitting events
 		Header := testevent.Header{JobID: p.jobID, RunID: p.runID, TestName: p.test.Name, StepLabel: testStepBundle.StepLabel}
@@ -411,15 +344,28 @@ func (p *pipeline) init(cancel, pause <-chan struct{}) (routeInFirst chan *targe
 		router := newRouter(p.log, testStepBundle, routingChannels, ev, p.timeouts)
 		go router.route(cancelInternalCh, pauseInternalCh, routingResultCh)
 		go p.runStep(cancelInternalCh, pauseInternalCh, p.jobID, p.runID, testStepBundle, stepChannels, stepResultCh, ev)
+
 		// The input of the next routing block is the output of the current routing block
 		routeIn = routeOut
 	}
 
+	// forward all failed targets coming out from targetErrCh and last routOut channel
+	// to the out channel of the pipeline
+	go func() {
+		for e := range targetErrCh {
+			out <- e.Target
+		}
+	}()
+	go func() {
+		for t := range routeOut {
+			out <- t
+		}
+	}()
+
 	p.ctrlChannels = &pipelineCtrlCh{
 		routingResultCh:  routingResultCh,
 		stepResultCh:     stepResultCh,
-		targetResultCh:   targetResultCh,
-		targetExpectedCh: targetExpectedCh,
+		targetErrCh:      targetErrCh,
 		cancelInternalCh: cancelInternalCh,
 		pauseInternalCh:  pauseInternalCh,
 	}
@@ -427,7 +373,7 @@ func (p *pipeline) init(cancel, pause <-chan struct{}) (routeInFirst chan *targe
 }
 
 // run is a blocking method which executes the pipeline until successful or failed termination
-func (p *pipeline) run(cancel, pause <-chan struct{}, outTargetsCh chan<- *target.Target) error {
+func (p *pipeline) run(cancel, pause <-chan struct{}) error {
 
 	log := logging.AddField(p.log, "phase", "pipeline_run")
 
@@ -438,101 +384,68 @@ func (p *pipeline) run(cancel, pause <-chan struct{}, outTargetsCh chan<- *targe
 
 	log.Infof("running pipeline")
 	var (
-		waitControlError, waitTargetsError  error
+		waitError                           error
 		cancellationAsserted, pauseAsserted bool
 	)
 
-	errWaitControlCh := make(chan error)
-	errWaitTargetsCh := make(chan error)
-	cancelWaitsCh := make(chan struct{})
+	errWaitCh := make(chan error)
+	cancelWaitCh := make(chan struct{})
 
 	go func() {
-		errWaitTargetsCh <- p.waitTargets(cancelWaitsCh, p.ctrlChannels.targetResultCh, p.ctrlChannels.targetExpectedCh, outTargetsCh)
-	}()
-	go func() {
-		errWaitControlCh <- p.waitControl(cancelWaitsCh, p.ctrlChannels.routingResultCh, p.ctrlChannels.stepResultCh, true)
+		errWaitCh <- p.waitStepsAndRouting(cancelWaitCh, p.ctrlChannels.routingResultCh, p.ctrlChannels.stepResultCh, false)
 	}()
 
-	for {
-		select {
-		case waitTargetsError = <-errWaitTargetsCh:
-			errWaitTargetsCh = nil
-		case waitControlError = <-errWaitControlCh:
-			errWaitControlCh = nil
-			log.Debugf("control returned: %v", waitControlError)
-			if waitControlError != nil {
-				cancellationAsserted = true
-				close(p.ctrlChannels.cancelInternalCh)
-			}
-		case <-cancel:
-			log.Debugf("cancellation asserted, propagating internal cancellation signal")
+	select {
+	case waitError = <-errWaitCh:
+		log.Debugf("waitError: %v", waitError)
+		if waitError != nil {
+			log.Debugf("waitStepsAndRouting returned with an error (%v), asserting cancellation.", waitError)
 			close(p.ctrlChannels.cancelInternalCh)
-			cancellationAsserted = true
-		case <-pause:
-			log.Debugf("pause asserted, propagating internal pause signal")
-			close(p.ctrlChannels.pauseInternalCh)
-			pauseAsserted = true
 		}
-		if cancellationAsserted || pauseAsserted {
-			break
-		}
-		// if we finished waiting for targets we should return regardless of the outcome
-		// Control will be waited for further below, if necessary
-		if errWaitTargetsCh == nil {
-			break
-		}
-	}
-
-	waitTermination := func(ch chan error, name string) {
-		if ch != nil {
-			log.Debugf("waiting for %s termination", name)
-			<-ch
-			log.Debugf("%s terminated", name)
-		}
-	}
-	close(cancelWaitsCh)
-	waitTermination(errWaitControlCh, "control")
-	waitTermination(errWaitTargetsCh, "targets")
-
-	var (
-		terminationError   error
-		shutdownControlErr error
-	)
-
-	// control did not complete, or completed with a failure?
-	if errWaitControlCh != nil || waitControlError != nil {
-		waitControlShutdown := make(chan error)
-		log.Warningf("control di not complete, controlError %v, pause: %v, cancel: %v", waitControlError, cancellationAsserted, pauseAsserted)
-		cancelControlCh := make(chan struct{})
-		go func() {
-			waitControlShutdown <- p.waitControl(cancelControlCh, p.ctrlChannels.routingResultCh, p.ctrlChannels.stepResultCh, false)
-		}()
-		select {
-		case <-time.After(p.timeouts.ShutdownTimeout):
-			close(cancelControlCh)
-			<-waitControlShutdown
-			log.Debugf("state: %+v", p.state)
-			shutdownControlErr = fmt.Errorf("control did not shutdown within %v", p.timeouts.ShutdownTimeout)
-		case err := <-waitControlShutdown:
-			if err != nil {
-				shutdownControlErr = fmt.Errorf("control failed shutdown: %v", err)
-			}
-		}
-		if waitControlError != nil {
-			terminationError = fmt.Errorf("control error: %w", waitControlError)
-		}
-		if shutdownControlErr != nil {
-			terminationError = fmt.Errorf("control error: %v, shutdown error: %v", waitControlError, shutdownControlErr)
-		}
-		log.Debugf("pipeline completed (err: %v)", terminationError)
-		return terminationError
+	case <-cancel:
+		log.Debugf("cancellation asserted, propagating internal cancellation signal")
+		close(p.ctrlChannels.cancelInternalCh)
+		cancellationAsserted = true
+	case <-pause:
+		log.Debugf("pause asserted, propagating internal pause signal")
+		close(p.ctrlChannels.pauseInternalCh)
+		pauseAsserted = true
 	}
 
 	if cancellationAsserted || pauseAsserted {
-		return fmt.Errorf("cancellation or pause asserted")
+		log.Debugf("cancellation or pause asserted")
+		close(cancelWaitCh)
+		<-errWaitCh
 	}
-	log.Debugf("pipeline completed (err: %v)", waitTargetsError)
-	return waitTargetsError
+
+	if cancellationAsserted || pauseAsserted || waitError != nil {
+		// we need to wait again for the pipeline to shutdown, this time with a timeout set externally
+		log.Debugf("waiting for final termination")
+		terminateWaitCh := make(chan struct{})
+		waitCh := make(chan error)
+		go func() {
+			waitCh <- p.waitStepsAndRouting(terminateWaitCh, p.ctrlChannels.routingResultCh, p.ctrlChannels.stepResultCh, true)
+		}()
+		select {
+		case <-time.After(p.timeouts.ShutdownTimeout):
+			close(terminateWaitCh)
+			<-waitCh
+			waitError = fmt.Errorf("pipeline did not shutdown after timeout")
+		case <-waitCh:
+		}
+		close(waitCh)
+	}
+
+	// close output channels only if termination was fully successfully
+	// this could be more accurate and close as much as possible, knowing that
+	// we are likely to leak something anyway
+	if waitError == nil {
+		close(p.ctrlChannels.routingResultCh)
+		close(p.ctrlChannels.stepResultCh)
+		close(p.ctrlChannels.targetErrCh)
+	}
+	log.Debugf("pipeline completed (err: %v)", waitError)
+	return waitError
 }
 
 func newPipeline(log *logrus.Entry, bundles []test.StepBundle, test *test.Test, jobID types.JobID, runID types.RunID, timeouts TestRunnerTimeouts) *pipeline {

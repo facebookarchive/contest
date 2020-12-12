@@ -41,9 +41,9 @@ type routingCh struct {
 	stepIn  chan<- *target.Target
 	stepOut <-chan *target.Result
 
-	// targetResult connects the routing block directly to the TestRunner. Failing
+	// targetErr connects the routing block directly to the TestRunner. Failing
 	// targets are acquired by the TestRunner via this channel
-	targetResult chan<- *target.Result
+	targetErr chan<- *target.Result
 }
 
 // stepCh represents a set of bidirectional channels that a Step and its associated
@@ -74,43 +74,13 @@ type TestRunner struct {
 	timeouts TestRunnerTimeouts
 }
 
-// targetWriter is a helper object which exposes methods to write targets into step channels
-type targetWriter struct {
-	log      *logrus.Entry
-	timeouts TestRunnerTimeouts
-}
-
-func (w *targetWriter) writeTarget(terminate <-chan struct{}, ch chan<- *target.Target, target *target.Target, timeout time.Duration) error {
-	w.log.Debugf("writing target %+v, timeout %v", target, timeout)
-	start := time.Now()
-
-	select {
-	case <-terminate:
-		w.log.Debugf("terminate requested while writing target %+v", target)
-	case ch <- target:
-	case <-time.After(timeout):
-		return fmt.Errorf("timeout (%v) while writing target %+v", timeout, target)
-	}
-	w.log.Debugf("done writing target %+v, spent %v", target, time.Since(start))
-	return nil
-}
-
-func newTargetWriter(log *logrus.Entry, timeouts TestRunnerTimeouts) *targetWriter {
-	return &targetWriter{log: log, timeouts: timeouts}
-}
-
 func (tr *TestRunner) writeTargets(terminate <-chan struct{}, targets []*target.Target, writeChannel chan<- *target.Target, log *logrus.Entry) {
-	writer := newTargetWriter(log, tr.timeouts)
 	for _, target := range targets {
 		log.Debugf("injecting %v", target)
-		if err := writer.writeTarget(terminate, writeChannel, target, tr.timeouts.MessageTimeout); err != nil {
-			log.Panicf("could not inject target %+v into first routing block: %+v", target, err)
-		}
 		select {
 		case <-terminate:
-			log.Debugf("terminate requested while injecting targets from list")
 			return
-		default:
+		case writeChannel <- target:
 		}
 	}
 	log.Debugf("all targets have been injected")
@@ -119,7 +89,6 @@ func (tr *TestRunner) writeTargets(terminate <-chan struct{}, targets []*target.
 // inject forwards targets from a read channel to a write channel, until the termination signal is asserted
 // or the read channel is closed
 func (tr *TestRunner) pipeChannels(terminate <-chan struct{}, readChannel <-chan *target.Target, writeChannel chan<- *target.Target, log *logrus.Entry) {
-	defer close(writeChannel)
 	for {
 		select {
 		case <-terminate:
@@ -222,23 +191,21 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, test *test.Test, target
 	// setup the test pipeline
 	log.Infof("setting up test pipeline")
 	testLog := logging.AddField(rootLog, "entity", "test_pipeline")
-	testPipeline := newPipeline(testLog, test.TestStepsBundles, test, jobID, runID, tr.timeouts)
-	inputTestPipelineCh := testPipeline.init(cancel, pause)
 
-	completedFromTestCh := make(chan *target.Target)
+	testPipeline := newPipeline(testLog, test.TestStepsBundles, test, jobID, runID, tr.timeouts)
+	inputTestPipelineCh, outputFromTestCh := testPipeline.init(cancel, pause)
 
 	// completed represents the final channel where all completed targets are received.
 	// If there is no cleanup pipeline configured for the test, this channel corresponds
 	// to the output channel of the test pipeline. If instead there is a cleanup pipeline
 	// configured, this channel corresponds the the output channel of the cleanup pipeline.
-	completed := completedFromTestCh
+	completed := outputFromTestCh
 	go func() {
 		log.Infof("running test pipeline")
-		errTestCh <- testPipeline.run(cancelPipeline, pausePipeline, completedFromTestCh)
-		close(completedFromTestCh)
+		errTestCh <- testPipeline.run(cancelPipeline, pausePipeline)
 	}()
 
-	// inject targets into the step pipeline
+	// inject targets into the test pipeline
 	cancelInjectionCh := make(chan struct{})
 	go func(terminate <-chan struct{}, writeChannel chan<- *target.Target) {
 		defer close(writeChannel)
@@ -256,21 +223,22 @@ func (tr *TestRunner) Run(cancel, pause <-chan struct{}, test *test.Test, target
 		// setup the cleanup pipeline
 		log.Infof("setting up cleanup pipeline")
 		cleanupLog := logging.AddField(rootLog, "entity", "cleanup_pipeline")
+
 		cleanupPipeline := newPipeline(cleanupLog, test.CleanupStepsBundles, test, jobID, runID, tr.timeouts)
-		inputCleanupCh := cleanupPipeline.init(cancel, pause)
+		inputCleanupCh, outputCleanupCh := cleanupPipeline.init(cancel, pause)
 
 		// forward all targets coming out of the test pipeline into the cleanup pipeline
 		go func(terminate <-chan struct{}, readChannel <-chan *target.Target, writeChannel chan<- *target.Target) {
+			defer close(writeChannel)
 			log := logging.AddField(log, "step", "cleanup_injection")
 			tr.pipeChannels(terminate, readChannel, writeChannel, log)
-		}(cancelInjectionCh, completedFromTestCh, inputCleanupCh)
+		}(cancelInjectionCh, outputFromTestCh, inputCleanupCh)
 
-		completedFromCleanup := make(chan *target.Target)
 		go func() {
 			log.Infof("running cleanup pipeline")
-			errCleanupCh <- cleanupPipeline.run(cancelPipeline, pausePipeline, completedFromCleanup)
+			errCleanupCh <- cleanupPipeline.run(cancelPipeline, pausePipeline)
 		}()
-		completed = completedFromCleanup
+		completed = outputCleanupCh
 	}
 
 	defer close(cancelInjectionCh)
