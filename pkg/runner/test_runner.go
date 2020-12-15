@@ -91,10 +91,10 @@ type pipelineCtrlCh struct {
 	targetOut       <-chan *target.Target
 	targetErr       <-chan cerrors.TargetError
 
-	// stateCtx  is a control context used to cancel/pause the steps of the pipeline
-	stateCtx statectx.Context
-	pause    func()
-	cancel   func()
+	// ctx  is a control context used to cancel/pause the steps of the pipeline
+	ctx    statectx.Context
+	pause  func()
+	cancel func()
 }
 
 // TestRunner is the main runner of TestSteps in ConTest. `results` collects
@@ -171,7 +171,7 @@ func (tr *TestRunner) Run(ctx statectx.Context, test *test.Test, targets []*targ
 
 	log.Infof("setting up pipeline")
 	completedTargets := make(chan *target.Target, 1)
-	inCh := testPipeline.init()
+	inCh := testPipeline.init(ctx)
 
 	// inject targets in the step
 	terminateInjectionCtx, terminateInjection := context.WithCancel(context.Background())
@@ -189,7 +189,7 @@ func (tr *TestRunner) Run(ctx statectx.Context, test *test.Test, targets []*targ
 	errCh := make(chan error, 1)
 	go func() {
 		log.Infof("running pipeline")
-		errCh <- testPipeline.run(ctx, completedTargets)
+		errCh <- testPipeline.run(completedTargets)
 	}()
 
 	defer terminateInjection()

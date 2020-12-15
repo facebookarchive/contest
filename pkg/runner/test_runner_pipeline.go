@@ -400,7 +400,7 @@ func (p *pipeline) waitSteps() error {
 // init initializes the pipeline by connecting steps and routing blocks. The result of pipeline
 // initialization is a set of control/result channels assigned to the pipeline object. The pipeline
 // input channel is returned.
-func (p *pipeline) init() (routeInFirst chan *target.Target) {
+func (p *pipeline) init(ctx statectx.Context) (routeInFirst chan *target.Target) {
 	p.log.Debugf("starting")
 
 	if p.ctrlChannels != nil {
@@ -412,7 +412,7 @@ func (p *pipeline) init() (routeInFirst chan *target.Target) {
 		routeIn  chan *target.Target
 	)
 
-	ctx, pause, cancel := statectx.New()
+	pipelineCtx, pause, cancel := statectx.WithParent(ctx)
 
 	// result channels used to communicate result information from the routing blocks
 	// and step executors
@@ -468,8 +468,8 @@ func (p *pipeline) init() (routeInFirst chan *target.Target) {
 		ev := storage.NewTestEventEmitterFetcherWithAllowedEvents(Header, &testStepBundle.AllowedEvents)
 
 		router := newStepRouter(p.log, testStepBundle, routingChannels, ev, p.timeouts)
-		go router.route(ctx.PausedOrDoneCtx(), routingResultCh)
-		go p.runStep(ctx, p.jobID, p.runID, testStepBundle, stepChannels, stepResultCh, ev)
+		go router.route(pipelineCtx.PausedOrDoneCtx(), routingResultCh)
+		go p.runStep(pipelineCtx, p.jobID, p.runID, testStepBundle, stepChannels, stepResultCh, ev)
 		// The input of the next routing block is the output of the current routing block
 		routeIn = routeOut
 	}
@@ -480,26 +480,27 @@ func (p *pipeline) init() (routeInFirst chan *target.Target) {
 		targetErr:       targetErrCh,
 		targetOut:       routeOut,
 
-		stateCtx: ctx,
-		cancel:   cancel,
-		pause:    pause,
+		ctx:    pipelineCtx,
+		cancel: cancel,
+		pause:  pause,
 	}
 
 	return
 }
 
 // run is a blocking method which executes the pipeline until successful or failed termination
-func (p *pipeline) run(ctx statectx.Context, completedTargetsCh chan<- *target.Target) error {
+func (p *pipeline) run(completedTargetsCh chan<- *target.Target) error {
 	p.log.Debugf("run")
 	if p.ctrlChannels == nil {
 		p.log.Panicf("pipeline is not initialized, control channels are not available")
 	}
+	ctx := p.ctrlChannels.ctx
 
 	// Wait for the pipeline to complete. If an error occurrs, cancel all TestSteps
 	// and routing blocks and wait again for completion until shutdown timeout occurrs.
 	p.log.Infof("waiting for pipeline to complete")
-
 	completionError := p.waitTargets(ctx.PausedOrDoneCtx(), completedTargetsCh)
+
 	pauseAsserted := ctx.PausedOrDoneCtx().Err() == statectx.ErrPaused
 	cancellationAsserted := ctx.PausedOrDoneCtx().Err() == statectx.ErrCanceled
 
@@ -511,14 +512,11 @@ func (p *pipeline) run(ctx statectx.Context, completedTargetsCh chan<- *target.T
 		} else {
 			p.log.Warningf("test failed to complete: %v. Forcing cancellation.", completionError)
 		}
-
-		p.ctrlChannels.cancel()
 	}
 
 	if pauseAsserted {
 		// If pause signal has been asserted, terminate routing and propagate the pause signal to the steps.
 		p.log.Warningf("received pause request")
-		p.ctrlChannels.pause()
 	}
 
 	// If either cancellation or pause have been asserted, we need to wait for the
