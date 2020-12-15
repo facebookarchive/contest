@@ -1,25 +1,39 @@
 package statectx
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
+func TestBackgroundContext(t *testing.T) {
+	ctx := Background()
+
+	var blocked bool
+	select {
+	case <-time.After(50 * time.Millisecond):
+		blocked = true
+	case <-ctx.Done():
+	case <-ctx.PausedOrDone():
+	case <-ctx.Paused():
+	}
+
+	require.True(t, blocked)
+	require.Nil(t, ctx.Err())
+	require.Nil(t, ctx.PausedCtx().Err())
+	require.Nil(t, ctx.PausedOrDoneCtx().Err())
+}
+
 func TestContextBlocked(t *testing.T) {
-	ctx, _, _ := NewContext()
+	ctx, _, _ := New()
 	require.NotNil(t, ctx)
 
 	require.NoError(t, ctx.Err())
 
-	timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 10*time.Microsecond)
-	defer timeoutCancel()
-
 	var blockedOnDone bool
 	select {
-	case <-timeoutCtx.Done():
+	case <-time.After(50 * time.Millisecond):
 		blockedOnDone = true
 	case <-ctx.Done():
 	case <-ctx.PausedOrDone():
@@ -33,7 +47,7 @@ func TestContextBlocked(t *testing.T) {
 }
 
 func TestContextCanceled(t *testing.T) {
-	ctx, _, cancel := NewContext()
+	ctx, _, cancel := New()
 	require.NotNil(t, ctx)
 
 	cancel()
@@ -55,7 +69,7 @@ func TestContextCanceled(t *testing.T) {
 }
 
 func TestContextPaused(t *testing.T) {
-	ctx, pause, _ := NewContext()
+	ctx, pause, _ := New()
 	require.NotNil(t, ctx)
 
 	pause()
@@ -77,7 +91,7 @@ func TestContextPaused(t *testing.T) {
 }
 
 func TestMultipleCancelPause(t *testing.T) {
-	ctx, pause, cancel := NewContext()
+	ctx, pause, cancel := New()
 	require.NotNil(t, ctx)
 
 	pause()
@@ -92,4 +106,63 @@ func TestMultipleCancelPause(t *testing.T) {
 	require.Equal(t, ErrCanceled, ctx.Err())
 	require.Equal(t, ErrPaused, ctx.PausedCtx().Err())
 	require.Equal(t, ErrPaused, ctx.PausedOrDoneCtx().Err())
+}
+
+func TestWithParent(t *testing.T) {
+	t.Run("pause_propagated", func(t *testing.T) {
+		parentCtx, parentPause, _ := New()
+		childCtx, _, _ := WithParent(parentCtx)
+
+		parentPause()
+		<-childCtx.Paused()
+		require.Equal(t, ErrPaused, childCtx.PausedCtx().Err())
+		<-childCtx.PausedOrDone()
+		require.Equal(t, ErrPaused, childCtx.PausedOrDoneCtx().Err())
+
+		require.Nil(t, childCtx.Err())
+	})
+	t.Run("cancel_propagated", func(t *testing.T) {
+		parentCtx, _, parentCancel := New()
+		childCtx, _, _ := WithParent(parentCtx)
+
+		parentCancel()
+		<-childCtx.Done()
+		require.Equal(t, ErrCanceled, childCtx.Err())
+		<-childCtx.PausedOrDone()
+		require.Equal(t, ErrCanceled, childCtx.PausedOrDoneCtx().Err())
+
+		require.Nil(t, childCtx.PausedCtx().Err())
+	})
+	t.Run("pause_cancel_happened_before_context_created", func(t *testing.T) {
+		parentCtx, parentPause, parentCancel := New()
+		parentPause()
+		parentCancel()
+
+		childCtx, _, _ := WithParent(parentCtx)
+		<-childCtx.Done()
+		<-childCtx.Paused()
+		<-childCtx.PausedOrDone()
+
+		require.Equal(t, ErrCanceled, childCtx.Err())
+		require.Equal(t, ErrPaused, childCtx.PausedCtx().Err())
+		require.Equal(t, ErrPaused, childCtx.PausedOrDoneCtx().Err())
+	})
+	t.Run("child_pause_cancel_do_not_affect_parent", func(t *testing.T) {
+		parentCtx, _, _ := New()
+		_, childPause, childCancel := WithParent(parentCtx)
+
+		childPause()
+		childCancel()
+
+		var blocked bool
+		select {
+		case <-parentCtx.Done():
+		case <-parentCtx.Paused():
+		case <-parentCtx.PausedOrDone():
+		default:
+			blocked = true
+		}
+
+		require.True(t, blocked)
+	})
 }

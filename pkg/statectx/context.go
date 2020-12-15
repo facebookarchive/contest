@@ -17,7 +17,7 @@ var ErrCanceled = errors.New("job is canceled")
 // ErrPaused is returned by Context.Err when the context was paused
 var ErrPaused = errors.New("job is paused")
 
-// statectx.Context implements context.Context interface that acts as context for cancellation signal
+// Context implements context.Context interface that acts as context for cancellation signal
 // It also implements:
 // - Paused()/PausedCtx() that alert in case of pause happened
 // - PausedOrDone()/PausedOrDoneCtx() that alert in case of pause/cancel events
@@ -31,10 +31,38 @@ type Context interface {
 	PausedOrDoneCtx() context.Context
 }
 
-func NewContext() (Context, func(), func()) {
-	cancelCtx, cancel := newCancelContext()
-	pauseCtx, pause := newCancelContext()
-	pauseOrDoneCtx, pauseOrDone := newCancelContext()
+func Background() Context {
+	return &stateCtx{
+		cancelCtx:      context.Background(),
+		pauseCtx:       context.Background(),
+		pauseOrDoneCtx: context.Background(),
+	}
+}
+
+func New() (Context, func(), func()) {
+	cancelCtx, cancel := newCancelContext(context.Background())
+	pauseCtx, pause := newCancelContext(context.Background())
+	pauseOrDoneCtx, pauseOrDone := newCancelContext(context.Background())
+
+	resCtx := &stateCtx{
+		cancelCtx:      cancelCtx,
+		pauseCtx:       pauseCtx,
+		pauseOrDoneCtx: pauseOrDoneCtx,
+	}
+
+	wrap := func(action func(err error), err error) func() {
+		return func() {
+			pauseOrDone(err)
+			action(err)
+		}
+	}
+	return resCtx, wrap(pause, ErrPaused), wrap(cancel, ErrCanceled)
+}
+
+func WithParent(ctx Context) (Context, func(), func()) {
+	cancelCtx, cancel := newCancelContext(ctx)
+	pauseCtx, pause := newCancelContext(ctx.PausedCtx())
+	pauseOrDoneCtx, pauseOrDone := newCancelContext(ctx.PausedOrDoneCtx())
 
 	resCtx := &stateCtx{
 		cancelCtx:      cancelCtx,
