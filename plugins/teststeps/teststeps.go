@@ -7,12 +7,11 @@ package teststeps
 
 import (
 	"context"
-	"sync"
-
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"sync"
 )
 
 var log = logging.GetLogger("plugins/teststeps")
@@ -47,7 +46,7 @@ func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.Tes
 			select {
 			case ch.Out <- t:
 			case <-ctx.Done():
-				log.Debugf("%s: ForEachTarget: received cancellation/pause signal while reporting error", pluginName)
+				log.Debugf("%s: ForEachTarget: received cancellation/pause signal while reporting success", pluginName)
 			}
 		}
 	}
@@ -71,7 +70,7 @@ func ForEachTarget(pluginName string, cancel, pause <-chan struct{}, ch test.Tes
 					reportTarget(tgt, err)
 				}()
 			case <-ctx.Done():
-				log.Debugf("launching new targets has been cancelled")
+				log.Debugf("%s: ForEachTarget: incoming loop canceled", pluginName)
 				return
 			}
 		}
