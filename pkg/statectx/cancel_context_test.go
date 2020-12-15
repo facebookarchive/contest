@@ -78,3 +78,35 @@ func TestCancelContextAsParentContext(t *testing.T) {
 		require.Equal(t, ErrCanceled, ctx.Err())
 	})
 }
+
+func TestParentInitiallyCancelled(t *testing.T) {
+	t.Run("unknown_parent_context", func(t *testing.T) {
+		parCtx, parCancel := context.WithCancel(context.Background())
+		parCancel()
+
+		ctx, cancel := newCancelContext(parCtx)
+		require.NotNil(t, ctx)
+		require.NotNil(t, cancel)
+
+		<-ctx.Done()
+		require.Equal(t, context.Canceled, ctx.Err())
+
+		cancel(ErrPaused) // should be no effect
+		require.Equal(t, context.Canceled, ctx.Err())
+	})
+
+	t.Run("cancel_parent_context", func(t *testing.T) {
+		parCtx, parCancel := newCancelContext(context.Background())
+		parCancel(ErrCanceled)
+
+		ctx, cancel := newCancelContext(parCtx)
+		require.NotNil(t, ctx)
+		require.NotNil(t, cancel)
+
+		<-ctx.Done()
+		require.Equal(t, ErrCanceled, ctx.Err())
+
+		cancel(ErrPaused) // should be no effect
+		require.Equal(t, ErrCanceled, ctx.Err())
+	})
+}

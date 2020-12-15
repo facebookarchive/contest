@@ -99,14 +99,6 @@ func (c *cancelContext) propagateCancel(parent context.Context) {
 		return // parent is never canceled
 	}
 
-	select {
-	case <-done:
-		// parent is already canceled
-		c.cancel(parent.Err())
-		return
-	default:
-	}
-
 	// Creating extra-goroutines is bad because it requires either invoking cancel by parent or child context
 	if cc, ok := parent.(*cancelContext); ok {
 		c.parent = cc
@@ -131,13 +123,22 @@ func (c *cancelContext) propagateCancel(parent context.Context) {
 		if !subscribe() {
 			c.cancel(parent.Err())
 		}
-	} else {
-		go func() {
-			select {
-			case <-parent.Done():
-				c.cancel(parent.Err())
-			case <-c.Done():
-			}
-		}()
+		return
 	}
+
+	select {
+	case <-done:
+		// parent is already canceled
+		c.cancel(parent.Err())
+		return
+	default:
+	}
+
+	go func() {
+		select {
+		case <-parent.Done():
+			c.cancel(parent.Err())
+		case <-c.Done():
+		}
+	}()
 }

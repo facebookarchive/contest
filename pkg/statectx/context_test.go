@@ -12,7 +12,7 @@ func TestBackgroundContext(t *testing.T) {
 
 	var blocked bool
 	select {
-	case <-time.After(5 * time.Microsecond):
+	case <-time.After(50 * time.Millisecond):
 		blocked = true
 	case <-ctx.Done():
 	case <-ctx.PausedOrDone():
@@ -33,7 +33,7 @@ func TestContextBlocked(t *testing.T) {
 
 	var blockedOnDone bool
 	select {
-	case <-time.After(5 * time.Microsecond):
+	case <-time.After(50 * time.Millisecond):
 		blockedOnDone = true
 	case <-ctx.Done():
 	case <-ctx.PausedOrDone():
@@ -132,6 +132,20 @@ func TestWithParent(t *testing.T) {
 		require.Equal(t, ErrCanceled, childCtx.PausedOrDoneCtx().Err())
 
 		require.Nil(t, childCtx.PausedCtx().Err())
+	})
+	t.Run("pause_cancel_happened_before_context_created", func(t *testing.T) {
+		parentCtx, parentPause, parentCancel := New()
+		parentPause()
+		parentCancel()
+
+		childCtx, _, _ := WithParent(parentCtx)
+		<-childCtx.Done()
+		<-childCtx.Paused()
+		<-childCtx.PausedOrDone()
+
+		require.Equal(t, ErrCanceled, childCtx.Err())
+		require.Equal(t, ErrPaused, childCtx.PausedCtx().Err())
+		require.Equal(t, ErrPaused, childCtx.PausedOrDoneCtx().Err())
 	})
 	t.Run("child_pause_cancel_do_not_affect_parent", func(t *testing.T) {
 		parentCtx, _, _ := New()
