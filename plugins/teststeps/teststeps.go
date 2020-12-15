@@ -7,11 +7,12 @@ package teststeps
 
 import (
 	"context"
+	"sync"
+
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
-	"sync"
 )
 
 var log = logging.GetLogger("plugins/teststeps")
