@@ -31,7 +31,7 @@ type data struct {
 }
 
 func newData() data {
-	ctx, pause, cancel := statectx.NewContext()
+	ctx, pause, cancel := statectx.New()
 	inCh := make(chan *target.Target)
 	outCh := make(chan *target.Target)
 	errCh := make(chan cerrors.TargetError)
