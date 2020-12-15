@@ -35,7 +35,7 @@ func ForEachTarget(pluginName string, ctx statectx.Context, ch test.TestStepChan
 			log.Errorf("%s: ForEachTarget: failed to apply test step function on target %s: %v", pluginName, t, err)
 			select {
 			case ch.Err <- cerrors.TargetError{Target: t, Err: err}:
-			case <-ctx.Done():
+			case <-ctx.PausedOrDone():
 				log.Debugf("%s: ForEachTarget: received cancellation/pause signal while reporting error", pluginName)
 			}
 		} else {

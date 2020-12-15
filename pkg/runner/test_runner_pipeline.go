@@ -412,7 +412,7 @@ func (p *pipeline) init() (routeInFirst chan *target.Target) {
 		routeIn  chan *target.Target
 	)
 
-	ctx, pause, cancel := statectx.NewContext()
+	ctx, pause, cancel := statectx.New()
 
 	// result channels used to communicate result information from the routing blocks
 	// and step executors
