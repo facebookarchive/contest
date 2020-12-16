@@ -255,6 +255,7 @@ func (r *stepRouter) route(ctx context.Context, resultCh chan<- routeResult) {
 	)
 
 	terminateInternalCtx, terminateInternal := context.WithCancel(ctx)
+	defer terminateInternal() // avoids possible goroutine deadlock in context.WithCancel implementation
 
 	wg := sync.WaitGroup{}
 	wg.Add(2)
