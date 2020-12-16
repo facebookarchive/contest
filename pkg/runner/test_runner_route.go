@@ -89,10 +89,27 @@ func (r *stepRouter) routeIn(terminate <-chan struct{}) (int, error) {
 		// here after a cancellation signal.
 		defer close(terminateTargetWriter)
 
+		terminationError := func() error {
+			return fmt.Errorf("termination requested for routing into %s", stepLabel)
+		}
+
 		for {
 			select {
 			case <-terminate:
-				return fmt.Errorf("termination requested for routing into %s", stepLabel)
+				return terminationError()
+			case t, chanIsOpen := <-r.routingChannels.routeIn:
+				if !chanIsOpen {
+					close(inputChannelProxy)
+					close(r.routingChannels.stepIn)
+					return nil
+				}
+				inputChannelProxy <- t
+			}
+
+			// TODO: why do not we return injection result in writeTargetWithResult function?
+			select {
+			case <-terminate:
+				return terminationError()
 			case injectionResult := <-injectResultCh:
 				log.Debugf("received injection result for %v", injectionResult.target)
 				if injectionResult.err != nil {
@@ -106,12 +123,6 @@ func (r *stepRouter) routeIn(terminate <-chan struct{}) (int, error) {
 				if err := r.ev.Emit(targetInEv); err != nil {
 					log.Warningf("could not emit %v event for Target: %+v", targetInEv, *injectionResult.target)
 				}
-			case t, chanIsOpen := <-r.routingChannels.routeIn:
-				if !chanIsOpen {
-					close(inputChannelProxy)
-					return nil
-				}
-				inputChannelProxy <- t
 			}
 		}
 	}()
