@@ -504,18 +504,12 @@ func (p *pipeline) run(completedTargetsCh chan<- *target.Target) error {
 	pauseAsserted := ctx.PausedOrDoneCtx().Err() == statectx.ErrPaused
 	cancellationAsserted := ctx.PausedOrDoneCtx().Err() == statectx.ErrCanceled
 
-	if completionError != nil || cancellationAsserted {
-		// If the Test has encountered an error or cancellation has been asserted,
-		// terminate routing and and propagate the cancel signal to the steps
-		if cancellationAsserted {
-			p.log.Infof("cancellation was asserted")
-		} else {
-			p.log.Warningf("test failed to complete: %v. Forcing cancellation.", completionError)
-		}
-	}
-
-	if pauseAsserted {
-		// If pause signal has been asserted, terminate routing and propagate the pause signal to the steps.
+	if completionError != nil {
+		p.log.Warningf("test failed to complete: %v. Forcing cancellation.", completionError)
+		p.ctrlChannels.cancel() // terminate routing and and propagate cancellation to the steps
+	} else if cancellationAsserted {
+		p.log.Infof("cancellation was asserted")
+	} else if pauseAsserted {
 		p.log.Warningf("received pause request")
 	}
 
