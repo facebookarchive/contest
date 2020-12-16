@@ -51,6 +51,7 @@ func (r *stepRouter) routeIn(ctx context.Context) (int, error) {
 	// terminateTargetWriter is a control channel used to signal termination to
 	// the writer object which injects a target into the test step
 	terminateTargetWriterCtx, terminateTargetWriter := context.WithCancel(context.Background())
+	defer terminateTargetWriter() // avoids possible goroutine deadlock in context.WithCancel implementation
 
 	// `targets` is used to buffer targets coming from the previous routing blocks,
 	// queueing them for injection into the TestStep. The list is accessed
