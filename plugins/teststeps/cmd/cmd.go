@@ -148,7 +148,8 @@ func (ts *Cmd) Run(ctx statectx.Context, ch test.TestStepChannels, params test.T
 			}
 		}
 
-		log.Warningf("Stderr of command '%+v' is: '%s'", cmd, stderr.Bytes())
+		log.Infof("Command's '%s' with args '%s' stdout '%s', stderr is '%s', run err: '%v'",
+			cmd.Path, cmd.Args, stdout.Bytes(), stderr.Bytes(), runErr)
 		return runErr
 	}
 	return teststeps.ForEachTarget(Name, ctx, ch, f)
