@@ -56,17 +56,6 @@ type stepCh struct {
 	stepErr chan cerrors.TargetError
 }
 
-type injectionCh struct {
-	stepIn   chan<- *target.Target
-	resultCh chan<- injectionResult
-}
-
-// injectionResult represents the result of an injection goroutine
-type injectionResult struct {
-	target *target.Target
-	err    error
-}
-
 // routeResult represents the result of routing block, possibly carrying error information
 type routeResult struct {
 	bundle test.TestStepBundle
