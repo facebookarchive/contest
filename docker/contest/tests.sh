@@ -51,7 +51,7 @@ done
 # Run integration tests collecting coverage only for the business logic (pkg directory)
 for tag in integration integration_storage; do
     echo "Running integration tests with tag \"${tag}\""
-    for d in $(go list -tags=${tag} ./... | grep integ | grep -Ev "integ$|common$|vendor"); do
+    for d in $(go list -tags=${tag} ./tests/... | grep -Ev "integ$|common$|vendor"); do
         pflag=""
         if test ${tag} = "integration_storage"; then
           # Storage tests are split across TestSuites in multiple packages. Within a TestSuite,
