@@ -126,14 +126,8 @@ func (w *targetWriter) writeTimeout(terminate <-chan struct{}, ch chan<- *target
 // writeTargetWithResult attempts to deliver a Target on the input channel of a step,
 // returning the result of the operation on the result channel wrapped in the
 // injectionCh argument
-func (w *targetWriter) writeTargetWithResult(terminate <-chan struct{}, target *target.Target, ch injectionCh) {
-	err := w.writeTimeout(terminate, ch.stepIn, target, w.timeouts.StepInjectTimeout)
-	select {
-	case <-terminate:
-	case ch.resultCh <- injectionResult{target: target, err: err}:
-	case <-time.After(w.timeouts.MessageTimeout):
-		w.log.Panicf("timeout while writing result for target %+v after %v", target, w.timeouts.MessageTimeout)
-	}
+func (w *targetWriter) writeTargetWithResult(terminate <-chan struct{}, target *target.Target, stepIn chan<- *target.Target) error {
+	return w.writeTimeout(terminate, stepIn, target, w.timeouts.StepInjectTimeout)
 }
 
 // writeTargetError writes a TargetError object to a TargetError channel with timeout

@@ -43,95 +43,40 @@ func tryClose(ch chan struct{}) {
 // and injecting it into the associated test step. Returns the numer of targets
 // injected into the test step or an error upon failure
 func (r *stepRouter) routeIn(terminate <-chan struct{}) (int, error) {
-
 	stepLabel := r.bundle.TestStepLabel
 	log := logging.AddField(r.log, "step", stepLabel)
 	log = logging.AddField(log, "phase", "routeIn")
 
-	// terminateTargetWriter is a control channel used to signal termination to
-	// the writer object which injects a target into the test step
-	terminateTargetWriter := make(chan struct{})
+	log.Debugf("Initializing routeIn for %s", stepLabel)
+	targetWriter := newTargetWriter(log, r.timeouts)
 
 	// `ingressTarget` is used to keep track of ingress times of a target into a test step
 	ingressTarget := make(map[string]time.Time)
-
-	// Channel that the injection goroutine uses to communicate back to `routeIn` the results
-	// of asynchronous injection
-	injectResultCh := make(chan injectionResult)
-
-	// injectionChannels are used to inject targets into test step and return results to `routeIn`
-	injectionChannels := injectionCh{stepIn: r.routingChannels.stepIn, resultCh: injectResultCh}
-
-	log.Debugf("initializing routeIn for %s", stepLabel)
-	targetWriter := newTargetWriter(log, r.timeouts)
-
-	inputChannelProxy := make(chan *target.Target, 1)
-	go func() {
-		for {
-			select {
-			case <-terminateTargetWriter:
-				return
-			case t, chanIsOpen := <-inputChannelProxy:
-				if !chanIsOpen {
-					log.Debugf("routing input channel closed")
-					return
+	for {
+		select {
+		case <-terminate:
+			return 0, fmt.Errorf("termination requested for routing into %s", stepLabel)
+		case t, chanIsOpen := <-r.routingChannels.routeIn:
+			if !chanIsOpen {
+				close(r.routingChannels.stepIn)
+				return len(ingressTarget), nil
+			}
+			log.Debugf("received target %v in input", t)
+			ingressTarget[t.ID] = time.Now()
+			err := targetWriter.writeTargetWithResult(terminate, t, r.routingChannels.stepIn)
+			if err != nil {
+				targetInErrEv := testevent.Data{EventName: target.EventTargetInErr, Target: t}
+				if err := r.ev.Emit(targetInErrEv); err != nil {
+					log.Warningf("could not emit %v event for target %+v: %v", targetInErrEv, *t, err)
 				}
-				log.Debugf("received target %v in input", t)
-				targetWriter.writeTargetWithResult(terminateTargetWriter, t, injectionChannels)
+				return 0, fmt.Errorf("routing failed while injecting target %+v into %s", t, stepLabel)
+			}
+			targetInEv := testevent.Data{EventName: target.EventTargetIn, Target: t}
+			if err := r.ev.Emit(targetInEv); err != nil {
+				log.Warningf("could not emit %v event for Target: %+v", targetInEv, *t)
 			}
 		}
-	}()
-
-	err := func() error {
-		// Signal termination to the injection routines regardless of the result of the
-		// routing. If the routing completed successfully, this is a no-op. If there is an
-		// injection goroutine running, wait for it to terminate, as we might have gotten
-		// here after a cancellation signal.
-		defer close(terminateTargetWriter)
-
-		terminationError := func() error {
-			return fmt.Errorf("termination requested for routing into %s", stepLabel)
-		}
-
-		for {
-			select {
-			case <-terminate:
-				return terminationError()
-			case t, chanIsOpen := <-r.routingChannels.routeIn:
-				if !chanIsOpen {
-					close(inputChannelProxy)
-					close(r.routingChannels.stepIn)
-					return nil
-				}
-				inputChannelProxy <- t
-			}
-
-			// TODO: why do not we return injection result in writeTargetWithResult function?
-			select {
-			case <-terminate:
-				return terminationError()
-			case injectionResult := <-injectResultCh:
-				log.Debugf("received injection result for %v", injectionResult.target)
-				if injectionResult.err != nil {
-					targetInErrEv := testevent.Data{EventName: target.EventTargetInErr, Target: injectionResult.target}
-					if err := r.ev.Emit(targetInErrEv); err != nil {
-						log.Warningf("could not emit %v event for target %+v: %v", targetInErrEv, *injectionResult.target, err)
-					}
-					return fmt.Errorf("routing failed while injecting target %+v into %s", injectionResult.target, stepLabel)
-				}
-				targetInEv := testevent.Data{EventName: target.EventTargetIn, Target: injectionResult.target}
-				if err := r.ev.Emit(targetInEv); err != nil {
-					log.Warningf("could not emit %v event for Target: %+v", targetInEv, *injectionResult.target)
-				}
-			}
-		}
-	}()
-
-	if err != nil {
-		log.Debugf("routeIn failed: %v", err)
-		return 0, err
 	}
-	return len(ingressTarget), nil
 }
 
 func (r *stepRouter) emitOutEvent(t *target.Target, err error) error {
