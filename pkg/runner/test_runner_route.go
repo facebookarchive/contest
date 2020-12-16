@@ -6,7 +6,6 @@
 package runner
 
 import (
-	"container/list"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -50,20 +49,9 @@ func (r *stepRouter) routeIn(terminate <-chan struct{}) (int, error) {
 	log := logging.AddField(r.log, "step", stepLabel)
 	log = logging.AddField(log, "phase", "routeIn")
 
-	var (
-		err             error
-		injectionWg     sync.WaitGroup
-		routeInProgress bool
-	)
-
 	// terminateTargetWriter is a control channel used to signal termination to
 	// the writer object which injects a target into the test step
 	terminateTargetWriter := make(chan struct{})
-
-	// `targets` is used to buffer targets coming from the previous routing blocks,
-	// queueing them for injection into the TestStep. The list is accessed
-	// synchronously by a single goroutine.
-	targets := list.New()
 
 	// `ingressTarget` is used to keep track of ingress times of a target into a test step
 	ingressTarget := make(map[string]time.Time)
@@ -78,70 +66,62 @@ func (r *stepRouter) routeIn(terminate <-chan struct{}) (int, error) {
 	log.Debugf("initializing routeIn for %s", stepLabel)
 	targetWriter := newTargetWriter(log, r.timeouts)
 
-	for {
-		select {
-		case <-terminate:
-			err = fmt.Errorf("termination requested for routing into %s", stepLabel)
-		case injectionResult := <-injectResultCh:
-			log.Debugf("received injection result for %v", injectionResult.target)
-			routeInProgress = false
-			if injectionResult.err != nil {
-				err = fmt.Errorf("routing failed while injecting target %+v into %s", injectionResult.target, stepLabel)
-				targetInErrEv := testevent.Data{EventName: target.EventTargetInErr, Target: injectionResult.target}
-				if err := r.ev.Emit(targetInErrEv); err != nil {
-					log.Warningf("could not emit %v event for target %+v: %v", targetInErrEv, *injectionResult.target, err)
+	inputChannelProxy := make(chan *target.Target, 1)
+
+	var injectionWg sync.WaitGroup
+	injectionWg.Add(1)
+	go func() {
+		defer injectionWg.Done()
+
+		for {
+			select {
+			case <-terminateTargetWriter:
+				return
+			case t, chanIsOpen := <-inputChannelProxy:
+				if !chanIsOpen {
+					log.Debugf("routing input channel closed")
+					return
 				}
-			} else {
+				log.Debugf("received target %v in input", t)
+				targetWriter.writeTargetWithResult(terminateTargetWriter, t, injectionChannels)
+			}
+		}
+	}()
+	defer injectionWg.Wait()
+
+	err := func() error {
+		// Signal termination to the injection routines regardless of the result of the
+		// routing. If the routing completed successfully, this is a no-op. If there is an
+		// injection goroutine running, wait for it to terminate, as we might have gotten
+		// here after a cancellation signal.
+		defer close(terminateTargetWriter)
+
+		for {
+			select {
+			case <-terminate:
+				return fmt.Errorf("termination requested for routing into %s", stepLabel)
+			case injectionResult := <-injectResultCh:
+				log.Debugf("received injection result for %v", injectionResult.target)
+				if injectionResult.err != nil {
+					targetInErrEv := testevent.Data{EventName: target.EventTargetInErr, Target: injectionResult.target}
+					if err := r.ev.Emit(targetInErrEv); err != nil {
+						log.Warningf("could not emit %v event for target %+v: %v", targetInErrEv, *injectionResult.target, err)
+					}
+					return fmt.Errorf("routing failed while injecting target %+v into %s", injectionResult.target, stepLabel)
+				}
 				targetInEv := testevent.Data{EventName: target.EventTargetIn, Target: injectionResult.target}
 				if err := r.ev.Emit(targetInEv); err != nil {
 					log.Warningf("could not emit %v event for Target: %+v", targetInEv, *injectionResult.target)
 				}
-			}
-		case t, chanIsOpen := <-r.routingChannels.routeIn:
-			if !chanIsOpen {
-				log.Debugf("routing input channel closed")
-				r.routingChannels.routeIn = nil
-			} else {
-				log.Debugf("received target %v in input", t)
-				targets.PushFront(t)
+			case t, chanIsOpen := <-r.routingChannels.routeIn:
+				if !chanIsOpen {
+					close(inputChannelProxy)
+					return nil
+				}
+				inputChannelProxy <- t
 			}
 		}
-
-		if err != nil {
-			break
-		}
-
-		if routeInProgress {
-			continue
-		}
-
-		// no targets currently being injected in the test step
-		if targets.Len() == 0 {
-			if r.routingChannels.routeIn == nil {
-				log.Debugf("input channel is closed and no more targets are available, closing step input channel")
-				close(r.routingChannels.stepIn)
-				break
-			}
-			continue
-		}
-
-		t := targets.Back().Value.(*target.Target)
-		ingressTarget[t.ID] = time.Now()
-		targets.Remove(targets.Back())
-		log.Debugf("writing target %v into test step", t)
-		routeInProgress = true
-		injectionWg.Add(1)
-		go func() {
-			defer injectionWg.Done()
-			targetWriter.writeTargetWithResult(terminateTargetWriter, t, injectionChannels)
-		}()
-	}
-	// Signal termination to the injection routines regardless of the result of the
-	// routing. If the routing completed successfully, this is a no-op. If there is an
-	// injection goroutine running, wait for it to terminate, as we might have gotten
-	// here after a cancellation signal.
-	close(terminateTargetWriter)
-	injectionWg.Wait()
+	}()
 
 	if err != nil {
 		log.Debugf("routeIn failed: %v", err)
