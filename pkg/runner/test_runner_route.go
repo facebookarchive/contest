@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/event/testevent"
@@ -67,12 +66,7 @@ func (r *stepRouter) routeIn(terminate <-chan struct{}) (int, error) {
 	targetWriter := newTargetWriter(log, r.timeouts)
 
 	inputChannelProxy := make(chan *target.Target, 1)
-
-	var injectionWg sync.WaitGroup
-	injectionWg.Add(1)
 	go func() {
-		defer injectionWg.Done()
-
 		for {
 			select {
 			case <-terminateTargetWriter:
@@ -87,7 +81,6 @@ func (r *stepRouter) routeIn(terminate <-chan struct{}) (int, error) {
 			}
 		}
 	}()
-	defer injectionWg.Wait()
 
 	err := func() error {
 		// Signal termination to the injection routines regardless of the result of the
