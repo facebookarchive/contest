@@ -8,7 +8,6 @@ package teststeps
 import (
 	"context"
 	"fmt"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/stretchr/testify/assert"
@@ -229,7 +229,7 @@ func TestForEachTargetTenTargetsParallelism(t *testing.T) {
 		log.Printf("Handling target %+v", tgt)
 		select {
 		case <-ctx.Done():
-			log.Printf("target %+v caneled", tgt)
+			log.Printf("target %+v cancelled", tgt)
 		case <-ctx.Paused():
 			log.Printf("target %+v paused", tgt)
 		case <-time.After(sleepTime):
