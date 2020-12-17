@@ -68,6 +68,13 @@ type TestStepFactory func() TestStep
 // needed things to be able to load a TestStep.
 type TestStepLoader func() (string, TestStepFactory, []event.Name)
 
+// TestStepsDescriptors bundles together description of the test step
+// which constitute each test
+type TestStepsDescriptors struct {
+	TestName  string
+	TestSteps []*TestStepDescriptor
+}
+
 // TestStepDescriptor is the definition of a test step matching a test step
 // configuration.
 type TestStepDescriptor struct {

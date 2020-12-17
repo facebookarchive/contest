@@ -73,30 +73,29 @@ func (suite *JobSuite) TestGetJobRequest() {
 	t := suite.T()
 
 	jobRequestFirst := job.Request{
-		JobName:         "AName",
-		Requestor:       "AIntegrationTest",
-		RequestTime:     time.Now(),
-		JobDescriptor:   jobDescriptorFirst,
-		TestDescriptors: testDescs,
+		JobName:       "AName",
+		Requestor:     "AIntegrationTest",
+		RequestTime:   time.Now(),
+		JobDescriptor: jobDescriptorFirst,
 	}
 	jobIDa, err := suite.txStorage.StoreJobRequest(&jobRequestFirst)
 	require.NoError(t, err)
 
 	jobRequestSecond := job.Request{
-		JobName:         "BName",
-		Requestor:       "BIntegrationTest",
-		RequestTime:     time.Now(),
-		JobDescriptor:   jobDescriptorSecond,
-		TestDescriptors: testDescs,
+		JobName:       "BName",
+		Requestor:     "BIntegrationTest",
+		RequestTime:   time.Now(),
+		JobDescriptor: jobDescriptorSecond,
 	}
 	jobIDb, err := suite.txStorage.StoreJobRequest(&jobRequestSecond)
 	require.NoError(t, err)
 
 	request, err := suite.txStorage.GetJobRequest(jobIDa)
-	require.NoError(t, err)
-	require.Equal(t, types.JobID(jobIDa), request.JobID)
-	require.Equal(t, request.Requestor, "AIntegrationTest")
-	require.Equal(t, request.JobDescriptor, jobDescriptorFirst)
+
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), types.JobID(jobIDa), request.JobID)
+	require.Equal(suite.T(), request.Requestor, "AIntegrationTest")
+	require.Equal(suite.T(), request.JobDescriptor, jobDescriptorFirst)
 
 	// Creation timestamp corresponds to the timestamp of the insertion into the
 	// database. Assert that the timestamp retrieved from the database is within
@@ -129,21 +128,19 @@ func (suite *JobSuite) TestListJobs() {
 	t := suite.T()
 
 	jobRequestFirst := job.Request{
-		JobName:         "AName",
-		Requestor:       "AIntegrationTest",
-		RequestTime:     time.Now(),
-		JobDescriptor:   jobDescriptorFirst,
-		TestDescriptors: testDescs,
+		JobName:       "AName",
+		Requestor:     "AIntegrationTest",
+		RequestTime:   time.Now(),
+		JobDescriptor: jobDescriptorFirst,
 	}
 	jobIDa, err := suite.txStorage.StoreJobRequest(&jobRequestFirst)
 	require.NoError(t, err)
 
 	jobRequestSecond := job.Request{
-		JobName:         "BName",
-		Requestor:       "BIntegrationTest",
-		RequestTime:     time.Now(),
-		JobDescriptor:   jobDescriptorSecond,
-		TestDescriptors: testDescs,
+		JobName:       "BName",
+		Requestor:     "BIntegrationTest",
+		RequestTime:   time.Now(),
+		JobDescriptor: jobDescriptorSecond,
 	}
 	jobIDb, err := suite.txStorage.StoreJobRequest(&jobRequestSecond)
 	require.NoError(t, err)

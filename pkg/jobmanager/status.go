@@ -31,7 +31,8 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 		evResp.Err = fmt.Errorf("failed to fetch request for job ID %d: %w", jobID, err)
 		return &evResp
 	}
-	currentJob, err := NewJobFromRequest(jm.pluginRegistry, req)
+
+	currentJob, err := NewJobFromExtendedDescriptor(jm.pluginRegistry, req.ExtendedDescriptor)
 	if err != nil {
 		evResp.Err = fmt.Errorf("failed to build job object from job request: %w", err)
 		return &evResp

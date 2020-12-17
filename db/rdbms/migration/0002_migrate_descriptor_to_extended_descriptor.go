@@ -25,6 +25,23 @@ import (
 
 const shardSize = uint64(5000)
 
+// Contest data structures for migration from v1 to v2. These data structures
+// have been migrated in the core framework so they need to be preserved in the
+// migration package.
+
+// Request represent the v1 job request layout
+type Request struct {
+	JobID         types.JobID
+	JobName       string
+	Requestor     string
+	ServerID      string
+	RequestTime   time.Time
+	JobDescriptor string
+	// TestDescriptors are the fetched test steps as per the test fetcher
+	// defined in the JobDescriptor above.
+	TestDescriptors string
+}
+
 // DescriptorMigration represents a migration which moves steps description in jobs tables from old to new
 // schema. The migration consists in the following:
 //
@@ -40,24 +57,29 @@ const shardSize = uint64(5000)
 //		JobDescriptor string
 //		TestDescriptors string
 // }
-//
-// Having TestDescriptors as a field of request objects creates several issues, including:
-// * It's an abstraction leakage, the extended description of the steps might not be part
-//   of the initial request submitted from outside (i.e. might not be a literal embedded
-//	 in the job descriptor)
-// * The job.Descriptor object does not contain the extended version of the test steps, which
-//   will make it difficult to handle resume, as we need to retrieve multiple objects
-//
+
+// Having `TestDescriptors` as a field of request objects creates several issues:
+// * It's an abstraction leakage, the description of the steps might not be inlined
+//   in the initial request submitted from outside (i.e. might not be a literal embedded
+//   in the job descriptor)
+// * Storing TestDescriptors directly in the jobs table implies that we track the step
+//   descriptions of every test, but not the name of the test themselves, which are part
+//   of the test fetcher parameters. This means that to resolve again the full description,
+//   which includes names of the tests, we need to go through the test fetcher plugin again.
+//   At resume time, we have a dependency on the test fetcher, which in turn depends on
+//   fetching the description of the test from the backend, which might not match what was
+//   actually submitted at test time.
+
 // Schema v0002 introduces the concept of extended_descriptor, which is defined as follows:
 // type ExtendedDescriptor struct {
 //		JobDescriptor
-//		StepsDescriptors []test.StepsDescriptors
+//		TestStepsDescriptors []test.TestStepsDescriptors
 // }
 //
 // We remove TestDescriptors from Request objects, and we store that information side-by-side with
 // JobDescriptor into an ExtendedDescriptor. We then store this ExtendedDescriptor in the jobs table
-// so that all the test information can be re-fetched simply by reading extended_descriptor field in
-// jobs table.
+// so that all the test information can be re-fetched by reading extended_descriptor field in
+// jobs table, without any dependency after submission time on the test fetcher.
 type DescriptorMigration struct {
 	log *logrus.Entry
 }
@@ -77,7 +99,7 @@ func ms(d time.Duration) float64 {
 }
 
 // fetchJobs fetches job requests based on limit and offset
-func (m *DescriptorMigration) fetchJobs(db dbConn, limit, offset uint64, log *logrus.Entry) ([]job.Request, error) {
+func (m *DescriptorMigration) fetchJobs(db dbConn, limit, offset uint64, log *logrus.Entry) ([]Request, error) {
 
 	log.Debugf("fetching shard limit: %d, offset: %d", limit, offset)
 	selectStatement := "select job_id, name, requestor, server_id, request_time, descriptor, teststeps from jobs limit ? offset ?"
@@ -96,11 +118,11 @@ func (m *DescriptorMigration) fetchJobs(db dbConn, limit, offset uint64, log *lo
 		_ = rows.Close()
 	}()
 
-	var jobs []job.Request
+	var jobs []Request
 
 	start = time.Now()
 	for rows.Next() {
-		job := job.Request{}
+		job := Request{}
 
 		// `teststeps` column was added relateively late to the `jobs` table, so
 		// pre-existing columns have acquired a NULL value. This needs to be taken
@@ -136,7 +158,7 @@ func (m *DescriptorMigration) fetchJobs(db dbConn, limit, offset uint64, log *lo
 	return jobs, nil
 }
 
-func (m *DescriptorMigration) migrateJobs(db dbConn, requests []job.Request, registry *pluginregistry.PluginRegistry, log *logrus.Entry) error {
+func (m *DescriptorMigration) migrateJobs(db dbConn, requests []Request, registry *pluginregistry.PluginRegistry, log *logrus.Entry) error {
 
 	log.Debugf("migrating %d jobs", len(requests))
 	start := time.Now()
@@ -144,29 +166,34 @@ func (m *DescriptorMigration) migrateJobs(db dbConn, requests []job.Request, reg
 	var updates []jobDescriptorPair
 	for _, request := range requests {
 
-		// Merge JobDescriptor and TestStepDescriptor(s) into a single ExtendedDescriptor.
-		// ExtendedDescriptor contains StepsDescriptors, which is declared as follows:
-		// type StepsDescriptors struct {
-		//		TestName string
-		// 		Test     []StepDescriptor
-		// 		Cleanup  []StepDescriptor
+		// Merge JobDescriptor and [][]TestStepDescriptor into a single ExtendedDescriptor.
+		// ExtendedDescriptor contains TestStepsDescriptors, whose tpye is declared as follows:
+		// type TestStepsDescriptors struct {
+		//		TestName    string
+		// 		TestSteps   []*TestStepDescriptor
 		// }
 		//
-		// StepDescriptor is instead defined as follows:
-		// type StepDescriptor struct {
+		// TestStepDescriptor is instead defined as follows:
+		// type TestStepDescriptor struct {
 		//		Name       string
 		//		Label      string
 		//		Parameters StepParameters
 		// }
 		//
 		// The previous request.TestDescriptors was actually referring to the JSON
-		// description representing the steps, for every test. This is very ambiguous
-		// because job.JobDescriptor contains TestDescriptors itself, which however
-		// represent the higher level description of the test (including TargetManager
-		// name, TestFetcher name, etc.). So ExtendedDescriptor refers instead to
-		// StepsDescriptors and TestDescriptors field is removed from request object.
+		// representation of the steps, for every test (without any reference to the
+		// test name, that would only be part of the global JobDescriptor). This is
+		// very ambiguous because to rebuild all the information of a test (for example
+		// upon resume, we need to merge information coming from two different places,
+		// the steps description in TestDescriptors and the test name in the top level
+		// JobDescriptor.
+		//
+		// So ExtendedDescriptor holds instead to TestStepsDescriptors, which includes
+		// test name and test step information.
+		//
+		// TestDescriptorsfield is removed from request object.
 
-		var jobDesc job.JobDescriptor
+		var jobDesc job.Descriptor
 		if err := json.Unmarshal([]byte(request.JobDescriptor), &jobDesc); err != nil {
 			return fmt.Errorf("failed to unmarshal job descriptor (%+v): %w", jobDesc, err)
 		}
@@ -179,26 +206,23 @@ func (m *DescriptorMigration) migrateJobs(db dbConn, requests []job.Request, reg
 			continue
 		}
 
-		var stepDescs [][]*test.StepDescriptor
+		var stepDescs [][]*test.TestStepDescriptor
 		if err := json.Unmarshal([]byte(request.TestDescriptors), &stepDescs); err != nil {
 			return fmt.Errorf("failed to unmarshal test step descriptors from request object (%+v): %w", request.TestDescriptors, err)
 		}
 
-		extendedDescriptor := job.ExtendedDescriptor{JobDescriptor: jobDesc}
+		extendedDescriptor := job.ExtendedDescriptor{Descriptor: jobDesc}
 		if len(stepDescs) != len(jobDesc.TestDescriptors) {
 			return fmt.Errorf("number of tests described in JobDescriptor does not match steps stored in db")
 		}
 
 		for index, stepDesc := range stepDescs {
-			newStepsDesc := test.StepsDescriptors{}
-			// TestName is missing from the v0001 schema and can be retrieved only via
-			// TestFetcher. We need TestName in the extended_descriptor to be able to
-			// correctly build status of previous jobs. So, the only option we have is to
-			// initialize a TestFetcher and let it retrieve the test name.
-
-			for _, desc := range stepDesc {
-				newStepsDesc.Test = append(newStepsDesc.Test, *desc)
-			}
+			newStepsDesc := test.TestStepsDescriptors{}
+			// TestName is normally part of TestFetcher parameters, but it's responsibility
+			// of the test fetcher to return the name of the Test from the Fetch signature.
+			// So, to complete backfill of the data, we initialize directly a TestFetcher
+			// and let it retrieve the test name.
+			newStepsDesc.TestSteps = append(newStepsDesc.TestSteps, stepDesc...)
 
 			// Look up the original TestDescriptor from JobDescriptor, instantiate
 			// TestFetcher accordingly and retrieve the name of the test
@@ -232,7 +256,7 @@ func (m *DescriptorMigration) migrateJobs(db dbConn, requests []job.Request, reg
 			}
 
 			newStepsDesc.TestName = name
-			extendedDescriptor.StepsDescriptors = append(extendedDescriptor.StepsDescriptors, newStepsDesc)
+			extendedDescriptor.TestStepsDescriptors = append(extendedDescriptor.TestStepsDescriptors, newStepsDesc)
 		}
 
 		// Serialize job.ExtendedDescriptor

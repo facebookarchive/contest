@@ -16,8 +16,8 @@ import (
 )
 
 var (
-	jobID      = types.JobID(123)
-	otherJobID = types.JobID(456)
+	jobID                                 = types.JobID(123)
+	otherJobID                            = types.JobID(456)
 	defaultJobTargetManagerAcquireTimeout = 5 * time.Minute
 
 	targetOne  = target.Target{ID: "001"}
@@ -59,21 +59,21 @@ func TestInMemoryLockValidJobIDAndTwoTargets(t *testing.T) {
 
 func TestInMemoryLockReentrantLock(t *testing.T) {
 	tl := New()
-	jobTargetManagerAcquireTimeout := 10*time.Second
+	jobTargetManagerAcquireTimeout := 10 * time.Second
 	require.NoError(t, tl.Lock(jobID, jobTargetManagerAcquireTimeout, twoTargets))
 	require.NoError(t, tl.Lock(jobID, jobTargetManagerAcquireTimeout, twoTargets))
 }
 
 func TestInMemoryLockReentrantLockDifferentJobID(t *testing.T) {
 	tl := New()
-	jobTargetManagerAcquireTimeout := 10*time.Second
+	jobTargetManagerAcquireTimeout := 10 * time.Second
 	require.NoError(t, tl.Lock(jobID, jobTargetManagerAcquireTimeout, twoTargets))
 	require.Error(t, tl.Lock(jobID+1, jobTargetManagerAcquireTimeout, twoTargets))
 }
 
 func TestInMemoryTryLockOne(t *testing.T) {
 	tl := New()
-	jobTargetManagerAcquireTimeout := 10*time.Second
+	jobTargetManagerAcquireTimeout := 10 * time.Second
 	res, err := tl.TryLock(jobID, jobTargetManagerAcquireTimeout, oneTarget, 1)
 	require.NoError(t, err)
 	require.Equal(t, oneTarget[0].ID, res[0])
@@ -81,7 +81,7 @@ func TestInMemoryTryLockOne(t *testing.T) {
 
 func TestInMemoryTryLockTwo(t *testing.T) {
 	tl := New()
-	jobTargetManagerAcquireTimeout := 10*time.Second
+	jobTargetManagerAcquireTimeout := 10 * time.Second
 	res, err := tl.TryLock(jobID, jobTargetManagerAcquireTimeout, twoTargets, 2)
 	require.NoError(t, err)
 	// order is not guaranteed
@@ -91,7 +91,7 @@ func TestInMemoryTryLockTwo(t *testing.T) {
 
 func TestInMemoryTryLockZeroLimited(t *testing.T) {
 	tl := New()
-	jobTargetManagerAcquireTimeout := 10*time.Second
+	jobTargetManagerAcquireTimeout := 10 * time.Second
 	// only request one
 	res, err := tl.TryLock(jobID, jobTargetManagerAcquireTimeout, twoTargets, 0)
 	require.NoError(t, err)
@@ -101,7 +101,7 @@ func TestInMemoryTryLockZeroLimited(t *testing.T) {
 
 func TestInMemoryTryLockTwoHigherLimit(t *testing.T) {
 	tl := New()
-	jobTargetManagerAcquireTimeout := 10*time.Second
+	jobTargetManagerAcquireTimeout := 10 * time.Second
 	// limit is just an upper bound, can be higher
 	res, err := tl.TryLock(jobID, jobTargetManagerAcquireTimeout, twoTargets, 100)
 	require.NoError(t, err)
@@ -112,7 +112,7 @@ func TestInMemoryTryLockTwoHigherLimit(t *testing.T) {
 
 func TestInMemoryTryLockOneLimited(t *testing.T) {
 	tl := New()
-	jobTargetManagerAcquireTimeout := 10*time.Second
+	jobTargetManagerAcquireTimeout := 10 * time.Second
 	// only request one
 	res, err := tl.TryLock(jobID, jobTargetManagerAcquireTimeout, twoTargets, 1)
 	require.NoError(t, err)
@@ -126,7 +126,7 @@ func TestInMemoryTryLockOneLimited(t *testing.T) {
 
 func TestInMemoryTryLockOneOfTwo(t *testing.T) {
 	tl := New()
-	jobTargetManagerAcquireTimeout := 10*time.Second
+	jobTargetManagerAcquireTimeout := 10 * time.Second
 	require.NoError(t, tl.Lock(jobID, jobTargetManagerAcquireTimeout, oneTarget))
 	// now tryLock both with other ID
 	res, err := tl.TryLock(jobID+1, jobTargetManagerAcquireTimeout, twoTargets, 2)
@@ -138,7 +138,7 @@ func TestInMemoryTryLockOneOfTwo(t *testing.T) {
 
 func TestInMemoryTryLockNoneOfTwo(t *testing.T) {
 	tl := New()
-	jobTargetManagerAcquireTimeout := 10*time.Second
+	jobTargetManagerAcquireTimeout := 10 * time.Second
 	require.NoError(t, tl.Lock(jobID, jobTargetManagerAcquireTimeout, twoTargets))
 	// now tryLock both with other ID
 	res, err := tl.TryLock(jobID+1, jobTargetManagerAcquireTimeout, twoTargets, 2)

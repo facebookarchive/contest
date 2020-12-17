@@ -33,7 +33,7 @@ type Memory struct {
 
 type jobInfo struct {
 	request *job.Request
-	desc    *job.JobDescriptor
+	desc    *job.Descriptor
 	report  *job.JobReport
 	state   job.State
 }
@@ -162,7 +162,7 @@ func (m *Memory) StoreJobRequest(request *job.Request) (types.JobID, error) {
 	request.JobID = jobID
 	info := &jobInfo{
 		request: request,
-		desc:    &job.JobDescriptor{},
+		desc:    &job.Descriptor{},
 		state:   job.JobStateUnknown,
 	}
 	if err := json.Unmarshal([]byte(request.JobDescriptor), info.desc); err != nil {
