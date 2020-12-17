@@ -14,6 +14,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/test"
 )
 
@@ -48,7 +49,7 @@ func (ts Step) Name() string {
 }
 
 // Run executes the example step.
-func (ts *Step) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *Step) Run(ctx statectx.Context, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.Emitter) error {
 	for {
 
 		r := rand.Intn(3)
@@ -66,8 +67,7 @@ func (ts *Step) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, _ t
 			}
 			if r == 1 {
 				select {
-				case <-cancel:
-				case <-pause:
+				case <-ctx.PausedOrDone():
 					return nil
 				case ch.Err <- cerrors.TargetError{Target: target, Err: fmt.Errorf("target failed")}:
 					if err := ev.Emit(testevent.Data{EventName: FinishedEvent, Target: target, Payload: nil}); err != nil {
@@ -76,8 +76,7 @@ func (ts *Step) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, _ t
 				}
 			} else {
 				select {
-				case <-cancel:
-				case <-pause:
+				case <-ctx.PausedOrDone():
 					return nil
 				case ch.Out <- target:
 					if err := ev.Emit(testevent.Data{EventName: FailedEvent, Target: target, Payload: nil}); err != nil {
@@ -85,9 +84,7 @@ func (ts *Step) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, _ t
 					}
 				}
 			}
-		case <-cancel:
-			return nil
-		case <-pause:
+		case <-ctx.PausedOrDone():
 			return nil
 		}
 	}
@@ -100,7 +97,7 @@ func (ts *Step) ValidateParameters(_ test.TestStepParameters) error {
 
 // Resume tries to resume a previously interrupted test step. ExampleTestStep
 // cannot resume.
-func (ts *Step) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *Step) Resume(ctx statectx.Context, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/test"
 )
 
@@ -27,7 +28,7 @@ func (ts *panicStep) Name() string {
 }
 
 // Run executes the example step.
-func (ts *panicStep) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *panicStep) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	panic("panic step")
 }
 
@@ -38,7 +39,7 @@ func (ts *panicStep) ValidateParameters(params test.TestStepParameters) error {
 
 // Resume tries to resume a previously interrupted test step. ExampleTestStep
 // cannot resume.
-func (ts *panicStep) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *panicStep) Resume(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

@@ -31,6 +31,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/plugins/teststeps"
@@ -70,7 +71,7 @@ func (ts SSHCmd) Name() string {
 }
 
 // Run executes the cmd step.
-func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *SSHCmd) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	// XXX: Dragons ahead! The target (%t) substitution, and function
 	// expression evaluations are done at run-time, so they may still fail
 	// despite passing at early validation time.
@@ -83,7 +84,7 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 		return err
 	}
 
-	f := func(cancel, pause <-chan struct{}, target *target.Target) error {
+	f := func(ctx statectx.Context, target *target.Target) error {
 		// apply filters and substitutions to user, host, private key, and command args
 		user, err := ts.User.Expand(target)
 		if err != nil {
@@ -229,9 +230,7 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 					log.Warningf("Stderr of command '%s' is '%s'", cmd, stderr.Bytes())
 				}
 				return err
-			case <-cancel:
-				return session.Signal(ssh.SIGKILL)
-			case <-pause:
+			case <-ctx.PausedOrDone():
 				return session.Signal(ssh.SIGKILL)
 			case <-time.After(250 * time.Millisecond):
 				keepAliveCnt++
@@ -255,7 +254,7 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 			}
 		}
 	}
-	return teststeps.ForEachTarget(Name, cancel, pause, ch, f)
+	return teststeps.ForEachTarget(Name, ctx, ch, f)
 }
 
 func (ts *SSHCmd) validateAndPopulate(params test.TestStepParameters) error {
@@ -312,7 +311,7 @@ func (ts *SSHCmd) ValidateParameters(params test.TestStepParameters) error {
 
 // Resume tries to resume a previously interrupted test step. SSHCmd cannot
 // resume.
-func (ts *SSHCmd) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *SSHCmd) Resume(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

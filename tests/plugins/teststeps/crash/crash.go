@@ -11,6 +11,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/test"
 )
 
@@ -29,7 +30,7 @@ func (ts *crash) Name() string {
 }
 
 // Run executes a step which does never return.
-func (ts *crash) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *crash) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	return fmt.Errorf("TestStep crashed")
 }
 
@@ -40,7 +41,7 @@ func (ts *crash) ValidateParameters(params test.TestStepParameters) error {
 
 // Resume tries to resume a previously interrupted test step. ExampleTestStep
 // cannot resume.
-func (ts *crash) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *crash) Resume(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

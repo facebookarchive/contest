@@ -6,6 +6,7 @@
 package teststeps
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/stretchr/testify/assert"
@@ -21,21 +23,22 @@ import (
 )
 
 type data struct {
-	done          chan struct{}
-	cancel, pause chan struct{}
+	ctx           statectx.Context
+	cancel, pause func()
 	inCh, outCh   chan *target.Target
 	errCh         chan cerrors.TargetError
 	stepChans     test.TestStepChannels
 }
 
 func newData() data {
+	ctx, pause, cancel := statectx.New()
 	inCh := make(chan *target.Target)
 	outCh := make(chan *target.Target)
 	errCh := make(chan cerrors.TargetError)
 	return data{
-		done:   make(chan struct{}, 1),
-		cancel: make(chan struct{}),
-		pause:  make(chan struct{}),
+		ctx:    ctx,
+		cancel: cancel,
+		pause:  pause,
 		inCh:   inCh,
 		outCh:  outCh,
 		errCh:  errCh,
@@ -49,7 +52,7 @@ func newData() data {
 
 func TestForEachTargetOneTarget(t *testing.T) {
 	d := newData()
-	fn := func(cancel, pause <-chan struct{}, tgt *target.Target) error {
+	fn := func(ctx statectx.Context, tgt *target.Target) error {
 		log.Printf("Handling target %+v", tgt)
 		return nil
 	}
@@ -58,10 +61,12 @@ func TestForEachTargetOneTarget(t *testing.T) {
 		// signal end of input
 		d.inCh <- nil
 	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
 		for {
 			select {
-			case <-d.done:
+			case <-ctx.Done():
 				return
 			case tgt := <-d.outCh:
 				log.Printf("Step for target %+v completed as expected", tgt)
@@ -70,14 +75,13 @@ func TestForEachTargetOneTarget(t *testing.T) {
 			}
 		}
 	}()
-	err := ForEachTarget("test_one_target ", d.cancel, d.pause, d.stepChans, fn)
-	d.done <- struct{}{}
+	err := ForEachTarget("test_one_target ", d.ctx, d.stepChans, fn)
 	require.NoError(t, err)
 }
 
 func TestForEachTargetOneTargetAllFail(t *testing.T) {
 	d := newData()
-	fn := func(cancel, pause <-chan struct{}, t *target.Target) error {
+	fn := func(ctx statectx.Context, t *target.Target) error {
 		log.Printf("Handling target %+v", t)
 		return fmt.Errorf("error with target %+v", t)
 	}
@@ -86,10 +90,12 @@ func TestForEachTargetOneTargetAllFail(t *testing.T) {
 		// signal end of input
 		d.inCh <- nil
 	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
 		for {
 			select {
-			case <-d.done:
+			case <-ctx.Done():
 				return
 			case tgt := <-d.outCh:
 				t.Errorf("Step for target %+v expected to fail but completed successfully instead", tgt)
@@ -98,14 +104,13 @@ func TestForEachTargetOneTargetAllFail(t *testing.T) {
 			}
 		}
 	}()
-	err := ForEachTarget("test_one_target ", d.cancel, d.pause, d.stepChans, fn)
-	d.done <- struct{}{}
+	err := ForEachTarget("test_one_target ", d.ctx, d.stepChans, fn)
 	require.NoError(t, err)
 }
 
 func TestForEachTargetTenTargets(t *testing.T) {
 	d := newData()
-	fn := func(cancel, pause <-chan struct{}, tgt *target.Target) error {
+	fn := func(ctx statectx.Context, tgt *target.Target) error {
 		log.Printf("Handling target %+v", tgt)
 		return nil
 	}
@@ -116,10 +121,12 @@ func TestForEachTargetTenTargets(t *testing.T) {
 		// signal end of input
 		d.inCh <- nil
 	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
 		for {
 			select {
-			case <-d.done:
+			case <-ctx.Done():
 				return
 			case tgt := <-d.outCh:
 				log.Printf("Step for target %+v completed as expected", tgt)
@@ -128,15 +135,14 @@ func TestForEachTargetTenTargets(t *testing.T) {
 			}
 		}
 	}()
-	err := ForEachTarget("test_one_target ", d.cancel, d.pause, d.stepChans, fn)
-	d.done <- struct{}{}
+	err := ForEachTarget("test_one_target ", d.ctx, d.stepChans, fn)
 	require.NoError(t, err)
 }
 
 func TestForEachTargetTenTargetsAllFail(t *testing.T) {
 	logging.Debug()
 	d := newData()
-	fn := func(cancel, pause <-chan struct{}, tgt *target.Target) error {
+	fn := func(ctx statectx.Context, tgt *target.Target) error {
 		log.Printf("Handling target %+v", tgt)
 		return fmt.Errorf("error with target %+v", tgt)
 	}
@@ -147,10 +153,12 @@ func TestForEachTargetTenTargetsAllFail(t *testing.T) {
 		// signal end of input
 		d.inCh <- nil
 	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
 		for {
 			select {
-			case <-d.done:
+			case <-ctx.Done():
 				return
 			case tgt := <-d.outCh:
 				t.Errorf("Step for target %+v expected to fail but completed successfully instead", tgt)
@@ -159,8 +167,7 @@ func TestForEachTargetTenTargetsAllFail(t *testing.T) {
 			}
 		}
 	}()
-	err := ForEachTarget("test_one_target ", d.cancel, d.pause, d.stepChans, fn)
-	d.done <- struct{}{}
+	err := ForEachTarget("test_one_target ", d.ctx, d.stepChans, fn)
 	require.NoError(t, err)
 }
 
@@ -169,7 +176,7 @@ func TestForEachTargetTenTargetsOneFails(t *testing.T) {
 	// chosen by fair dice roll.
 	// guaranteed to be random.
 	failingTarget := "target004"
-	fn := func(cancel, pause <-chan struct{}, tgt *target.Target) error {
+	fn := func(ctx statectx.Context, tgt *target.Target) error {
 		log.Printf("Handling target %+v", tgt)
 		if tgt.ID == failingTarget {
 			return fmt.Errorf("error with target %+v", tgt)
@@ -183,10 +190,12 @@ func TestForEachTargetTenTargetsOneFails(t *testing.T) {
 		// signal end of input
 		d.inCh <- nil
 	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
 		for {
 			select {
-			case <-d.done:
+			case <-ctx.Done():
 				return
 			case tgt := <-d.outCh:
 				if tgt.ID == failingTarget {
@@ -203,8 +212,7 @@ func TestForEachTargetTenTargetsOneFails(t *testing.T) {
 			}
 		}
 	}()
-	err := ForEachTarget("test_one_target ", d.cancel, d.pause, d.stepChans, fn)
-	d.done <- struct{}{}
+	err := ForEachTarget("test_one_target ", d.ctx, d.stepChans, fn)
 	require.NoError(t, err)
 }
 
@@ -217,12 +225,12 @@ func TestForEachTargetTenTargetsParallelism(t *testing.T) {
 	logging.Debug()
 	sleepTime := time.Second
 	d := newData()
-	fn := func(cancel, pause <-chan struct{}, tgt *target.Target) error {
+	fn := func(ctx statectx.Context, tgt *target.Target) error {
 		log.Printf("Handling target %+v", tgt)
 		select {
-		case <-cancel:
-			log.Printf("target %+v caneled", tgt)
-		case <-pause:
+		case <-ctx.Done():
+			log.Printf("target %+v cancelled", tgt)
+		case <-ctx.Paused():
 			log.Printf("target %+v paused", tgt)
 		case <-time.After(sleepTime):
 			log.Printf("target %+v processed", tgt)
@@ -247,7 +255,7 @@ func TestForEachTargetTenTargetsParallelism(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		// try to cancel ForEachTarget in case it's still running
-		defer close(d.cancel)
+		defer d.cancel()
 		defer wg.Done()
 
 		maxWaitTime := sleepTime * 3
@@ -275,7 +283,7 @@ func TestForEachTargetTenTargetsParallelism(t *testing.T) {
 		}
 	}()
 
-	err := ForEachTarget("test_parallel", d.cancel, d.pause, d.stepChans, fn)
+	err := ForEachTarget("test_parallel", d.ctx, d.stepChans, fn)
 
 	wg.Wait() //wait for receiver
 
@@ -294,13 +302,13 @@ func TestForEachTargetCancelSignalPropagation(t *testing.T) {
 	var canceledTargets int32
 	d := newData()
 
-	fn := func(cancel, pause <-chan struct{}, tgt *target.Target) error {
+	fn := func(ctx statectx.Context, tgt *target.Target) error {
 		log.Printf("Handling target %+v", tgt)
 		select {
-		case <-cancel:
+		case <-ctx.Done():
 			log.Printf("target %+v caneled", tgt)
 			atomic.AddInt32(&canceledTargets, 1)
-		case <-pause:
+		case <-ctx.Paused():
 			log.Printf("target %+v paused", tgt)
 		case <-time.After(sleepTime):
 			log.Printf("target %+v processed", tgt)
@@ -317,10 +325,10 @@ func TestForEachTargetCancelSignalPropagation(t *testing.T) {
 
 	go func() {
 		time.Sleep(sleepTime / 3)
-		close(d.cancel)
+		d.cancel()
 	}()
 
-	err := ForEachTarget("test_cancelation", d.cancel, d.pause, d.stepChans, fn)
+	err := ForEachTarget("test_cancelation", d.ctx, d.stepChans, fn)
 	require.NoError(t, err)
 
 	assert.Equal(t, int32(numTargets), canceledTargets)
@@ -333,13 +341,13 @@ func TestForEachTargetCancelBeforeInputChannelClosed(t *testing.T) {
 	var canceledTargets int32
 	d := newData()
 
-	fn := func(cancel, pause <-chan struct{}, tgt *target.Target) error {
+	fn := func(ctx statectx.Context, tgt *target.Target) error {
 		log.Printf("Handling target %+v", tgt)
 		select {
-		case <-cancel:
+		case <-ctx.Done():
 			log.Printf("target %+v cancelled", tgt)
 			atomic.AddInt32(&canceledTargets, 1)
-		case <-pause:
+		case <-ctx.Paused():
 			log.Printf("target %+v paused", tgt)
 		case <-time.After(sleepTime):
 			log.Printf("target %+v processed", tgt)
@@ -358,10 +366,10 @@ func TestForEachTargetCancelBeforeInputChannelClosed(t *testing.T) {
 
 	go func() {
 		time.Sleep(sleepTime / 3)
-		close(d.cancel)
+		d.cancel()
 	}()
 
-	err := ForEachTarget("test_cancelation", d.cancel, d.pause, d.stepChans, fn)
+	err := ForEachTarget("test_cancelation", d.ctx, d.stepChans, fn)
 	require.NoError(t, err)
 
 	wg.Done()

@@ -6,6 +6,7 @@
 package runner
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"runtime/debug"
@@ -63,7 +64,7 @@ type pipeline struct {
 // indefinitely and does not respond to cancellation signals, the TestRunner will
 // flag it as misbehaving and return. If the TestStep returns once the TestRunner
 // has completed, it will timeout trying to write on the result channel.
-func (p *pipeline) runStep(cancel, pause <-chan struct{}, jobID types.JobID, runID types.RunID, bundle test.TestStepBundle, stepCh stepCh, resultCh chan<- stepResult, ev testevent.EmitterFetcher) {
+func (p *pipeline) runStep(ctx statectx.Context, jobID types.JobID, runID types.RunID, bundle test.TestStepBundle, stepCh stepCh, resultCh chan<- stepResult, ev testevent.EmitterFetcher) {
 
 	stepLabel := bundle.TestStepLabel
 	log := logging.AddField(p.log, "step", stepLabel)
@@ -89,16 +90,16 @@ func (p *pipeline) runStep(cancel, pause <-chan struct{}, jobID types.JobID, run
 	// then we call `bundle.TestStep.Run()`.
 	//
 	// ITS: https://github.com/facebookincubator/contest/issues/101
-	stepIn, onFirstTargetChan, onNoTargetsChan := waitForFirstTarget(stepCh.stepIn, cancel, pause)
+	stepIn, onFirstTargetChan, onNoTargetsChan := waitForFirstTarget(ctx.PausedOrDoneCtx(), stepCh.stepIn)
 
 	haveTargets := false
 	select {
 	case <-onFirstTargetChan:
 		log.Debugf("first target received, will start step")
 		haveTargets = true
-	case <-cancel:
+	case <-ctx.Done():
 		log.Debugf("cancelled")
-	case <-pause:
+	case <-ctx.Paused():
 		log.Debugf("paused")
 	case <-onNoTargetsChan:
 		log.Debugf("no targets")
@@ -114,28 +115,20 @@ func (p *pipeline) runStep(cancel, pause <-chan struct{}, jobID types.JobID, run
 			Out: stepCh.stepOut,
 			Err: stepCh.stepErr,
 		}
-		err = bundle.TestStep.Run(cancel, pause, channels, bundle.Parameters, ev)
+		err = bundle.TestStep.Run(ctx, channels, bundle.Parameters, ev)
 	}
 
 	log.Debugf("step %s returned", bundle.TestStepLabel)
-	var (
-		cancellationAsserted bool
-		pauseAsserted        bool
-	)
+
 	// Check if we are shutting down. If so, do not perform sanity checks on the
 	// channels but return immediately as the TestStep itself probably returned
 	// because it honored the termination signal.
-	select {
-	case <-cancel:
-		log.Debugf("cancelled")
-		cancellationAsserted = true
-		if err == nil {
-			err = fmt.Errorf("test step cancelled")
-		}
-	case <-pause:
-		log.Debugf("paused")
-		pauseAsserted = true
-	default:
+
+	cancellationAsserted := ctx.PausedOrDoneCtx().Err() == statectx.ErrCanceled
+	pauseAsserted := ctx.PausedOrDoneCtx().Err() == statectx.ErrPaused
+
+	if cancellationAsserted && err == nil {
+		err = fmt.Errorf("test step cancelled")
 	}
 
 	if cancellationAsserted || pauseAsserted {
@@ -169,15 +162,12 @@ func (p *pipeline) runStep(cancel, pause <-chan struct{}, jobID types.JobID, run
 		}
 		// stepCh.stepIn is not closed, but the TestStep returned, which is a violation
 		// of the API. Record the error if no other error condition has been seen.
-		if err == nil {
-			err = fmt.Errorf("step %s returned, but input channel is not closed (api violation; case 0)", stepLabel)
-		}
+		err = fmt.Errorf("step %s returned, but input channel is not closed (api violation; case 0)", stepLabel)
+
 	default:
 		// stepCh.stepIn is not closed, and a read operation would block. The TestStep
 		// does not comply with the API (see above).
-		if err == nil {
-			err = fmt.Errorf("step %s returned, but input channel is not closed (api violation; case 1)", stepLabel)
-		}
+		err = fmt.Errorf("step %s returned, but input channel is not closed (api violation; case 1)", stepLabel)
 	}
 
 	select {
@@ -222,7 +212,7 @@ func (p *pipeline) runStep(cancel, pause <-chan struct{}, jobID types.JobID, run
 // have completed or an error occurs. If all Targets complete successfully, it checks
 // whether TestSteps and routing blocks have completed as well. If not, returns an
 // error. Termination is signalled via terminate channel.
-func (p *pipeline) waitTargets(terminate <-chan struct{}, completedCh chan<- *target.Target) error {
+func (p *pipeline) waitTargets(ctx context.Context, completedCh chan<- *target.Target) error {
 
 	log := logging.AddField(p.log, "phase", "waitTargets")
 
@@ -237,14 +227,14 @@ func (p *pipeline) waitTargets(terminate <-chan struct{}, completedCh chan<- *ta
 	writer := newTargetWriter(log, p.timeouts)
 	for {
 		select {
-		case target, ok := <-outChannel:
+		case t, ok := <-outChannel:
 			if !ok {
 				log.Debugf("pipeline output channel was closed, no more targets will come through")
 				outChannel = nil
 				break
 			}
-			completedTarget = target
-		case <-terminate:
+			completedTarget = t
+		case <-ctx.Done():
 			// When termination is signaled just stop wait. It is up
 			// to the caller to decide how to further handle pipeline termination.
 			log.Debugf("termination requested")
@@ -294,7 +284,7 @@ func (p *pipeline) waitTargets(terminate <-chan struct{}, completedCh chan<- *ta
 		if completedTarget != nil {
 			p.state.SetTarget(completedTarget, completedTargetError)
 			log.Debugf("writing target %+v on the completed channel", completedTarget)
-			if err := writer.writeTimeout(terminate, completedCh, completedTarget, p.timeouts.MessageTimeout); err != nil {
+			if err := writer.writeTimeout(ctx, completedCh, completedTarget, p.timeouts.MessageTimeout); err != nil {
 				log.Panicf("could not write completed target: %v", err)
 			}
 			completedTarget = nil
@@ -410,7 +400,7 @@ func (p *pipeline) waitSteps() error {
 // init initializes the pipeline by connecting steps and routing blocks. The result of pipeline
 // initialization is a set of control/result channels assigned to the pipeline object. The pipeline
 // input channel is returned.
-func (p *pipeline) init() (routeInFirst chan *target.Target) {
+func (p *pipeline) init(ctx statectx.Context) (routeInFirst chan *target.Target) {
 	p.log.Debugf("starting")
 
 	if p.ctrlChannels != nil {
@@ -422,10 +412,7 @@ func (p *pipeline) init() (routeInFirst chan *target.Target) {
 		routeIn  chan *target.Target
 	)
 
-	// termination channels are used to signal termination to injection and routing
-	routingCancelCh := make(chan struct{})
-	stepsCancelCh := make(chan struct{})
-	stepsPauseCh := make(chan struct{})
+	pipelineCtx, pause, cancel := statectx.WithParent(ctx)
 
 	// result channels used to communicate result information from the routing blocks
 	// and step executors
@@ -481,8 +468,8 @@ func (p *pipeline) init() (routeInFirst chan *target.Target) {
 		ev := storage.NewTestEventEmitterFetcherWithAllowedEvents(Header, &testStepBundle.AllowedEvents)
 
 		router := newStepRouter(p.log, testStepBundle, routingChannels, ev, p.timeouts)
-		go router.route(routingCancelCh, routingResultCh)
-		go p.runStep(stepsCancelCh, stepsPauseCh, p.jobID, p.runID, testStepBundle, stepChannels, stepResultCh, ev)
+		go router.route(pipelineCtx.PausedOrDoneCtx(), routingResultCh)
+		go p.runStep(pipelineCtx, p.jobID, p.runID, testStepBundle, stepChannels, stepResultCh, ev)
 		// The input of the next routing block is the output of the current routing block
 		routeIn = routeOut
 	}
@@ -493,80 +480,47 @@ func (p *pipeline) init() (routeInFirst chan *target.Target) {
 		targetErr:       targetErrCh,
 		targetOut:       routeOut,
 
-		cancelRoutingCh: routingCancelCh,
-		cancelStepsCh:   stepsCancelCh,
-		pauseStepsCh:    stepsPauseCh,
+		ctx:    pipelineCtx,
+		cancel: cancel,
+		pause:  pause,
 	}
 
 	return
 }
 
 // run is a blocking method which executes the pipeline until successful or failed termination
-func (p *pipeline) run(ctx statectx.Context, completedTargetsCh chan<- *target.Target) error {
+func (p *pipeline) run(completedTargetsCh chan<- *target.Target) error {
 	p.log.Debugf("run")
 	if p.ctrlChannels == nil {
 		p.log.Panicf("pipeline is not initialized, control channels are not available")
 	}
+	ctx := p.ctrlChannels.ctx
 
 	// Wait for the pipeline to complete. If an error occurrs, cancel all TestSteps
 	// and routing blocks and wait again for completion until shutdown timeout occurrs.
 	p.log.Infof("waiting for pipeline to complete")
+	completionError := p.waitTargets(ctx.PausedOrDoneCtx(), completedTargetsCh)
 
-	var (
-		completionError      error
-		terminationError     error
-		cancellationAsserted bool
-		pauseAsserted        bool
-	)
+	pauseAsserted := ctx.PausedOrDoneCtx().Err() == statectx.ErrPaused
+	cancellationAsserted := ctx.PausedOrDoneCtx().Err() == statectx.ErrCanceled
 
-	cancelWaitTargetsCh := make(chan struct{})
-	// errCh collects errors coming from the routines which wait for the Test to complete
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- p.waitTargets(cancelWaitTargetsCh, completedTargetsCh)
-	}()
-
-	select {
-	case completionError = <-errCh:
-	case <-ctx.PausedOrDone():
-		close(cancelWaitTargetsCh)
-		completionError = <-errCh
-
-		pauseAsserted = ctx.PausedOrDoneCtx().Err() == statectx.ErrPaused
-		cancellationAsserted = ctx.PausedOrDoneCtx().Err() == statectx.ErrCanceled
-	}
-
-	if completionError != nil || cancellationAsserted {
-		// If the Test has encountered an error or cancellation has been asserted,
-		// terminate routing and and propagate the cancel signal to the steps
-		if cancellationAsserted {
-			p.log.Infof("cancellation was asserted")
-		} else {
-			p.log.Warningf("test failed to complete: %v. Forcing cancellation.", completionError)
-		}
-
-		close(p.ctrlChannels.cancelStepsCh)
-		close(p.ctrlChannels.cancelRoutingCh)
-	}
-
-	if pauseAsserted {
-		// If pause signal has been asserted, terminate routing and propagate the pause signal to the steps.
+	if completionError != nil {
+		p.log.Warningf("test failed to complete: %v. Forcing cancellation.", completionError)
+		p.ctrlChannels.cancel() // terminate routing and and propagate cancellation to the steps
+	} else if cancellationAsserted {
+		p.log.Infof("cancellation was asserted")
+	} else if pauseAsserted {
 		p.log.Warningf("received pause request")
-		close(p.ctrlChannels.pauseStepsCh)
-		close(p.ctrlChannels.cancelRoutingCh)
 	}
 
 	// If either cancellation or pause have been asserted, we need to wait for the
 	// pipeline to terminate
 	if cancellationAsserted || pauseAsserted || completionError != nil {
-		go func() {
-			errCh <- p.waitTermination()
-		}()
 		signal := "cancellation"
 		if pauseAsserted {
 			signal = "pause"
 		}
-		terminationError = <-errCh
+		terminationError := p.waitTermination()
 		if terminationError != nil {
 			p.log.Infof("test did not terminate correctly after %s signal: %v", signal, terminationError)
 		} else {

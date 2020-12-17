@@ -9,6 +9,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/test"
 )
 
@@ -27,7 +28,7 @@ func (ts *noop) Name() string {
 }
 
 // Run executes a step which does never return.
-func (ts *noop) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *noop) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	for {
 		select {
 		case target := <-ch.In:
@@ -35,9 +36,7 @@ func (ts *noop) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, par
 				return nil
 			}
 			ch.Out <- target
-		case <-cancel:
-			return nil
-		case <-pause:
+		case <-ctx.PausedOrDone():
 			return nil
 		}
 	}
@@ -50,7 +49,7 @@ func (ts *noop) ValidateParameters(params test.TestStepParameters) error {
 
 // Resume tries to resume a previously interrupted test step. ExampleTestStep
 // cannot resume.
-func (ts *noop) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *noop) Resume(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

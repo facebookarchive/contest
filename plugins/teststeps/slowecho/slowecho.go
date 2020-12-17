@@ -6,6 +6,7 @@
 package slowecho
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 )
@@ -79,7 +81,7 @@ func (e *Step) ValidateParameters(params test.TestStepParameters) error {
 }
 
 // Run executes the step
-func (e *Step) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (e *Step) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	sleep, err := sleepTime(params.GetOne("sleep").String())
 	if err != nil {
 		return err
@@ -97,33 +99,27 @@ processing:
 			wg.Add(1)
 			go func(t *target.Target) {
 				defer wg.Done()
+
 				log.Infof("Waiting %v for target %s", sleep, t.ID)
-				select {
-				case <-cancel:
-					log.Infof("Returning because cancellation is requested")
+				timeCtx, timeCancel := context.WithTimeout(ctx.PausedOrDoneCtx(), sleep)
+				defer timeCancel()
+				<-timeCtx.Done()
+
+				if timeCtx.Err() != context.DeadlineExceeded {
+					log.Infof("Returning because cancellation or pause is requested")
 					return
-				case <-pause:
-					log.Infof("Returning because pause is requested")
-					return
-				case <-time.After(sleep):
 				}
+
 				log.Infof("target %s: %s", t, params.GetOne("text"))
 				select {
-				case <-cancel:
-					log.Debug("Returning because cancellation is requested")
+				case <-ctx.PausedOrDone():
+					log.Debug("Returning because cancellation or pause is requested")
 					return
-				case <-pause:
-					log.Debug("Returning because pause is requested")
-					return
-				default:
-					ch.Out <- t
+				case ch.Out <- t:
 				}
 			}(t)
-		case <-cancel:
-			log.Infof("Requested cancellation")
-			break processing
-		case <-pause:
-			log.Infof("Requested pause")
+		case <-ctx.PausedOrDone():
+			log.Infof("Requested cancellation or pause")
 			break processing
 		}
 	}
@@ -140,6 +136,6 @@ func (e Step) CanResume() bool {
 
 // Resume tries to resume a previously interrupted test step. EchoStep cannot
 // resume.
-func (e Step) Resume(cancel, pause <-chan struct{}, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (e Step) Resume(ctx statectx.Context, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }

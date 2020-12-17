@@ -6,6 +6,7 @@
 package runner
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 	"sync"
@@ -18,7 +19,7 @@ import (
 func TestWaitForFirstTarget(t *testing.T) {
 	t.Run("100targets", func(t *testing.T) {
 		ch0 := make(chan *target.Target)
-		ch1, onFirstTargetChan, onNoTargetsChan := waitForFirstTarget(ch0, nil, nil)
+		ch1, onFirstTargetChan, onNoTargetsChan := waitForFirstTarget(context.Background(), ch0)
 
 		var wgBeforeFirstTarget, wgAfterSecondTarget sync.WaitGroup
 		wgBeforeFirstTarget.Add(1)
@@ -81,7 +82,7 @@ func TestWaitForFirstTarget(t *testing.T) {
 
 	t.Run("no_target", func(t *testing.T) {
 		ch0 := make(chan *target.Target)
-		ch1, onFirstTargetChan, onNoTargetsChan := waitForFirstTarget(ch0, nil, nil)
+		ch1, onFirstTargetChan, onNoTargetsChan := waitForFirstTarget(context.Background(), ch0)
 
 		runtime.Gosched()
 		select {
@@ -109,7 +110,7 @@ func TestWaitForFirstTarget(t *testing.T) {
 	t.Run("cancel", func(t *testing.T) {
 		cancelCh := make(chan struct{})
 		ch0 := make(chan *target.Target)
-		ch1, onFirstTargetChan, onNoTargetsChan := waitForFirstTarget(ch0, cancelCh, nil)
+		ch1, onFirstTargetChan, onNoTargetsChan := waitForFirstTarget(context.Background(), ch0)
 
 		runtime.Gosched()
 		select {

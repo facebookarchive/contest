@@ -16,6 +16,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/plugins/teststeps"
@@ -56,7 +57,7 @@ func match(match string) termhook.LineHandler {
 }
 
 // Run executes the terminal step.
-func (ts *TerminalExpect) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *TerminalExpect) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	if err := ts.validateAndPopulate(params); err != nil {
 		return err
 	}
@@ -66,8 +67,8 @@ func (ts *TerminalExpect) Run(cancel, pause <-chan struct{}, ch test.TestStepCha
 	}
 	hook.ReadOnly = true
 	// f implements plugins.PerTargetFunc
-	f := func(cancel, pause <-chan struct{}, target *target.Target) error {
-		errCh := make(chan error)
+	f := func(ctx statectx.Context, target *target.Target) error {
+		errCh := make(chan error, 1)
 		go func() {
 			errCh <- hook.Run()
 			if closeErr := hook.Close(); closeErr != nil {
@@ -79,14 +80,12 @@ func (ts *TerminalExpect) Run(cancel, pause <-chan struct{}, ch test.TestStepCha
 			return err
 		case <-time.After(ts.Timeout):
 			return fmt.Errorf("timed out after %s", ts.Timeout)
-		case <-cancel:
-			return nil
-		case <-pause:
+		case <-ctx.PausedOrDone():
 			return nil
 		}
 	}
 	log.Printf("%s: waiting for string '%s' with timeout %s", Name, ts.Match, ts.Timeout)
-	return teststeps.ForEachTarget(Name, cancel, pause, ch, f)
+	return teststeps.ForEachTarget(Name, ctx, ch, f)
 }
 
 func (ts *TerminalExpect) validateAndPopulate(params test.TestStepParameters) error {
@@ -125,7 +124,7 @@ func (ts *TerminalExpect) ValidateParameters(params test.TestStepParameters) err
 
 // Resume tries to resume a previously interrupted test step. TerminalExpect cannot
 // resume.
-func (ts *TerminalExpect) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *TerminalExpect) Resume(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

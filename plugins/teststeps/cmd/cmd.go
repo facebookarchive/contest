@@ -7,10 +7,10 @@ package cmd
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -97,13 +97,11 @@ func emitEvent(name event.Name, payload interface{}, tgt *target.Target, ev test
 }
 
 // Run executes the cmd step.
-func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *Cmd) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	if err := ts.validateAndPopulate(params); err != nil {
 		return err
 	}
-	f := func(cancel, pause <-chan struct{}, target *target.Target) error {
-		ctx, ctxCancel := context.WithCancel(context.Background())
-		defer ctxCancel()
+	f := func(ctx statectx.Context, target *target.Target) error {
 		// expand args
 		var args []string
 		for _, arg := range ts.args {
@@ -127,43 +125,34 @@ func (ts *Cmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, para
 			log.Printf("Running command '%+v'", cmd)
 		}
 
-		errCh := make(chan error)
-		go func() {
-			// Emit EventCmdStart
-			if err := emitEvent(EventCmdStart, eventCmdStartPayload{Path: cmd.Path, Args: cmd.Args, Dir: cmd.Dir}, target, ev); err != nil {
-				log.Warningf("Failed to emit event: %v", err)
-			}
-			// Run the command
-			errCh <- cmd.Run()
-			// Emit EventCmdEnd
-			if err := emitEvent(EventCmdEnd, nil, target, ev); err != nil {
-				log.Warningf("Failed to emit event: %v", err)
-			}
-			if ts.emitStdout {
-				log.Infof("Emitting stdout event")
-				if err := emitEvent(EventCmdStdout, eventCmdStdoutPayload{Msg: stdout.String()}, target, ev); err != nil {
-					log.Warningf("Failed to emit event: %v", err)
-				}
-			}
-			if ts.emitStderr {
-				log.Infof("Emitting stderr event")
-				if err := emitEvent(EventCmdStderr, eventCmdStderrPayload{Msg: stderr.String()}, target, ev); err != nil {
-					log.Warningf("Failed to emit event: %v", err)
-				}
-			}
-			log.Infof("Stdout of command '%s' with args '%s' is '%s'", cmd.Path, cmd.Args, stdout.Bytes())
-		}()
-		select {
-		case err := <-errCh:
-			log.Warningf("Stderr of command '%+v' is: '%s'", cmd, stderr.Bytes())
-			return err
-		case <-cancel:
-			return nil
-		case <-pause:
-			return nil
+		// Emit EventCmdStart
+		if err := emitEvent(EventCmdStart, eventCmdStartPayload{Path: cmd.Path, Args: cmd.Args, Dir: cmd.Dir}, target, ev); err != nil {
+			log.Warningf("Failed to emit event: %v", err)
 		}
+
+		runErr := cmd.Run()
+
+		if err := emitEvent(EventCmdEnd, nil, target, ev); err != nil {
+			log.Warningf("Failed to emit event: %v", err)
+		}
+		if ts.emitStdout {
+			log.Infof("Emitting stdout event")
+			if err := emitEvent(EventCmdStdout, eventCmdStdoutPayload{Msg: stdout.String()}, target, ev); err != nil {
+				log.Warningf("Failed to emit event: %v", err)
+			}
+		}
+		if ts.emitStderr {
+			log.Infof("Emitting stderr event")
+			if err := emitEvent(EventCmdStderr, eventCmdStderrPayload{Msg: stderr.String()}, target, ev); err != nil {
+				log.Warningf("Failed to emit event: %v", err)
+			}
+		}
+
+		log.Infof("Command's '%s' with args '%s' stdout '%s', stderr is '%s', run err: '%v'",
+			cmd.Path, cmd.Args, stdout.Bytes(), stderr.Bytes(), runErr)
+		return runErr
 	}
-	return teststeps.ForEachTarget(Name, cancel, pause, ch, f)
+	return teststeps.ForEachTarget(Name, ctx, ch, f)
 }
 
 func (ts *Cmd) validateAndPopulate(params test.TestStepParameters) error {
@@ -213,7 +202,7 @@ func (ts *Cmd) ValidateParameters(params test.TestStepParameters) error {
 
 // Resume tries to resume a previously interrupted test step. Cmd cannot
 // resume.
-func (ts *Cmd) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *Cmd) Resume(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

@@ -8,6 +8,7 @@ package randecho
 import (
 	"errors"
 	"fmt"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"math/rand"
 	"strings"
 
@@ -55,7 +56,7 @@ func (e Step) Name() string {
 }
 
 // Run executes the step
-func (e Step) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (e Step) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	for {
 		select {
 		case target := <-ch.In:
@@ -83,9 +84,7 @@ func (e Step) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, param
 				log.Infof("Run: target %s failed: %s", target, params.GetOne("text"))
 				ch.Err <- cerrors.TargetError{Target: target, Err: fmt.Errorf("target randomly failed")}
 			}
-		case <-cancel:
-			return nil
-		case <-pause:
+		case <-ctx.PausedOrDone():
 			return nil
 		}
 	}
@@ -98,6 +97,6 @@ func (e Step) CanResume() bool {
 
 // Resume tries to resume a previously interrupted test step. RandEchoStep cannot
 // resume.
-func (e Step) Resume(cancel, pause <-chan struct{}, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (e Step) Resume(ctx statectx.Context, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
