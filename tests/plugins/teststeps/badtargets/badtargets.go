@@ -41,15 +41,31 @@ func (ts *badTargets) Run(ctx statectx.Context, ch test.TestStepChannels, params
 			case "TGood":
 				// We should not depend on pointer matching, so emit a copy.
 				target2 := *target
-				ch.Out <- &target2
+				select {
+				case ch.Out <- &target2:
+				case <-ctx.Done():
+					return statectx.ErrCanceled
+				}
 			case "TDup":
-				ch.Out <- target
-				ch.Out <- target
+				select {
+				case ch.Out <- target:
+				case <-ctx.Done():
+					return statectx.ErrCanceled
+				}
+				select {
+				case ch.Out <- target:
+				case <-ctx.Done():
+					return statectx.ErrCanceled
+				}
 			default:
 				// Mangle the returned target name.
 				target2 := *target
 				target2.ID = target2.ID + "XXX"
-				ch.Out <- &target2
+				select {
+				case ch.Out <- &target2:
+				case <-ctx.Done():
+					return statectx.ErrCanceled
+				}
 			}
 		case <-ctx.Done():
 			return nil
