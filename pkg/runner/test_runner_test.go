@@ -33,6 +33,7 @@ import (
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/hanging"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/noreturn"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/panicstep"
+	"github.com/facebookincubator/contest/tests/plugins/teststeps/teststep"
 )
 
 const (
@@ -69,6 +70,7 @@ func TestMain(m *testing.M) {
 		{hanging.Name, hanging.New, hanging.Events},
 		{noreturn.Name, noreturn.New, noreturn.Events},
 		{panicstep.Name, panicstep.New, panicstep.Events},
+		{teststep.Name, teststep.New, teststep.Events},
 	} {
 		if err := pluginRegistry.RegisterTestStep(e.name, e.factory, e.events); err != nil {
 			panic(fmt.Sprintf("could not register TestStep: %v", err))
@@ -156,11 +158,11 @@ func newStep(label, name string, params *test.TestStepParameters) test.TestStepB
 	return *sb
 }
 
-func newExampleStep(label string, failPct int, failTargets string, delayTargets string) test.TestStepBundle {
-	return newStep(label, example.Name, &test.TestStepParameters{
-		example.FailPctParam:      []test.Param{*test.NewParam(fmt.Sprintf("%d", failPct))},
-		example.FailTargetsParam:  []test.Param{*test.NewParam(failTargets)},
-		example.DelayTargetsParam: []test.Param{*test.NewParam(delayTargets)},
+func newTestStep(label string, failPct int, failTargets string, delayTargets string) test.TestStepBundle {
+	return newStep(label, teststep.Name, &test.TestStepParameters{
+		teststep.FailPctParam:      []test.Param{*test.NewParam(fmt.Sprintf("%d", failPct))},
+		teststep.FailTargetsParam:  []test.Param{*test.NewParam(failTargets)},
+		teststep.DelayTargetsParam: []test.Param{*test.NewParam(delayTargets)},
 	})
 }
 
@@ -197,17 +199,19 @@ func Test1Step1Success(t *testing.T) {
 	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1")},
 		[]test.TestStepBundle{
-			newExampleStep("Step 1", 0, "", ""),
+			newTestStep("Step 1", 0, "", ""),
 		},
 	)
 	require.NoError(t, err)
 	require.Equal(t, `
-{[1 1 SimpleTest Step 1][(*Target)(nil) ExampleStepRunningEvent]}
-{[1 1 SimpleTest Step 1][(*Target)(nil) ExampleStepFinishedEvent]}
+{[1 1 SimpleTest Step 1][(*Target)(nil) TestStepRunningEvent]}
+{[1 1 SimpleTest Step 1][(*Target)(nil) TestStepFinishedEvent]}
 `, getStepEvents(""))
 	require.Equal(t, `
-{[1 1 SimpleTest Step 1][Target{ID: "T1"} ExampleStartedEvent]}
-{[1 1 SimpleTest Step 1][Target{ID: "T1"} ExampleFinishedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TargetIn]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TestStartedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TestFinishedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TargetOut]}
 `, getTargetEvents("T1"))
 }
 
@@ -218,18 +222,19 @@ func Test1Step1Fail(t *testing.T) {
 	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1")},
 		[]test.TestStepBundle{
-			newExampleStep("Step 1", 100, "", ""),
+			newTestStep("Step 1", 100, "", ""),
 		},
 	)
 	require.NoError(t, err)
 	require.Equal(t, `
-{[1 1 SimpleTest Step 1][(*Target)(nil) ExampleStepRunningEvent]}
-{[1 1 SimpleTest Step 1][(*Target)(nil) ExampleStepFinishedEvent]}
+{[1 1 SimpleTest Step 1][(*Target)(nil) TestStepRunningEvent]}
+{[1 1 SimpleTest Step 1][(*Target)(nil) TestStepFinishedEvent]}
 `, getStepEvents("Step 1"))
 	require.Equal(t, `
-{[1 1 SimpleTest Step 1][Target{ID: "T1"} ExampleStartedEvent]}
-{[1 1 SimpleTest Step 1][Target{ID: "T1"} ExampleFailedEvent]}
-{[1 1 SimpleTest Step 1][Target{ID: "T1"} TestError &"\"target failed\""]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TargetIn]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TestStartedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TestFailedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TargetErr &"{\"Error\":\"target failed\"}"]}
 `, getTargetEvents("T1"))
 }
 
@@ -240,22 +245,25 @@ func Test1Step1Success1Fail(t *testing.T) {
 	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1"), tgt("T2")},
 		[]test.TestStepBundle{
-			newExampleStep("Step 1", 0, "T1", "T2=100"),
+			newTestStep("Step 1", 0, "T1", "T2=100"),
 		},
 	)
 	require.NoError(t, err)
 	require.Equal(t, `
-{[1 1 SimpleTest Step 1][(*Target)(nil) ExampleStepRunningEvent]}
-{[1 1 SimpleTest Step 1][(*Target)(nil) ExampleStepFinishedEvent]}
+{[1 1 SimpleTest Step 1][(*Target)(nil) TestStepRunningEvent]}
+{[1 1 SimpleTest Step 1][(*Target)(nil) TestStepFinishedEvent]}
 `, getStepEvents(""))
 	require.Equal(t, `
-{[1 1 SimpleTest Step 1][Target{ID: "T1"} ExampleStartedEvent]}
-{[1 1 SimpleTest Step 1][Target{ID: "T1"} ExampleFailedEvent]}
-{[1 1 SimpleTest Step 1][Target{ID: "T1"} TestError &"\"target failed\""]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TargetIn]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TestStartedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TestFailedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TargetErr &"{\"Error\":\"target failed\"}"]}
 `, getTargetEvents("T1"))
 	require.Equal(t, `
-{[1 1 SimpleTest Step 1][Target{ID: "T2"} ExampleStartedEvent]}
-{[1 1 SimpleTest Step 1][Target{ID: "T2"} ExampleFinishedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T2"} TargetIn]}
+{[1 1 SimpleTest Step 1][Target{ID: "T2"} TestStartedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T2"} TestFinishedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T2"} TargetOut]}
 `, getTargetEvents("T2"))
 }
 
@@ -267,32 +275,36 @@ func Test3StepsNotReachedStepNotRun(t *testing.T) {
 	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1"), tgt("T2")},
 		[]test.TestStepBundle{
-			newExampleStep("Step 1", 0, "T1", ""),
-			newExampleStep("Step 2", 0, "T2", ""),
-			newExampleStep("Step 3", 0, "", ""),
+			newTestStep("Step 1", 0, "T1", ""),
+			newTestStep("Step 2", 0, "T2", ""),
+			newTestStep("Step 3", 0, "", ""),
 		},
 	)
 	require.NoError(t, err)
 	require.Equal(t, `
-{[1 1 SimpleTest Step 1][(*Target)(nil) ExampleStepRunningEvent]}
-{[1 1 SimpleTest Step 1][(*Target)(nil) ExampleStepFinishedEvent]}
+{[1 1 SimpleTest Step 1][(*Target)(nil) TestStepRunningEvent]}
+{[1 1 SimpleTest Step 1][(*Target)(nil) TestStepFinishedEvent]}
 `, getStepEvents("Step 1"))
 	require.Equal(t, `
-{[1 1 SimpleTest Step 2][(*Target)(nil) ExampleStepRunningEvent]}
-{[1 1 SimpleTest Step 2][(*Target)(nil) ExampleStepFinishedEvent]}
+{[1 1 SimpleTest Step 2][(*Target)(nil) TestStepRunningEvent]}
+{[1 1 SimpleTest Step 2][(*Target)(nil) TestStepFinishedEvent]}
 `, getStepEvents("Step 2"))
 	require.Equal(t, "\n\n", getStepEvents("Step 3"))
 	require.Equal(t, `
-{[1 1 SimpleTest Step 1][Target{ID: "T1"} ExampleStartedEvent]}
-{[1 1 SimpleTest Step 1][Target{ID: "T1"} ExampleFailedEvent]}
-{[1 1 SimpleTest Step 1][Target{ID: "T1"} TestError &"\"target failed\""]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TargetIn]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TestStartedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TestFailedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TargetErr &"{\"Error\":\"target failed\"}"]}
 `, getTargetEvents("T1"))
 	require.Equal(t, `
-{[1 1 SimpleTest Step 1][Target{ID: "T2"} ExampleStartedEvent]}
-{[1 1 SimpleTest Step 1][Target{ID: "T2"} ExampleFinishedEvent]}
-{[1 1 SimpleTest Step 2][Target{ID: "T2"} ExampleStartedEvent]}
-{[1 1 SimpleTest Step 2][Target{ID: "T2"} ExampleFailedEvent]}
-{[1 1 SimpleTest Step 2][Target{ID: "T2"} TestError &"\"target failed\""]}
+{[1 1 SimpleTest Step 1][Target{ID: "T2"} TargetIn]}
+{[1 1 SimpleTest Step 1][Target{ID: "T2"} TestStartedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T2"} TestFinishedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T2"} TargetOut]}
+{[1 1 SimpleTest Step 2][Target{ID: "T2"} TargetIn]}
+{[1 1 SimpleTest Step 2][Target{ID: "T2"} TestStartedEvent]}
+{[1 1 SimpleTest Step 2][Target{ID: "T2"} TestFailedEvent]}
+{[1 1 SimpleTest Step 2][Target{ID: "T2"} TargetErr &"{\"Error\":\"target failed\"}"]}
 `, getTargetEvents("T2"))
 }
 
@@ -342,6 +354,7 @@ func TestStepPanics(t *testing.T) {
 	require.Error(t, err)
 	require.IsType(t, &cerrors.ErrTestStepPaniced{}, err)
 	require.Equal(t, "\n\n", getTargetEvents("T1"))
+	require.Contains(t, getStepEvents("Step 1"), "step Step 1 paniced")
 }
 
 // A misbehaving step that closes its output channel.
@@ -356,7 +369,13 @@ func TestStepClosesChannels(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.IsType(t, &cerrors.ErrTestStepClosedChannels{}, err)
-	require.Equal(t, "\n\n", getTargetEvents("T1"))
+	require.Equal(t, `
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TargetIn]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TargetOut]}
+`, getTargetEvents("T1"))
+	require.Equal(t, `
+{[1 1 SimpleTest Step 1][(*Target)(nil) TestError &"\"test step Step 1 closed output channels (api violation)\""]}
+`, getStepEvents("Step 1"))
 }
 
 // A misbehaving step that yields a result for a target that does not exist.
@@ -370,6 +389,13 @@ func TestStepYieldsResultForNonexistentTarget(t *testing.T) {
 		},
 	)
 	require.Error(t, err)
+	require.Equal(t, `
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TargetIn]}
+`, getTargetEvents("T1"))
+	require.Equal(t, "\n\n", getTargetEvents("T1XXX"))
+	require.Equal(t, `
+{[1 1 SimpleTest Step 1][(*Target)(nil) TestError &"\"[#0 Step 1]: result for nonexistent target Target{ID: \\\"T1XXX\\\"} \\u003cnil\\u003e\""]}
+`, getStepEvents("Step 1"))
 }
 
 // A misbehaving step that yields a result for a target that does not exist.
@@ -382,7 +408,7 @@ func TestStepYieldsDuplicateResult(t *testing.T) {
 			// TGood makes it past here unscathed and gets delayed in Step 2,
 			// TDup also emerges fine at first but is then returned again, and that's bad.
 			newStep("Step 1", badtargets.Name, nil),
-			newExampleStep("Step 2", 0, "", "TGood=100"),
+			newTestStep("Step 2", 0, "", "TGood=100"),
 		},
 	)
 	require.Error(t, err)
@@ -412,7 +438,7 @@ func TestStepYieldsResultForUnexpectedTarget(t *testing.T) {
 		[]*target.Target{tgt("T1"), tgt("T1XXX")},
 		[]test.TestStepBundle{
 			// T1XXX fails here.
-			newExampleStep("Step 1", 0, "T1XXX", ""),
+			newTestStep("Step 1", 0, "T1XXX", ""),
 			// Yet, a result for it is returned here, which we did not expect.
 			newStep("Step 2", badtargets.Name, nil),
 		},
@@ -432,9 +458,9 @@ func TestRandomizedMultiStep(t *testing.T) {
 	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
 		targets,
 		[]test.TestStepBundle{
-			newExampleStep("Step 1", 0, "", "*=10"),  // All targets pass the first step, with a slight delay
-			newExampleStep("Step 2", 25, "", ""),     // 25% don't make it past the second step
-			newExampleStep("Step 3", 25, "", "*=10"), // Another 25% fail at the third step
+			newTestStep("Step 1", 0, "", "*=10"),  // All targets pass the first step, with a slight delay
+			newTestStep("Step 2", 25, "", ""),     // 25% don't make it past the second step
+			newTestStep("Step 3", 25, "", "*=10"), // Another 25% fail at the third step
 		},
 	)
 	require.NoError(t, err)
@@ -443,12 +469,14 @@ func TestRandomizedMultiStep(t *testing.T) {
 	for _, tgt := range targets {
 		s1n := "Step 1"
 		require.Equal(t, fmt.Sprintf(`
-{[1 1 SimpleTest Step 1][Target{ID: "%s"} ExampleStartedEvent]}
-{[1 1 SimpleTest Step 1][Target{ID: "%s"} ExampleFinishedEvent]}
-`, tgt.ID, tgt.ID),
+{[1 1 SimpleTest Step 1][Target{ID: "%s"} TargetIn]}
+{[1 1 SimpleTest Step 1][Target{ID: "%s"} TestStartedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "%s"} TestFinishedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "%s"} TargetOut]}
+`, tgt.ID, tgt.ID, tgt.ID, tgt.ID),
 			getEvents(&tgt.ID, &s1n))
 		s3n := "Step 3"
-		if strings.Contains(getEvents(&tgt.ID, &s3n), "ExampleFinishedEvent") {
+		if strings.Contains(getEvents(&tgt.ID, &s3n), "TestFinishedEvent") {
 			numFinished++
 		}
 	}
@@ -465,10 +493,10 @@ func TestPauseResumeSimple(t *testing.T) {
 	var resumeState []byte
 	targets := []*target.Target{tgt("T1"), tgt("T2"), tgt("T3")}
 	steps := []test.TestStepBundle{
-		newExampleStep("Step 1", 0, "T1", ""),
+		newTestStep("Step 1", 0, "T1", ""),
 		// T2 and T3 will be paused here, the step will be given time to finish.
-		newExampleStep("Step 2", 0, "", "T2=200,T3=200"),
-		newExampleStep("Step 3", 0, "", ""),
+		newTestStep("Step 2", 0, "", "T2=200,T3=200"),
+		newTestStep("Step 3", 0, "", ""),
 	}
 	{
 		tr1 := newTestRunner()
@@ -526,9 +554,9 @@ func TestPauseResumeSimple(t *testing.T) {
 			// Don't use the same pointers ot make sure there is no reliance on that.
 			[]*target.Target{tgt("T1"), tgt("T2"), tgt("T3")},
 			[]test.TestStepBundle{
-				newExampleStep("Step 1", 0, "T1", ""),
-				newExampleStep("Step 2", 0, "", "T2=200,T3=200"),
-				newExampleStep("Step 3", 0, "", ""),
+				newTestStep("Step 1", 0, "T1", ""),
+				newTestStep("Step 2", 0, "", "T2=200,T3=200"),
+				newTestStep("Step 3", 0, "", ""),
 			},
 		)
 		require.NoError(t, err)
@@ -537,31 +565,38 @@ func TestPauseResumeSimple(t *testing.T) {
 	// Steps 1 and 2 are executed entirely within the first runner instance
 	// and never started in the second.
 	require.Equal(t, `
-{[1 1 SimpleTest Step 1][(*Target)(nil) ExampleStepRunningEvent]}
-{[1 1 SimpleTest Step 1][(*Target)(nil) ExampleStepFinishedEvent]}
+{[1 1 SimpleTest Step 1][(*Target)(nil) TestStepRunningEvent]}
+{[1 1 SimpleTest Step 1][(*Target)(nil) TestStepFinishedEvent]}
 `, getStepEvents("Step 1"))
 	require.Equal(t, `
-{[1 1 SimpleTest Step 2][(*Target)(nil) ExampleStepRunningEvent]}
-{[1 1 SimpleTest Step 2][(*Target)(nil) ExampleStepFinishedEvent]}
+{[1 1 SimpleTest Step 2][(*Target)(nil) TestStepRunningEvent]}
+{[1 1 SimpleTest Step 2][(*Target)(nil) TestStepFinishedEvent]}
 `, getStepEvents("Step 2"))
 	// Step 3 did not get to start in the first instance and ran in the second.
 	require.Equal(t, `
-{[1 5 SimpleTest Step 3][(*Target)(nil) ExampleStepRunningEvent]}
-{[1 5 SimpleTest Step 3][(*Target)(nil) ExampleStepFinishedEvent]}
+{[1 5 SimpleTest Step 3][(*Target)(nil) TestStepRunningEvent]}
+{[1 5 SimpleTest Step 3][(*Target)(nil) TestStepFinishedEvent]}
 `, getStepEvents("Step 3"))
 	// T1 failed entirely within the first run.
 	require.Equal(t, `
-{[1 1 SimpleTest Step 1][Target{ID: "T1"} ExampleStartedEvent]}
-{[1 1 SimpleTest Step 1][Target{ID: "T1"} ExampleFailedEvent]}
-{[1 1 SimpleTest Step 1][Target{ID: "T1"} TestError &"\"target failed\""]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TargetIn]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TestStartedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TestFailedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TargetErr &"{\"Error\":\"target failed\"}"]}
 `, getTargetEvents("T1"))
 	// T2 and T3 ran in both.
 	require.Equal(t, `
-{[1 1 SimpleTest Step 1][Target{ID: "T2"} ExampleStartedEvent]}
-{[1 1 SimpleTest Step 1][Target{ID: "T2"} ExampleFinishedEvent]}
-{[1 1 SimpleTest Step 2][Target{ID: "T2"} ExampleStartedEvent]}
-{[1 1 SimpleTest Step 2][Target{ID: "T2"} ExampleFinishedEvent]}
-{[1 5 SimpleTest Step 3][Target{ID: "T2"} ExampleStartedEvent]}
-{[1 5 SimpleTest Step 3][Target{ID: "T2"} ExampleFinishedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T2"} TargetIn]}
+{[1 1 SimpleTest Step 1][Target{ID: "T2"} TestStartedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T2"} TestFinishedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T2"} TargetOut]}
+{[1 1 SimpleTest Step 2][Target{ID: "T2"} TargetIn]}
+{[1 1 SimpleTest Step 2][Target{ID: "T2"} TestStartedEvent]}
+{[1 1 SimpleTest Step 2][Target{ID: "T2"} TestFinishedEvent]}
+{[1 1 SimpleTest Step 2][Target{ID: "T2"} TargetOut]}
+{[1 5 SimpleTest Step 3][Target{ID: "T2"} TargetIn]}
+{[1 5 SimpleTest Step 3][Target{ID: "T2"} TestStartedEvent]}
+{[1 5 SimpleTest Step 3][Target{ID: "T2"} TestFinishedEvent]}
+{[1 5 SimpleTest Step 3][Target{ID: "T2"} TargetOut]}
 `, getTargetEvents("T2"))
 }
