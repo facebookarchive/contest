@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/insomniacslk/xjson"
+
 	"github.com/facebookincubator/contest/pkg/api"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
@@ -36,7 +38,7 @@ var cancellationTimeout = 60 * time.Second
 
 // ErrorEventPayload represents the payload carried by a failure event (e.g. JobStateFailed, JobStateCancelled, etc.)
 type ErrorEventPayload struct {
-	Err string
+	Err xjson.Error
 }
 
 // JobManager is the core component for the long-running job management service.
@@ -417,7 +419,7 @@ func (jm *JobManager) emitErrEvent(jobID types.JobID, eventName event.Name, err 
 	)
 	if err != nil {
 		log.Errorf(err.Error())
-		payload := ErrorEventPayload{Err: err.Error()}
+		payload := ErrorEventPayload{Err: xjson.NewError(err)}
 		payloadJSON, err := json.Marshal(payload)
 		if err != nil {
 			log.Warningf("Could not serialize payload for event %s: %v", eventName, err)

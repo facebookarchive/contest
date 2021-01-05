@@ -83,7 +83,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 				if err := json.Unmarshal(*je.Payload, &ep); err != nil {
 					stateErrMsg = fmt.Sprintf("internal error: EventJobFailed's payload cannot be unmarshalled. Raw payload: %s, Error: %v", *je.Payload, err)
 				} else {
-					stateErrMsg = ep.Err
+					stateErrMsg = ep.Err.Error()
 				}
 			}
 		}
