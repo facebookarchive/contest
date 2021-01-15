@@ -23,7 +23,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const shardSize = uint64(50)
+const shardSize = uint64(5000)
 
 // DescriptorMigration represents a migration which moves steps description in jobs tables from old to new
 // schema. The migration consists in the following:
