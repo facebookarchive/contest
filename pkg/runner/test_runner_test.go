@@ -28,6 +28,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/plugins/storage/memory"
 	"github.com/facebookincubator/contest/plugins/teststeps/example"
+	"github.com/facebookincubator/contest/tests/goroutine_leak_check"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/badtargets"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/channels"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/hanging"
@@ -78,11 +79,11 @@ func TestMain(m *testing.M) {
 	}
 	ret := m.Run()
 	if ret == 0 {
-		if err := CheckLeakedGoRoutines([]string{
+		if err := goroutine_leak_check.CheckLeakedGoRoutines(
 			// We expect these to leak.
-			"hanging.(*hanging).Run",
-			"noreturn.(*noreturnStep).Run",
-		}); err != nil {
+			"github.com/facebookincubator/contest/tests/plugins/teststeps/hanging.(*hanging).Run",
+			"github.com/facebookincubator/contest/tests/plugins/teststeps/noreturn.(*noreturnStep).Run",
+		); err != nil {
 			fmt.Fprintf(os.Stderr, "%s", err)
 			ret = 1
 		}
@@ -90,7 +91,7 @@ func TestMain(m *testing.M) {
 	os.Exit(ret)
 }
 
-func newTestRunner() TestRunner {
+func newTestRunner() *TestRunner {
 	return NewTestRunnerWithTimeouts(stepInjectTimeout, shutdownTimeout)
 }
 
@@ -171,7 +172,7 @@ type runRes struct {
 	err error
 }
 
-func runWithTimeout(t *testing.T, tr TestRunner, ctx statectx.Context, resumeState []byte, runID types.RunID, timeout time.Duration, targets []*target.Target, bundles []test.TestStepBundle) ([]byte, error) {
+func runWithTimeout(t *testing.T, tr *TestRunner, ctx statectx.Context, resumeState []byte, runID types.RunID, timeout time.Duration, targets []*target.Target, bundles []test.TestStepBundle) ([]byte, error) {
 	newCtx, _, cancel := statectx.WithParent(ctx)
 	test := &test.Test{
 		Name:             testName,

@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
-package runner
+package goroutine_leak_check
 
 import (
 	"fmt"
@@ -19,7 +19,7 @@ import (
 var (
 	goidRegex     = regexp.MustCompile(`^\S+\s+(\d+)`)
 	funcNameRegex = regexp.MustCompile(`^(\S+)\(\S+`)
-	fileLineRegex = regexp.MustCompile(`^\s*(\S+):(\d+) \S+`)
+	fileLineRegex = regexp.MustCompile(`^\s*(\S+):(\d+)`)
 )
 
 type stackTraceEntry struct {
@@ -34,7 +34,11 @@ func (e *stackTraceEntry) String() string {
 	return fmt.Sprintf("%s:%d %s %d", e.File, e.Line, e.Func, e.GoID)
 }
 
-func CheckLeakedGoRoutines(funcWhitelist []string) error {
+// CheckLeakedGoRoutines is used to check for goroutine leaks at the end of a test.
+// It is not uncommon to leave a go routine that will never finish,
+// e.g. blocked on a channel that is unreachable will never be closed.
+// This function enumerates goroutines and reports any goroutines that are left running.
+func CheckLeakedGoRoutines(funcWhitelist ...string) error {
 	// Get goroutine stacks
 	buf := make([]byte, 1000000)
 	n := runtime.Stack(buf, true /* all */)
@@ -74,11 +78,16 @@ func CheckLeakedGoRoutines(funcWhitelist []string) error {
 				}
 			}
 			panic(fmt.Sprintf("Cannot parse backtrace (goid) %q", line))
-		case 2: // Extract function name
+		case 2: // Extract function name.
 			e.Trace = append(e.Trace, line)
 			if m := funcNameRegex.FindStringSubmatch(line); m != nil {
-				e.Func = path.Base(m[1])
+				e.Func = m[1]
 				ph++
+				break
+			}
+			if e.Func != "" {
+				// This means entire routine is in stdlib, ignore it.
+				ph = 1
 				break
 			}
 			panic(fmt.Sprintf("Cannot parse backtrace (func) %q", line))
@@ -89,7 +98,12 @@ func CheckLeakedGoRoutines(funcWhitelist []string) error {
 				if ln, err := strconv.Atoi(m[2]); err == nil {
 					e.Line = ln
 				}
-				ph = 0
+				// We are looking for a non-stdlib function.
+				if !strings.Contains(e.Func, "/") || !strings.Contains(path.Dir(e.Func), ".") {
+					ph = 2
+				} else {
+					ph = 0
+				}
 				break
 			}
 			panic(fmt.Sprintf("Cannot parse backtrace (file) %q", line))
