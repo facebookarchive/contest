@@ -1,4 +1,22 @@
-FROM mysql
+FROM mysql:8.0
+
+# Configure golang environment to run migration against database
+RUN apt-get update && apt-get install -y curl && apt-get clean
+RUN curl -L https://golang.org/dl/go1.15.6.linux-amd64.tar.gz | tar xzf -
+ENV GOROOT=/go
+ENV PATH=$PATH:/go/bin
+
+RUN mkdir /home/mysql && chown mysql:mysql /home/mysql
+
+USER mysql
+
+COPY --chown=mysql:mysql . /home/mysql/contest
+
+WORKDIR /home/mysql
+
+# Pre-build the migration script, make sure it builds.
+RUN cd /home/mysql/contest && \
+    go build github.com/facebookincubator/contest/tools/migration/rdbms
 
 # All scripts in docker-entrypoint-initdb.d/ are automatically
 # executed during container startup
@@ -15,23 +33,3 @@ COPY db/rdbms/schema/v0/create_contest_db.sql /
 # order. 
 # """
 COPY docker/mysql/migration.sh /docker-entrypoint-initdb.d/
-
-# Configure golang environment to run migration against database
-RUN apt-get update && apt-get install -y curl git binutils bison gcc make golang
-
-RUN mkdir /home/mysql && chown mysql:mysql /home/mysql
-
-USER mysql
-
-RUN bash -c "bash < <(curl -s -S -L https://raw.githubusercontent.com/moovweb/gvm/master/binscripts/gvm-installer)"
-RUN bash -c "source /home/mysql/.gvm/scripts/gvm && gvm install go1.13"
-
-COPY --chown=mysql:mysql . /home/mysql/contest
-
-WORKDIR /home/mysql
-
-RUN bash -c "source .gvm/scripts/gvm && \
-             cd contest && \
-             gvm use 1.13 && gvm linkthis github.com/facebookincubator/contest"
-
-USER root
