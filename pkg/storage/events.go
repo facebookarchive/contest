@@ -14,6 +14,16 @@ import (
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 )
 
+type EventStorage interface {
+	// Test events storage interface
+	StoreTestEvent(event testevent.Event) error
+	GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, error)
+
+	// Framework events storage interface
+	StoreFrameworkEvent(event frameworkevent.Event) error
+	GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]frameworkevent.Event, error)
+}
+
 // TestEventEmitter implements Emitter interface from the testevent package
 type TestEventEmitter struct {
 	header testevent.Header

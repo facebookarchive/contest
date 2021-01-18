@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/storage/limits"
 	"github.com/facebookincubator/contest/pkg/types"
 )
@@ -249,6 +250,30 @@ func (a *API) Retry(requestor EventRequestor, jobID types.JobID) (Response, erro
 		JobID: jobID,
 		// TODO this should set the new Job ID
 		// NewJobID: ...
+	}
+	resp.Err = respEv.Err
+	return resp, nil
+}
+
+// List will list jobs matching the specified criteria.
+func (a *API) List(requestor EventRequestor, states []job.State, tags []string) (Response, error) {
+	resp := a.newResponse(ResponseTypeList)
+	ev := &Event{
+		Type:     EventTypeList,
+		ServerID: resp.ServerID,
+		Msg: EventListMsg{
+			requestor: requestor,
+			States:    states,
+			Tags:      tags,
+		},
+		RespCh: make(chan *EventResponse, 1),
+	}
+	respEv, err := a.SendReceiveEvent(ev, nil)
+	if err != nil {
+		return resp, err
+	}
+	resp.Data = ResponseDataList{
+		JobIDs: respEv.JobIDs,
 	}
 	resp.Err = respEv.Err
 	return resp, nil

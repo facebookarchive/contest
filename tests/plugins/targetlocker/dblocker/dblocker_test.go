@@ -12,15 +12,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/plugins/targetlocker/dblocker"
-	"github.com/stretchr/testify/assert"
+	"github.com/facebookincubator/contest/tests/integ/common"
 )
 
 var (
-	jobID = types.JobID(123)
+	jobID                                 = types.JobID(123)
 	defaultJobTargetManagerAcquireTimeout = 2 * time.Second
 
 	targetOne  = target.Target{ID: "001"}
@@ -37,8 +39,7 @@ func TestMain(m *testing.M) {
 	logging.GetLogger("tests/integ")
 	logging.Disable()
 
-	dbURI := "contest:contest@tcp(mysql:3306)/contest_integ?parseTime=true"
-	locker, err := dblocker.New(dbURI)
+	locker, err := dblocker.New(common.GetDatabaseURI())
 	if err != nil {
 		panic(err)
 	}

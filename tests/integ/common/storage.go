@@ -7,15 +7,22 @@ package common
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/plugins/storage/rdbms"
 )
 
-const DbURI = "contest:contest@tcp(mysql:3306)/contest_integ?parseTime=true"
+func GetDatabaseURI() string {
+	if os.Getenv("CI") != "" {
+		return "contest:contest@tcp(mysql:3306)/contest_integ?parseTime=true"
+	} else {
+		return "contest:contest@tcp(localhost:3306)/contest_integ?parseTime=true"
+	}
+}
 
 func NewStorage(opts ...rdbms.Opt) (storage.Storage, error) {
-	return rdbms.New(DbURI, opts...)
+	return rdbms.New(GetDatabaseURI(), opts...)
 }
 
 // InitStorage initializes the storage backend with a new transaction, if supported
@@ -27,9 +34,10 @@ func InitStorage(s storage.Storage) storage.Storage {
 			panic(fmt.Errorf("could not initiate transaction: %v", err))
 		}
 		return txStorage
-	default:
-		return s
+	case storage.ResettableStorage:
+		_ = s.Reset()
 	}
+	return s
 }
 
 // FinalizeStorage finalizes the storage layer with either a rollback of the current transaction
