@@ -1,8 +1,7 @@
-FROM golang:1.15.4-buster
+FROM golang:1.15.6-buster
 
 RUN apt-get update && apt-get install -y mariadb-client
 
-RUN go get -t -v ./...
 WORKDIR ${GOPATH}/src/github.com/facebookincubator/contest
 COPY  . .
 RUN go get -t -v ./...
