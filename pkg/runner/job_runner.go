@@ -17,6 +17,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
@@ -157,9 +158,8 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 						if err := tl.Unlock(j.ID, targets); err != nil {
 							jobLog.Warningf("Failed to unlock targets (%v) for job ID %d: %v", targets, j.ID, err)
 						}
-					case <-j.StateCtx.Paused():
-						jobLog.Debugf("Received pause request, NOT releasing targets so the job can be resumed")
 						return
+					// Ignore the pause signal, continue to refresh targets.
 					case <-done:
 						if err := tl.Unlock(j.ID, targets); err != nil {
 							jobLog.Warningf("Failed to unlock %d target(s) (%v): %v", len(targets), targets, err)
@@ -183,7 +183,14 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			if runErr = jr.emitAcquiredTargets(testEventEmitter, targets); runErr == nil {
 				jobLog.Infof("Run #%d: running test #%d for job '%s' (job ID: %d) on %d targets", run+1, idx, j.Name, j.ID, len(targets))
 				testRunner := NewTestRunner()
-				runErr = testRunner.Run(j.StateCtx, t, targets, j.ID, types.RunID(run+1))
+				var resumeState []byte
+				resumeState, err := testRunner.Run(j.StateCtx, t, targets, j.ID, types.RunID(run+1), resumeState)
+				if err == statectx.ErrPaused {
+					jobLog.Errorf("Runner paused, state: %s", string(resumeState))
+					// TODO(rojer): Persist the state.
+				} else {
+					runErr = err
+				}
 			}
 
 			// Job is done, release all the targets

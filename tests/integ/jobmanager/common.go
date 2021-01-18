@@ -457,7 +457,6 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCrash() {
 func (suite *TestJobManagerSuite) TestJobManagerJobCancellationFailure() {
 
 	config.TestRunnerShutdownTimeout = 1 * time.Second
-	config.TestRunnerStepShutdownTimeout = 1 * time.Second
 
 	go func() {
 		suite.jm.Start(suite.sigs)

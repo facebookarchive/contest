@@ -43,6 +43,17 @@ func (e *ErrTestStepsNeverReturned) Error() string {
 	return fmt.Sprintf("test step [%s] did not return", strings.Join(e.StepNames, ", "))
 }
 
+// ErrTestTargetInjectionTimedOut indicates that test step did not ingest a target
+// within allotted time.
+type ErrTestTargetInjectionTimedOut struct {
+	StepName string
+}
+
+// Error returns the error string associated with the error
+func (e *ErrTestTargetInjectionTimedOut) Error() string {
+	return fmt.Sprintf("test step %v failed to ingest a target", e.StepName)
+}
+
 // ErrTestStepClosedChannels indicates that the test step returned after
 // closing its output channels, which constitutes an API violation
 type ErrTestStepClosedChannels struct {
@@ -52,4 +63,50 @@ type ErrTestStepClosedChannels struct {
 // Error returns the error string associated with the error
 func (e *ErrTestStepClosedChannels) Error() string {
 	return fmt.Sprintf("test step %v closed output channels (api violation)", e.StepName)
+}
+
+// ErrTestStepPaniced indicates that a test step's method panicked.
+type ErrTestStepPaniced struct {
+	StepName   string
+	StackTrace string
+}
+
+// Error returns the error string associated with the error
+func (e *ErrTestStepPaniced) Error() string {
+	return fmt.Sprintf("test step %s paniced, trace: %q", e.StepName, e.StackTrace)
+}
+
+// ErrTestStepReturnedDuplicateResult indicates that a test step returned result
+// twice for the same target.
+type ErrTestStepReturnedDuplicateResult struct {
+	StepName string
+	Target   string
+}
+
+// Error returns the error string associated with the error
+func (e *ErrTestStepReturnedDuplicateResult) Error() string {
+	return fmt.Sprintf("test step %s returned duplicate result for %s", e.StepName, e.Target)
+}
+
+// ErrTestStepReturnedUnexpectedResult indicates that a test step returned result
+// for a target that was not given to it.
+type ErrTestStepReturnedUnexpectedResult struct {
+	StepName string
+	Target   string
+}
+
+// Error returns the error string associated with the error
+func (e *ErrTestStepReturnedUnexpectedResult) Error() string {
+	return fmt.Sprintf("test step %s returned unexpected result for %s", e.StepName, e.Target)
+}
+
+// ErrTestStepLostTargets indicates that targets have been lost during test run.
+type ErrTestStepLostTargets struct {
+	StepName string
+	Target   string
+}
+
+// Error returns the error string associated with the error
+func (e *ErrTestStepLostTargets) Error() string {
+	return fmt.Sprintf("test step %s lost target %s", e.StepName, e.Target)
 }
