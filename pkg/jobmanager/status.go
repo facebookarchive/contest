@@ -28,7 +28,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 	// Fetch all the events associated to changes of state of the Job
 	jobEvents, err := jm.frameworkEvManager.Fetch(
 		frameworkevent.QueryJobID(jobID),
-		frameworkevent.QueryEventNames(JobStateEvents),
+		frameworkevent.QueryEventNames(job.JobStateEvents),
 	)
 	if err != nil {
 		evResp.Err = fmt.Errorf("could not fetch events associated to job state: %v", err)
@@ -52,12 +52,12 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 	)
 
 	completionEvents := make(map[event.Name]bool)
-	for _, eventName := range JobCompletionEvents {
+	for _, eventName := range job.JobCompletionEvents {
 		completionEvents[eventName] = true
 	}
 
 	for _, ev := range jobEvents {
-		if ev.EventName == EventJobStarted {
+		if ev.EventName == job.EventJobStarted {
 			startTime = ev.EmitTime
 		} else if _, ok := completionEvents[ev.EventName]; ok {
 			// A completion event has been seen for this Job. Only one completion event can be associated to the job
@@ -73,7 +73,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 	if len(jobEvents) > 0 {
 		je := jobEvents[len(jobEvents)-1]
 		state = string(je.EventName)
-		if je.EventName == EventJobFailed {
+		if je.EventName == job.EventJobFailed {
 			// if there was a framework failure, retrieve the failure event and
 			// the associated error message, so it can be exposed in the status.
 			if je.Payload == nil {

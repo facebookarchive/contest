@@ -6,7 +6,9 @@
 package memory
 
 import (
+	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -26,8 +28,14 @@ type Memory struct {
 	testEvents      []testevent.Event
 	frameworkEvents []frameworkevent.Event
 	jobIDCounter    types.JobID
-	jobRequests     map[types.JobID]*job.Request
-	jobReports      map[types.JobID]*job.JobReport
+	jobInfo         map[types.JobID]*jobInfo
+}
+
+type jobInfo struct {
+	request *job.Request
+	desc    *job.JobDescriptor
+	report  *job.JobReport
+	state   job.State
 }
 
 func emptyEventQuery(eventQuery *event.Query) bool {
@@ -139,8 +147,7 @@ func (m *Memory) Reset() error {
 	defer m.lock.Unlock()
 	m.testEvents = []testevent.Event{}
 	m.frameworkEvents = []frameworkevent.Event{}
-	m.jobRequests = make(map[types.JobID]*job.Request)
-	m.jobReports = make(map[types.JobID]*job.JobReport)
+	m.jobInfo = make(map[types.JobID]*jobInfo)
 	m.jobIDCounter = 1
 	return nil
 }
@@ -150,21 +157,30 @@ func (m *Memory) StoreJobRequest(request *job.Request) (types.JobID, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	request.JobID = m.jobIDCounter
+	jobID := m.jobIDCounter
 	m.jobIDCounter++
-	m.jobRequests[request.JobID] = request
-	return request.JobID, nil
+	request.JobID = jobID
+	info := &jobInfo{
+		request: request,
+		desc:    &job.JobDescriptor{},
+		state:   job.JobStateUnknown,
+	}
+	if err := json.Unmarshal([]byte(request.JobDescriptor), info.desc); err != nil {
+		return 0, fmt.Errorf("invalid job descriptor: %w", err)
+	}
+	m.jobInfo[jobID] = info
+	return jobID, nil
 }
 
 // GetJobRequest retrieves a job request from the in memory list
 func (m *Memory) GetJobRequest(jobID types.JobID) (*job.Request, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	v, ok := m.jobRequests[jobID]
-	if !ok {
+	v := m.jobInfo[jobID]
+	if v == nil || v.request == nil {
 		return nil, fmt.Errorf("could not find job request with id %v", jobID)
 	}
-	return v, nil
+	return v.request, nil
 }
 
 // StoreJobReport stores a report associated to a job. Returns an error if there is
@@ -172,11 +188,14 @@ func (m *Memory) GetJobRequest(jobID types.JobID) (*job.Request, error) {
 func (m *Memory) StoreJobReport(report *job.JobReport) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	_, ok := m.jobReports[report.JobID]
-	if ok {
+	v := m.jobInfo[report.JobID]
+	if v == nil {
+		return fmt.Errorf("could not find job with id %v", report.JobID)
+	}
+	if v.report != nil {
 		return fmt.Errorf("job report already present for job id %v", report.JobID)
 	}
-	m.jobReports[report.JobID] = report
+	v.report = report
 	return nil
 }
 
@@ -184,11 +203,62 @@ func (m *Memory) StoreJobReport(report *job.JobReport) error {
 func (m *Memory) GetJobReport(jobID types.JobID) (*job.JobReport, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	if _, ok := m.jobReports[jobID]; !ok {
+	v := m.jobInfo[jobID]
+	if v == nil || v.report == nil {
 		// return a job report with no results
 		return &job.JobReport{JobID: jobID}, nil
 	}
-	return m.jobReports[jobID], nil
+	return v.report, nil
+}
+
+func (m *Memory) ListJobs(query *storage.JobQuery) ([]types.JobID, error) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	res := []types.JobID{}
+	if err := job.CheckTags(query.Tags); err != nil {
+		return nil, err
+	}
+jobLoop:
+	for jobId, jobInfo := range m.jobInfo {
+		if len(query.Tags) > 0 {
+			for _, qTag := range query.Tags {
+				found := false
+				for _, jTag := range jobInfo.desc.Tags {
+					if jTag == qTag {
+						found = true
+					}
+				}
+				if !found {
+					continue jobLoop
+				}
+			}
+		}
+		if len(query.States) > 0 {
+			var lastEventTime time.Time
+			jobState := job.JobStateUnknown
+			for _, event := range m.frameworkEvents {
+				if eventJobMatch(jobId, event.JobID) &&
+					eventNameMatch(job.JobStateEvents, event.EventName) &&
+					event.EmitTime.After(lastEventTime) {
+					jobState, _ = job.EventNameToJobState(event.EventName)
+					lastEventTime = event.EmitTime
+				}
+			}
+			found := false
+			for _, queryState := range query.States {
+				if jobState == queryState {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue jobLoop
+			}
+		}
+		res = append(res, jobId)
+	}
+	sort.Slice(res, func(i, j int) bool { return res[i] < res[j] })
+	return res, nil
 }
 
 // StoreFrameworkEvent stores a framework event into the database
@@ -227,8 +297,7 @@ func (m *Memory) Version() (uint64, error) {
 // New create a new Memory events storage backend
 func New() (storage.ResettableStorage, error) {
 	m := Memory{lock: &sync.Mutex{}}
-	m.jobRequests = make(map[types.JobID]*job.Request)
-	m.jobReports = make(map[types.JobID]*job.JobReport)
+	m.jobInfo = make(map[types.JobID]*jobInfo)
 	m.jobIDCounter = 1
 	return &m, nil
 }

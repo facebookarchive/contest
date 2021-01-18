@@ -54,8 +54,8 @@ type RDBMS struct {
 	buffTestEvents      []testevent.Event
 	buffFrameworkEvents []frameworkevent.Event
 
-	testEventsLock      *sync.Mutex
-	frameworkEventsLock *sync.Mutex
+	testEventsLock      sync.Mutex
+	frameworkEventsLock sync.Mutex
 
 	// sql.Tx is not safe for concurrent use. This means that both Query, Exec operations
 	// and rows scanning should be serialized. txLock is acquired and released by all
@@ -99,7 +99,7 @@ func (r *RDBMS) BeginTx() (storage.TransactionalStorage, error) {
 	if err != nil {
 		return nil, err
 	}
-	txRDBMS := RDBMS{testEventsLock: &sync.Mutex{}, frameworkEventsLock: &sync.Mutex{}, txLock: sync.Mutex{}, db: tx}
+	txRDBMS := RDBMS{db: tx}
 	return &txRDBMS, nil
 }
 
@@ -215,7 +215,7 @@ func DriverName(name string) Opt {
 func New(dbURI string, opts ...Opt) (storage.Storage, error) {
 
 	// Default flushInterval and buffer sizes are zero (i.e., by default the backend is not buffered)
-	rdbms := RDBMS{testEventsLock: &sync.Mutex{}, frameworkEventsLock: &sync.Mutex{}, dbURI: dbURI}
+	rdbms := RDBMS{dbURI: dbURI}
 	for _, Opt := range opts {
 		Opt(&rdbms)
 	}

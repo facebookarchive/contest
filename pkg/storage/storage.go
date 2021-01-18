@@ -9,39 +9,16 @@ import (
 	"fmt"
 
 	"github.com/facebookincubator/contest/pkg/config"
-	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
-	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/job"
-	"github.com/facebookincubator/contest/pkg/types"
 )
 
 // storage defines the storage engine used by ConTest. It can be overridden
 // via the exported function SetStorage.
 var storage Storage
 
-// JobStorage defines the interface that implements persistence for job
-// related information
-type JobStorage interface {
-	// Job request interface
-	StoreJobRequest(request *job.Request) (types.JobID, error)
-	GetJobRequest(jobID types.JobID) (*job.Request, error)
-
-	// Job report interface
-	StoreJobReport(report *job.JobReport) error
-	GetJobReport(jobID types.JobID) (*job.JobReport, error)
-}
-
 // Storage defines the interface that storage engines must implement
 type Storage interface {
 	JobStorage
-
-	// Test events storage interface
-	StoreTestEvent(event testevent.Event) error
-	GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, error)
-
-	// Framework events storage interface
-	StoreFrameworkEvent(event frameworkevent.Event) error
-	GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]frameworkevent.Event, error)
+	EventStorage
 
 	// Version returns the version of the storage being used
 	Version() (uint64, error)

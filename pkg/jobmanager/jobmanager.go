@@ -281,6 +281,8 @@ func (jm *JobManager) handleEvent(ev *api.Event) {
 		resp = jm.stop(ev)
 	case api.EventTypeRetry:
 		resp = jm.retry(ev)
+	case api.EventTypeList:
+		resp = jm.list(ev)
 	default:
 		resp = &api.EventResponse{
 			Requestor: ev.Msg.Requestor(),

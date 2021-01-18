@@ -32,6 +32,7 @@ var eventTypeNames = map[EventType]string{
 	EventTypeStop:   "event_type_stop",
 	EventTypeRetry:  "event_type_retry",
 	EventTypeError:  "event_type_error",
+	EventTypeList:   "event_type_list",
 }
 
 // list of existing API event types.
@@ -41,6 +42,7 @@ const (
 	EventTypeStop
 	EventTypeRetry
 	EventTypeError
+	EventTypeList
 )
 
 // Event represents an event that the API can generate. This is used by the API
@@ -107,4 +109,22 @@ type EventResponse struct {
 	JobID     types.JobID
 	Err       error
 	Status    *job.Status
+	JobIDs    []types.JobID
+}
+
+// EventListMsg contains the arguments for an event of type List.
+type EventListMsg struct {
+	requestor EventRequestor
+	States    []job.State
+	Tags      []string
+}
+
+// Requestor returns the requestor of the API call as reported by the client.
+func (e EventListMsg) Requestor() EventRequestor { return e.requestor }
+
+// EventListResponse is a response to EventListMsg.
+type EventListResponse struct {
+	Requestor EventRequestor
+	Jobs      []types.JobID
+	Err       error
 }
