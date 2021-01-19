@@ -213,12 +213,11 @@ func (tr *TestRunner) run(
 
 	// Wait for step runners and readers to exit.
 	if err := tr.waitStepRunners(ctx); err != nil {
-		tr.log.Errorf("step runner error: %q, canceling", err)
-		stepCancel()
 		if runErr == nil {
 			runErr = err
 		}
 	}
+
 	// There will be no more results, reel in all the target runners (if any).
 	tr.log.Debugf("waiting for target runners to finish")
 	targetCancel()
