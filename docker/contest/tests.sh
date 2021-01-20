@@ -41,6 +41,9 @@ export CGO_ENABLED=1
 echo "" > coverage.txt
 
 for d in $(go list ./... | grep -v vendor); do
+    # Run in stress mode first
+    go test -race -count=9 "${d}"
+    # Then in coverage mode
     go test -race -coverprofile=profile.out -covermode=atomic "${d}"
     if [ -f profile.out ]; then
       cat profile.out >> coverage_unittests.txt
@@ -61,6 +64,7 @@ for tag in integration integration_storage; do
           # to have tests run serially.
           pflag="-p 1"
         fi
+        go test -tags=${tag} -race -count=9 "${d}"
         go test -tags=${tag} -race \
           -coverprofile=profile.out ${pflag} \
           -covermode=atomic \

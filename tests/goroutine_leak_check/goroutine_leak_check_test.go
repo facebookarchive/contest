@@ -24,23 +24,23 @@ func TestNoLeaks(t *testing.T) {
 	require.NoError(t, CheckLeakedGoRoutines())
 }
 
-func TestLeaksFunc1(t *testing.T) {
+func TestLeaks(t *testing.T) {
 	c := sync.NewCond(&sync.Mutex{})
 	c.L.Lock()
 	go Func1(c)
 	c.Wait() // Wait for the go routine to start.
 	c.L.Unlock()
-	err := CheckLeakedGoRoutines()
-	require.Error(t, err)
+	dump, err := checkLeakedGoRoutines()
+	require.Errorf(t, err, "===\n%s\n===", dump)
 	require.Contains(t, err.Error(), "goroutine_leak_check_test.go")
-	require.Contains(t, err.Error(), "Func1")
+	require.Contains(t, err.Error(), "goroutine_leak_check.Func1")
 	c.Signal()
 	// Give some time for the goroutine to exit
 	// otherwise it causes flakes in case of multiple test runs (-count=N).
 	time.Sleep(10 * time.Millisecond)
 }
 
-func TestLeaksFunc1Whitelisted(t *testing.T) {
+func TestLeaksWhitelisted(t *testing.T) {
 	c := sync.NewCond(&sync.Mutex{})
 	c.L.Lock()
 	go Func1(c)
