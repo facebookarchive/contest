@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/api"
+	"github.com/facebookincubator/contest/pkg/event"
+	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/types"
 )
@@ -146,6 +148,27 @@ func (h *apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if resp, err = h.api.Retry(requestor, jobID); err != nil {
 			httpStatus = http.StatusBadRequest
 			errMsg = fmt.Sprintf("Retry failed: %v", err)
+		}
+	case "list":
+		var states []job.State
+		var tags []string
+		if statesStr := r.PostFormValue("states"); len(statesStr) > 0 {
+			for _, sts := range strings.Split(statesStr, ",") {
+				st, err := job.EventNameToJobState(event.Name(sts))
+				if err != nil {
+					httpStatus = http.StatusBadRequest
+					errMsg = fmt.Sprintf("List failed: %v", err)
+					break
+				}
+				states = append(states, st)
+			}
+		}
+		if tagsStr := r.PostFormValue("tags"); len(tagsStr) > 0 {
+			tags = strings.Split(tagsStr, ",")
+		}
+		if resp, err = h.api.List(requestor, states, tags); err != nil {
+			httpStatus = http.StatusBadRequest
+			errMsg = fmt.Sprintf("List failed: %v", err)
 		}
 	case "version":
 		resp = h.api.Version()

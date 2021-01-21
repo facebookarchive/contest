@@ -10,12 +10,13 @@ import (
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/types"
-	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -46,6 +47,7 @@ func (n *nullStorage) StoreJobRequest(request *job.Request) (types.JobID, error)
 func (n *nullStorage) GetJobRequest(jobID types.JobID) (*job.Request, error)  { return nil, nil }
 func (n *nullStorage) StoreJobReport(report *job.JobReport) error             { return nil }
 func (n *nullStorage) GetJobReport(jobID types.JobID) (*job.JobReport, error) { return nil, nil }
+func (n *nullStorage) ListJobs(query *JobQuery) ([]types.JobID, error)        { return nil, nil }
 func (n *nullStorage) StoreTestEvent(event testevent.Event) error             { return nil }
 func (n *nullStorage) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, error) {
 	return nil, nil

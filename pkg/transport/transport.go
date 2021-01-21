@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/facebookincubator/contest/pkg/api"
+	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
@@ -20,4 +21,5 @@ type Transport interface {
 	Stop(ctx context.Context, requestor string, jobID types.JobID) (*api.StopResponse, error)
 	Status(ctx context.Context, requestor string, jobID types.JobID) (*api.StatusResponse, error)
 	Retry(ctx context.Context, requestor string, jobID types.JobID) (*api.RetryResponse, error)
+	List(ctx context.Context, requestor string, states []job.State, tags []string) (*api.ListResponse, error)
 }
