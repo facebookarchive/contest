@@ -79,6 +79,7 @@ func TestMain(m *testing.M) {
 	}
 	ret := m.Run()
 	if ret == 0 {
+		time.Sleep(20 * time.Millisecond) // Give stragglers some time to exit.
 		if err := goroutine_leak_check.CheckLeakedGoRoutines(
 			// We expect these to leak.
 			"github.com/facebookincubator/contest/tests/plugins/teststeps/hanging.(*hanging).Run",

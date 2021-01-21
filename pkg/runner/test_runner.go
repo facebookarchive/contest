@@ -236,9 +236,9 @@ func (tr *TestRunner) run(
 		tr.log.Debugf("  %d %s %v", i, ts, stepErr)
 		if ts.CurPhase == targetStepPhaseRun {
 			inFlightTargets = append(inFlightTargets, ts)
-			if stepErr != statectx.ErrPaused {
-				resumeOk = false
-			}
+		}
+		if stepErr != nil && stepErr != statectx.ErrPaused {
+			resumeOk = false
 		}
 	}
 	tr.log.Debugf("- %d in flight, ok to resume? %t", len(inFlightTargets), resumeOk)
@@ -547,6 +547,7 @@ func (tr *TestRunner) stepRunner(ctx statectx.Context, ss *stepState) {
 	}()
 	chans := test.TestStepChannels{In: ss.inCh, Out: ss.outCh, Err: ss.errCh}
 	runErr := ss.sb.TestStep.Run(ctx, chans, ss.sb.Parameters, ss.ev)
+	ss.log.Debugf("%s: step runner finished", ss)
 	tr.mu.Lock()
 	ss.stepRunning = false
 	if runErr != nil {
@@ -555,7 +556,6 @@ func (tr *TestRunner) stepRunner(ctx statectx.Context, ss *stepState) {
 	tr.mu.Unlock()
 	// Signal to the result processor that no more will be coming.
 	tr.safeCloseOutCh(ss)
-	ss.log.Debugf("%s: step runner finished", ss)
 }
 
 // reportTargetResult reports result of executing a step to the appropriate target runner.
@@ -645,6 +645,14 @@ loop:
 			}
 		case res, ok := <-ss.errCh:
 			if !ok {
+				tr.mu.Lock()
+				if ss.stepRunning {
+					// Error channel is always closed after the output,
+					// which is only closed after runner goroutine has exited.
+					// If we got here, it means that the plugin closed the error channel.
+					ss.runErr = &cerrors.ErrTestStepClosedChannels{StepName: ss.sb.TestStepLabel}
+				}
+				tr.mu.Unlock()
 				ss.log.Debugf("%s: err chan closed", ss)
 				break loop
 			}
