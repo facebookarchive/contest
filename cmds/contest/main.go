@@ -24,6 +24,7 @@ import (
 	"github.com/facebookincubator/contest/plugins/listeners/httplistener"
 	"github.com/facebookincubator/contest/plugins/storage/rdbms"
 
+	"github.com/facebookincubator/contest/plugins/targetlocker/dblocker"
 	"github.com/facebookincubator/contest/plugins/targetlocker/inmemory"
 
 	"github.com/sirupsen/logrus"
@@ -33,6 +34,7 @@ var (
 	flagDBURI          = flag.String("dbURI", config.DefaultDBURI, "Database URI")
 	flagServerID       = flag.String("serverID", "", "Set a static server ID, e.g. the host name or another unique identifier. If unset, will use the listener's default")
 	flagProcessTimeout = flag.Duration("processTimeout", api.DefaultEventTimeout, "API request processing timeout")
+	flagTargetLocker   = flag.String("targetLocker", inmemory.Name, "Target locker implementation to use")
 )
 
 func main() {
@@ -51,7 +53,6 @@ func main() {
 	if err := storage.SetStorage(s); err != nil {
 		log.Fatalf("could not set storage: %v", err)
 	}
-
 	dbVer, err := s.Version()
 	if err != nil {
 		log.Warningf("could not determine storage version: %v", err)
@@ -60,7 +61,18 @@ func main() {
 	}
 
 	// set Locker engine
-	target.SetLocker(inmemory.New(config.LockInitialTimeout, config.LockRefreshTimeout))
+	switch *flagTargetLocker {
+	case inmemory.Name:
+		target.SetLocker(inmemory.New(config.LockInitialTimeout, config.LockRefreshTimeout))
+	case dblocker.Name:
+		if l, err := dblocker.New(*flagDBURI, config.LockInitialTimeout, config.LockRefreshTimeout); err == nil {
+			target.SetLocker(l)
+		} else {
+			log.Fatalf("ailed to create locker %q: %v", *flagTargetLocker, err)
+		}
+	default:
+		log.Fatalf("invalid target locker name %q", *flagTargetLocker)
+	}
 
 	plugins.Init(pluginRegistry, log)
 
