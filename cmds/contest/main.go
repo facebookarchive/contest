@@ -48,16 +48,16 @@ func main() {
 	log.Infof("Using database URI: %s", *flagDBURI)
 	s, err := rdbms.New(*flagDBURI)
 	if err != nil {
-		log.Fatalf("could not initialize database: %v", err)
+		log.Fatalf("Could not initialize database: %v", err)
 	}
 	if err := storage.SetStorage(s); err != nil {
-		log.Fatalf("could not set storage: %v", err)
+		log.Fatalf("Could not set storage: %v", err)
 	}
 	dbVer, err := s.Version()
 	if err != nil {
-		log.Warningf("could not determine storage version: %v", err)
+		log.Warningf("Could not determine storage version: %v", err)
 	} else {
-		log.Infof("storage version: %d", dbVer)
+		log.Infof("Storage version: %d", dbVer)
 	}
 
 	// set Locker engine
@@ -68,10 +68,10 @@ func main() {
 		if l, err := dblocker.New(*flagDBURI, config.LockInitialTimeout, config.LockRefreshTimeout); err == nil {
 			target.SetLocker(l)
 		} else {
-			log.Fatalf("ailed to create locker %q: %v", *flagTargetLocker, err)
+			log.Fatalf("Failed to create locker %q: %v", *flagTargetLocker, err)
 		}
 	default:
-		log.Fatalf("invalid target locker name %q", *flagTargetLocker)
+		log.Fatalf("Invalid target locker name %q", *flagTargetLocker)
 	}
 
 	plugins.Init(pluginRegistry, log)
