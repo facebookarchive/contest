@@ -20,7 +20,7 @@ func (jm *JobManager) stop(ev *api.Event) *api.EventResponse {
 	// is propagated all the way down to the TestRunner. TestRunner  will wait
 	// TestRunnerShutdownTimeout before flagging the test as timed out. JobRunner
 	// will attempt to call Release on TargetManager and will wait up to
-	// TargetManagerTimeout for Release to return.
+	// TargetManagerReleaseTimeout for Release to return.
 	err := jm.CancelJob(jobID)
 	if err != nil {
 		log.Errorf("Cannot stop job: %v", err)

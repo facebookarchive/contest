@@ -63,9 +63,9 @@ func main() {
 	// set Locker engine
 	switch *flagTargetLocker {
 	case inmemory.Name:
-		target.SetLocker(inmemory.New(config.LockInitialTimeout, config.LockRefreshTimeout))
+		target.SetLocker(inmemory.New())
 	case dblocker.Name:
-		if l, err := dblocker.New(*flagDBURI, config.LockInitialTimeout, config.LockRefreshTimeout); err == nil {
+		if l, err := dblocker.New(*flagDBURI); err == nil {
 			target.SetLocker(l)
 		} else {
 			log.Fatalf("Failed to create locker %q: %v", *flagTargetLocker, err)

@@ -18,6 +18,7 @@ import (
 	"github.com/insomniacslk/xjson"
 
 	"github.com/facebookincubator/contest/pkg/api"
+	pkg_config "github.com/facebookincubator/contest/pkg/config"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
@@ -188,12 +189,24 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 		return nil, fmt.Errorf("failed to marshal test descriptors: %w", err)
 	}
 
+	var targetManagerAcquireTimeout = pkg_config.TargetManagerAcquireTimeout
+	if jd.TargetManagerAcquireTimeout != nil {
+		targetManagerAcquireTimeout = time.Duration(*jd.TargetManagerAcquireTimeout)
+	}
+
+	var targetManagerReleaseTimeout = pkg_config.TargetManagerReleaseTimeout
+	if jd.TargetManagerReleaseTimeout != nil {
+		targetManagerReleaseTimeout = time.Duration(*jd.TargetManagerReleaseTimeout)
+	}
+
 	j := job.Job{
 		ID:          types.JobID(0),
 		Name:        jd.JobName,
 		Tags:        jd.Tags,
 		Runs:        jd.Runs,
 		RunInterval: time.Duration(jd.RunInterval),
+		TargetManagerAcquireTimeout: targetManagerAcquireTimeout,
+		TargetManagerReleaseTimeout: targetManagerReleaseTimeout,
 		// reporter bundles must be set externally
 		TestDescriptors:      string(testDescriptorsJSON),
 		Tests:                tests,

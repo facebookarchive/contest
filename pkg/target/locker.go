@@ -27,13 +27,12 @@ type LockerFactory func(time.Duration, time.Duration) Locker
 // will return without error.
 type Locker interface {
 	// Lock locks the specified targets.
-	// The timeout is controlled by the locker plugin and set at construction time.
 	// The job ID is the owner of the lock.
 	// This function either succeeds and locks all the requested targets, or
 	// leaves the existing locks untouched in case of conflicts.
 	// Locks are reentrant, locking existing locks (with the same owner)
 	// extends the deadline.
-	Lock(types.JobID, []*Target) error
+	Lock(jobID types.JobID, duration time.Duration, targets []*Target) error
 	// TryLock attempts to lock up to limit of the given targets.
 	// The job ID is the owner of the lock.
 	// This function attempts to lock up to limit of the given targets,
@@ -41,7 +40,7 @@ type Locker interface {
 	// This function does not return an error if it was not able to lock any targets.
 	// Locks are reentrant, locking existing locks (with the same owner)
 	// extends the deadline.
-	TryLock(jobID types.JobID, targets []*Target, limit uint) ([]string, error)
+	TryLock(jobID types.JobID, duration time.Duration, targets []*Target, limit uint) ([]string, error)
 	// Unlock unlocks the specificied targets if they are held by the given owner.
 	// Unlock silently skips expired locks and targets that are not locked at all.
 	// Unlock does not fail if a valid lock is held on one of the targets.

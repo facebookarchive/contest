@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/facebookincubator/contest/pkg/config"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
@@ -70,10 +71,6 @@ func listQueryString(length uint) string {
 type DBLocker struct {
 	driverName string
 	db         *sql.DB
-	// lockTimeout set on each initial lock request
-	lockTimeout time.Duration
-	// refreshTimeout is used during refresh
-	refreshTimeout time.Duration
 }
 
 // lockDBRows locks the rows for the given targets in the database
@@ -265,7 +262,7 @@ func validateTargets(targets []*target.Target) error {
 
 // Lock locks the given targets.
 // See target.Locker for API details
-func (d *DBLocker) Lock(jobID types.JobID, targets []*target.Target) error {
+func (d *DBLocker) Lock(jobID types.JobID, duration time.Duration, targets []*target.Target) error {
 	if jobID == 0 {
 		return fmt.Errorf("invalid lock request, jobID cannot be zero (targets: %v)", targets)
 	}
@@ -276,14 +273,13 @@ func (d *DBLocker) Lock(jobID types.JobID, targets []*target.Target) error {
 	if len(targets) == 0 {
 		return nil
 	}
-
-	_, err := d.handleLock(int64(jobID), targetIDList(targets), uint(len(targets)), d.lockTimeout, false)
+	_, err := d.handleLock(int64(jobID), targetIDList(targets), uint(len(targets)), duration, false)
 	return err
 }
 
 // TryLock attempts to locks the given targets.
 // See target.Locker for API details
-func (d *DBLocker) TryLock(jobID types.JobID, targets []*target.Target, limit uint) ([]string, error) {
+func (d *DBLocker) TryLock(jobID types.JobID, duration time.Duration, targets []*target.Target, limit uint) ([]string, error) {
 	if jobID == 0 {
 		return nil, fmt.Errorf("invalid tryLock request, jobID cannot be zero (targets: %v)", targets)
 	}
@@ -294,8 +290,7 @@ func (d *DBLocker) TryLock(jobID types.JobID, targets []*target.Target, limit ui
 	if len(targets) == 0 || limit == 0 {
 		return nil, nil
 	}
-
-	return d.handleLock(int64(jobID), targetIDList(targets), limit, d.lockTimeout, true)
+	return d.handleLock(int64(jobID), targetIDList(targets), limit, duration, true)
 }
 
 // Unlock unlocks the given targets.
@@ -328,8 +323,7 @@ func (d *DBLocker) RefreshLocks(jobID types.JobID, targets []*target.Target) err
 	if len(targets) == 0 {
 		return nil
 	}
-
-	_, err := d.handleLock(int64(jobID), targetIDList(targets), uint(len(targets)), d.refreshTimeout, false)
+	_, err := d.handleLock(int64(jobID), targetIDList(targets), uint(len(targets)), config.LockRefreshTimeout, false)
 	return err
 }
 
@@ -354,11 +348,8 @@ func DriverName(name string) Opt {
 }
 
 // New initializes and returns a new DBLocker target locker.
-func New(dbURI string, lockTimeout, refreshTimeout time.Duration, opts ...Opt) (target.Locker, error) {
-	res := &DBLocker{
-		lockTimeout:    lockTimeout,
-		refreshTimeout: refreshTimeout,
-	}
+func New(dbURI string, opts ...Opt) (target.Locker, error) {
+	res := &DBLocker{}
 
 	for _, Opt := range opts {
 		Opt(res)

@@ -25,13 +25,13 @@ type Noop struct {
 }
 
 // Lock locks the specified targets by doing nothing.
-func (tl Noop) Lock(_ types.JobID, targets []*target.Target) error {
+func (tl Noop) Lock(_ types.JobID, _ time.Duration, targets []*target.Target) error {
 	log.Infof("Locked %d targets by doing nothing", len(targets))
 	return nil
 }
 
 // TryLock locks the specified targets by doing nothing.
-func (tl Noop) TryLock(_ types.JobID, targets []*target.Target, limit uint) ([]string, error) {
+func (tl Noop) TryLock(_ types.JobID, _ time.Duration, targets []*target.Target, limit uint) ([]string, error) {
 	log.Infof("Trylocked %d targets by doing nothing", len(targets))
 	res := make([]string, 0, len(targets))
 	for _, t := range targets {
@@ -54,6 +54,6 @@ func (tl Noop) RefreshLocks(jobID types.JobID, targets []*target.Target) error {
 }
 
 // New initializes and returns a new ExampleTestStep.
-func New(_ time.Duration) target.Locker {
+func New() target.Locker {
 	return &Noop{}
 }

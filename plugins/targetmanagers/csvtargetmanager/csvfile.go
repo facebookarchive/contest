@@ -27,6 +27,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -99,7 +100,7 @@ func (tf CSVFileTargetManager) ValidateReleaseParameters(params []byte) (interfa
 
 // Acquire implements contest.TargetManager.Acquire, reading one entry per line
 // from a text file. Each input record looks like this: ID,FQDN,IPv4,IPv6. Only ID is required
-func (tf *CSVFileTargetManager) Acquire(ctx context.Context, jobID types.JobID, parameters interface{}, tl target.Locker) ([]*target.Target, error) {
+func (tf *CSVFileTargetManager) Acquire(ctx context.Context, jobID types.JobID, jobTargetManagerAcquireTimeout time.Duration, parameters interface{}, tl target.Locker) ([]*target.Target, error) {
 	acquireParameters, ok := parameters.(AcquireParameters)
 	if !ok {
 		return nil, fmt.Errorf("Acquire expects %T object, got %T", acquireParameters, parameters)
@@ -179,7 +180,7 @@ func (tf *CSVFileTargetManager) Acquire(ctx context.Context, jobID types.JobID, 
 	}
 
 	// feed all devices into new API call `TryLock`, with desired limit
-	lockedString, err := tl.TryLock(jobID, hosts, uint(acquireParameters.MaxNumberDevices))
+	lockedString, err := tl.TryLock(jobID, jobTargetManagerAcquireTimeout, hosts, uint(acquireParameters.MaxNumberDevices))
 	if err != nil {
 		return nil, fmt.Errorf("failed to lock targets: %w", err)
 	}

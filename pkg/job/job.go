@@ -26,6 +26,8 @@ type JobDescriptor struct {
 	RunInterval     xjson.Duration
 	TestDescriptors []*test.TestDescriptor
 	Reporting       Reporting
+	TargetManagerAcquireTimeout *xjson.Duration // optional
+	TargetManagerReleaseTimeout *xjson.Duration // optional
 }
 
 // Job is used to run a type of test job on a given set of targets.
@@ -51,6 +53,12 @@ type Job struct {
 	// RunInterval is the interval between multiple runs, if more than one, or
 	// unlimited, are specified.
 	RunInterval time.Duration
+
+	// TargetManagerAcquireTimeout represents the maximum time that JobManager should wait for the execution of the Acquire function from the chosen TargetManager.
+	TargetManagerAcquireTimeout time.Duration
+
+	// TargetManagerReleaseTimeout represents the maximum time that JobManager should wait for the execution of the Release function from the chosen TargetManager.
+	TargetManagerReleaseTimeout time.Duration
 
 	// TestDescriptors is the string form of the fetched test step
 	// descriptors.

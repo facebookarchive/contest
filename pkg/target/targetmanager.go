@@ -7,6 +7,8 @@ package target
 
 import (
 	"context"
+	"time"
+
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
@@ -23,7 +25,7 @@ type TargetManagerLoader func() (string, TargetManagerFactory)
 type TargetManager interface {
 	ValidateAcquireParameters([]byte) (interface{}, error)
 	ValidateReleaseParameters([]byte) (interface{}, error)
-	Acquire(ctx context.Context, jobID types.JobID, parameters interface{}, tl Locker) ([]*Target, error)
+	Acquire(ctx context.Context, jobID types.JobID, jobTargetManagerAcquireTimeout time.Duration, parameters interface{}, tl Locker) ([]*Target, error)
 	Release(ctx context.Context, jobID types.JobID, parameters interface{}) error
 }
 
