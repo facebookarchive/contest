@@ -11,7 +11,7 @@ export CI=${CI:-false}
 if [ "${UID}" -ne 0 ]
 then
     echo "Re-running as root with sudo"
-    sudo --preserve-env=CI,GITHUB_ACTIONS,GITHUB_REF,GITHUB_REPOSITORY,GITHUB_HEAD_REF,GITHUB_SHA,GITHUB_RUN_ID "$0" "$@"
+    sudo --preserve-env=CI,GITHUB_ACTIONS,GITHUB_REF,GITHUB_REPOSITORY,GITHUB_HEAD_REF,GITHUB_SHA,GITHUB_RUN_ID,PATH "$0" "$@"
     exit $?
 fi
 
