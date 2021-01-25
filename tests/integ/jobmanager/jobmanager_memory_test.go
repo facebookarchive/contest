@@ -10,7 +10,6 @@ package test
 import (
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -34,7 +33,7 @@ func TestJobManagerSuiteMemoryStorage(t *testing.T) {
 	err = storage.SetStorage(storagelayer)
 	require.NoError(t, err)
 
-	targetLocker := inmemory.New(10*time.Second, 10*time.Second)
+	targetLocker := inmemory.New()
 	target.SetLocker(targetLocker)
 
 	suite.Run(t, &testSuite)

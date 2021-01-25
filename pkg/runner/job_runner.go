@@ -104,7 +104,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				// the Acquire semantic is synchronous, so that the implementation
 				// is simpler on the user's side. We run it in a goroutine in
 				// order to use a timeout for target acquisition.
-				targets, err := bundle.TargetManager.Acquire(j.StateCtx, j.ID, bundle.AcquireParameters, tl)
+				targets, err := bundle.TargetManager.Acquire(j.StateCtx, j.ID, j.TargetManagerAcquireTimeout + config.LockRefreshTimeout, bundle.AcquireParameters, tl)
 				if err != nil {
 					errCh <- err
 					targetsCh <- nil
@@ -117,7 +117,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				// targets are locked before running the job.
 				// Locking an already-locked target (by the same owner)
 				// extends the locking deadline.
-				if err := tl.Lock(j.ID, targets); err != nil {
+				if err := tl.Lock(j.ID, j.TargetManagerAcquireTimeout, targets); err != nil {
 					errCh <- fmt.Errorf("Target locking failed: %w", err)
 					targetsCh <- nil
 				}
@@ -138,8 +138,8 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				jr.targetMap[j.ID] = targets
 				jr.targetLock.Unlock()
 
-			case <-time.After(config.TargetManagerTimeout):
-				return nil, nil, fmt.Errorf("target manager acquire timed out after %s", config.TargetManagerTimeout)
+			case <-time.After(j.TargetManagerAcquireTimeout):
+				return nil, nil, fmt.Errorf("target manager acquire timed out after %s", j.TargetManagerAcquireTimeout)
 			case <-j.StateCtx.Done():
 				jobLog.Infof("cancellation requested for job ID %v", j.ID)
 				return nil, nil, nil
@@ -211,8 +211,8 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 					jobLog.Errorf(errRelease)
 					return nil, nil, fmt.Errorf(errRelease)
 				}
-			case <-time.After(config.TargetManagerTimeout):
-				return nil, nil, fmt.Errorf("target manager release timed out after %s", config.TargetManagerTimeout)
+			case <-time.After(j.TargetManagerReleaseTimeout):
+				return nil, nil, fmt.Errorf("target manager release timed out after %s", j.TargetManagerReleaseTimeout)
 			case <-j.StateCtx.Done():
 				jobLog.Infof("cancellation requested for job ID %v", j.ID)
 				return nil, nil, nil

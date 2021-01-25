@@ -33,6 +33,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -84,13 +85,13 @@ func (t TargetList) ValidateReleaseParameters(params []byte) (interface{}, error
 }
 
 // Acquire implements contest.TargetManager.Acquire
-func (t *TargetList) Acquire(ctx context.Context, jobID types.JobID, parameters interface{}, tl target.Locker) ([]*target.Target, error) {
+func (t *TargetList) Acquire(ctx context.Context, jobID types.JobID, jobTargetManagerAcquireTimeout time.Duration, parameters interface{}, tl target.Locker) ([]*target.Target, error) {
 	acquireParameters, ok := parameters.(AcquireParameters)
 	if !ok {
 		return nil, fmt.Errorf("Acquire expects %T object, got %T", acquireParameters, parameters)
 	}
 
-	if err := tl.Lock(jobID, acquireParameters.Targets); err != nil {
+	if err := tl.Lock(jobID, jobTargetManagerAcquireTimeout, acquireParameters.Targets); err != nil {
 		log.Warningf("Failed to lock %d targets: %v", len(acquireParameters.Targets), err)
 		return nil, err
 	}

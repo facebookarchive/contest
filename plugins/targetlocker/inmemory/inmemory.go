@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/facebookincubator/contest/pkg/config"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
@@ -35,8 +36,9 @@ type request struct {
 	owner types.JobID
 	// limit provides an upper limit on how many locks will be acquired
 	limit uint
-	// timeout is how long the lock should be held for. There is no lower or
-	// upper bound on how long the lock can be held.
+	// timeout is the initial lock duration when acquiring a new lock
+	// during target acquisition. This should include TargetManagerAcquireTimeout
+	// to allow for dynamic locking in the target manager.
 	timeout time.Duration
 	// locked is list of target IDs that were locked in this transaction (if any)
 	locked []string
@@ -163,10 +165,6 @@ func broker(lockRequests, unlockRequests <-chan *request, done <-chan struct{}) 
 type InMemory struct {
 	lockRequests, unlockRequests chan *request
 	done                         chan struct{}
-	// lockTimeout set on each initial lock request
-	lockTimeout time.Duration
-	// refreshTimeout is used during refresh
-	refreshTimeout time.Duration
 }
 
 func newReq(jobID types.JobID, targets []*target.Target) request {
@@ -178,20 +176,20 @@ func newReq(jobID types.JobID, targets []*target.Target) request {
 }
 
 // Lock locks the specified targets.
-func (tl *InMemory) Lock(jobID types.JobID, targets []*target.Target) error {
+func (tl *InMemory) Lock(jobID types.JobID, duration time.Duration, targets []*target.Target) error {
 	log.Infof("Trying to lock %d targets", len(targets))
 	req := newReq(jobID, targets)
-	req.timeout = tl.lockTimeout
+	req.timeout = duration
 	req.limit = uint(len(targets))
 	tl.lockRequests <- &req
 	return <-req.err
 }
 
 // Lock locks the specified targets.
-func (tl *InMemory) TryLock(jobID types.JobID, targets []*target.Target, limit uint) ([]string, error) {
+func (tl *InMemory) TryLock(jobID types.JobID, duration time.Duration, targets []*target.Target, limit uint) ([]string, error) {
 	log.Infof("Trying trylock on %d targets", len(targets))
 	req := newReq(jobID, targets)
-	req.timeout = tl.lockTimeout
+	req.timeout = duration
 	req.allowConflicts = true
 	req.limit = limit
 	tl.lockRequests <- &req
@@ -211,9 +209,9 @@ func (tl *InMemory) Unlock(jobID types.JobID, targets []*target.Target) error {
 // RefreshLocks extends the lock duration by the internally configured timeout. If
 // the owner is different, the request is rejected.
 func (tl *InMemory) RefreshLocks(jobID types.JobID, targets []*target.Target) error {
-	log.Infof("Trying to refresh locks on %d targets by %s", len(targets), tl.refreshTimeout)
+	log.Infof("Trying to refresh locks on %d targets by %s", len(targets), config.LockRefreshTimeout)
 	req := newReq(jobID, targets)
-	req.timeout = tl.refreshTimeout
+	req.timeout = config.LockRefreshTimeout
 	req.limit = uint(len(targets))
 	// refreshing a lock is just a lock operation with the same owner and a new
 	// duration.
@@ -222,7 +220,7 @@ func (tl *InMemory) RefreshLocks(jobID types.JobID, targets []*target.Target) er
 }
 
 // New initializes and returns a new InMemory target locker.
-func New(lockTimeout, refreshTimeout time.Duration) target.Locker {
+func New() target.Locker {
 	lockRequests := make(chan *request)
 	unlockRequests := make(chan *request)
 	done := make(chan struct{}, 1)
@@ -231,7 +229,5 @@ func New(lockTimeout, refreshTimeout time.Duration) target.Locker {
 		lockRequests:   lockRequests,
 		unlockRequests: unlockRequests,
 		done:           done,
-		lockTimeout:    lockTimeout,
-		refreshTimeout: refreshTimeout,
 	}
 }
