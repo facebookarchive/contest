@@ -429,6 +429,7 @@ func TestStepLosesTargets(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.IsType(t, &cerrors.ErrTestStepLostTargets{}, err)
+	require.Contains(t, err.Error(), "TDrop")
 }
 
 // A misbehaving step that yields a result for a target that does exist

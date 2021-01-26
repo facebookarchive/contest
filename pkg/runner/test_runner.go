@@ -278,11 +278,18 @@ func (tr *TestRunner) run(
 		}
 	default:
 		// We are not pausing and yet some targets were left in flight.
+		// Use first target as a sample.
 		if len(inFlightTargets) > 0 {
-			ts := inFlightTargets[0]
+			ts0 := inFlightTargets[0]
+			var lostTargets []string
+			for _, ts := range inFlightTargets {
+				if ts.CurStep == ts0.CurStep {
+					lostTargets = append(lostTargets, ts.tgt.ID)
+				}
+			}
 			runErr = &cerrors.ErrTestStepLostTargets{
-				StepName: tr.steps[ts.CurStep].sb.TestStepLabel,
-				Target:   ts.tgt.ID,
+				StepName: tr.steps[ts0.CurStep].sb.TestStepLabel,
+				Targets:  lostTargets,
 			}
 		}
 	}

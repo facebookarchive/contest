@@ -103,10 +103,10 @@ func (e *ErrTestStepReturnedUnexpectedResult) Error() string {
 // ErrTestStepLostTargets indicates that targets have been lost during test run.
 type ErrTestStepLostTargets struct {
 	StepName string
-	Target   string
+	Targets  []string
 }
 
 // Error returns the error string associated with the error
 func (e *ErrTestStepLostTargets) Error() string {
-	return fmt.Sprintf("test step %s lost target %s", e.StepName, e.Target)
+	return fmt.Sprintf("test step %s lost targets %v", e.StepName, e.Targets)
 }
