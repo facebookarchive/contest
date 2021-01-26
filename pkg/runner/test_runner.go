@@ -378,15 +378,12 @@ func (tr *TestRunner) injectTarget(ctx statectx.Context, ts *targetState, ss *st
 		// Injected successfully.
 		err := ss.ev.Emit(testevent.Data{EventName: target.EventTargetIn, Target: ts.tgt})
 		tr.mu.Lock()
+		defer tr.mu.Unlock()
 		ts.CurPhase = targetStepPhaseRun
 		if err != nil {
 			return fmt.Errorf("failed to report target injection: %w", err)
 		}
-		tr.mu.Unlock()
 		tr.cond.Signal()
-		if err != nil {
-			return err
-		}
 	case <-time.After(tr.stepInjectTimeout):
 		ss.log.Errorf("timed out while injecting a target")
 		if err := ss.ev.Emit(testevent.Data{EventName: target.EventTargetInErr, Target: ts.tgt}); err != nil {
@@ -742,7 +739,7 @@ loop:
 			if ts.resCh == nil { // Not running anymore
 				continue
 			}
-			if ok && (ts.CurStep < step || ts.CurPhase < targetStepPhaseRun) {
+			if ts.CurStep < step || ts.CurPhase < targetStepPhaseRun {
 				tr.log.Debugf("monitor pass %d: %s: not all targets injected yet (%s)", pass, ss, ts)
 				ok = false
 				break
