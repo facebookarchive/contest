@@ -476,7 +476,7 @@ commented for clarity:
 Test fetchers are responsible for retrieving the test steps that we want to run
 on each target.
 
-Test steps are encoded encodes in JSON format. For example:
+Test steps are encoded in JSON format. For example:
 ```
 {
     "steps": [
