@@ -3,10 +3,11 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
-package goroutine_leak_check
+package common
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -14,6 +15,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"testing"
+	"time"
 )
 
 var (
@@ -55,13 +58,12 @@ func checkLeakedGoRoutines(funcWhitelist ...string) (string, error) {
 	var badEntries []string
 
 	addBadEntry := func() {
-		fmt.Printf("XXX\n")
 		if e == nil {
 			return
 		}
 		found := false
 		for _, wle := range funcWhitelist {
-			if wle == e.Func {
+			if matched, _ := path.Match(wle, e.Func); matched {
 				found = true
 				break
 			}
@@ -72,7 +74,6 @@ func checkLeakedGoRoutines(funcWhitelist ...string) (string, error) {
 	}
 
 	for ln, line := range strings.Split(strBuf, "\n") {
-		fmt.Printf("  %d %s\n", ph, line)
 		switch ph {
 		case 0: // Look for an empty line
 			if len(line) == 0 {
@@ -137,4 +138,16 @@ func checkLeakedGoRoutines(funcWhitelist ...string) (string, error) {
 		err = fmt.Errorf("leaked goroutines:\n  %s\n", strings.Join(badEntries, "\n  "))
 	}
 	return strBuf, err
+}
+
+func LeakCheckingTestMain(m *testing.M, funcWhitelist ...string) {
+	ret := m.Run()
+	if ret == 0 {
+		time.Sleep(20 * time.Millisecond) // Give stragglers some time to exit.
+		if err := CheckLeakedGoRoutines(funcWhitelist...); err != nil {
+			fmt.Fprintf(os.Stderr, "%s", err)
+			ret = 1
+		}
+	}
+	os.Exit(ret)
 }

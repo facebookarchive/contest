@@ -1,10 +1,13 @@
 package statectx
 
 import (
+	"flag"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/facebookincubator/contest/tests/common"
 )
 
 func TestBackgroundContext(t *testing.T) {
@@ -165,4 +168,12 @@ func TestWithParent(t *testing.T) {
 
 		require.True(t, blocked)
 	})
+}
+
+func TestMain(m *testing.M) {
+	flag.Parse()
+	common.LeakCheckingTestMain(m,
+		// TODO: fix the leak
+		"github.com/facebookincubator/contest/pkg/statectx.(*cancelContext).propagateCancel.*",
+	)
 }

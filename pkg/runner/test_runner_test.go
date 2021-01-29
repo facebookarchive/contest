@@ -8,7 +8,6 @@ package runner
 import (
 	"flag"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -28,7 +27,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/plugins/storage/memory"
 	"github.com/facebookincubator/contest/plugins/teststeps/example"
-	"github.com/facebookincubator/contest/tests/goroutine_leak_check"
+	"github.com/facebookincubator/contest/tests/common"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/badtargets"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/channels"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/hanging"
@@ -77,19 +76,12 @@ func TestMain(m *testing.M) {
 			panic(fmt.Sprintf("could not register TestStep: %v", err))
 		}
 	}
-	ret := m.Run()
-	if ret == 0 {
-		time.Sleep(20 * time.Millisecond) // Give stragglers some time to exit.
-		if err := goroutine_leak_check.CheckLeakedGoRoutines(
-			// We expect these to leak.
-			"github.com/facebookincubator/contest/tests/plugins/teststeps/hanging.(*hanging).Run",
-			"github.com/facebookincubator/contest/tests/plugins/teststeps/noreturn.(*noreturnStep).Run",
-		); err != nil {
-			fmt.Fprintf(os.Stderr, "%s", err)
-			ret = 1
-		}
-	}
-	os.Exit(ret)
+	flag.Parse()
+	common.LeakCheckingTestMain(m,
+		// We expect these to leak.
+		"github.com/facebookincubator/contest/tests/plugins/teststeps/hanging.(*hanging).Run",
+		"github.com/facebookincubator/contest/tests/plugins/teststeps/noreturn.(*noreturnStep).Run",
+	)
 }
 
 func newTestRunner() *TestRunner {
