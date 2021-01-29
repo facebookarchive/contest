@@ -67,6 +67,9 @@ func WithParent(ctx Context) (Context, func(), func()) {
 	if ctx == nil {
 		return New()
 	}
+	if stCtx, ok := ctx.(*stateCtx); ok {
+		return newInternal(stCtx.cancelCtx, stCtx.pauseCtx, stCtx.pauseOrDoneCtx)
+	}
 	return newInternal(ctx, ctx.PausedCtx(), ctx.PausedOrDoneCtx())
 }
 
