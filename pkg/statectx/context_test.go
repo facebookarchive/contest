@@ -172,8 +172,5 @@ func TestWithParent(t *testing.T) {
 
 func TestMain(m *testing.M) {
 	flag.Parse()
-	common.LeakCheckingTestMain(m,
-		// TODO: fix the leak
-		"github.com/facebookincubator/contest/pkg/statectx.(*cancelContext).propagateCancel.*",
-	)
+	common.LeakCheckingTestMain(m)
 }
