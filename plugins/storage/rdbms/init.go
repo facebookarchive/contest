@@ -134,7 +134,10 @@ func (r *RDBMS) init() error {
 	}
 	sqlDb, err := sql.Open(driverName, r.dbURI)
 	if err != nil {
-		return fmt.Errorf("could not initialize database: %v", err)
+		return fmt.Errorf("could not initialize database: %w", err)
+	}
+	if err := sqlDb.Ping(); err != nil {
+		return fmt.Errorf("unable to contact database: %w", err)
 	}
 	r.db = sqlDb
 
