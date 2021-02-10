@@ -44,15 +44,18 @@ func main() {
 
 	pluginRegistry := pluginregistry.NewPluginRegistry()
 
-	// storage initialization
-	log.Infof("Using database URI: %s", *flagDBURI)
-	s, err := rdbms.New(*flagDBURI)
+	// primary storage initialization
+	log.Infof("Using database URI for primary storage: %s", *flagDBURI)
+
+	primaryDBURI := *flagDBURI
+	s, err := rdbms.New(primaryDBURI)
 	if err != nil {
 		log.Fatalf("Could not initialize database: %v", err)
 	}
 	if err := storage.SetStorage(s); err != nil {
 		log.Fatalf("Could not set storage: %v", err)
 	}
+
 	dbVer, err := s.Version()
 	if err != nil {
 		log.Warningf("Could not determine storage version: %v", err)
@@ -60,6 +63,24 @@ func main() {
 		log.Infof("Storage version: %d", dbVer)
 	}
 
+	// replica storage initialization
+	log.Infof("Using database URI for primary storage: %s", *flagDBURI)
+
+	replicaDBURI := *flagDBURI
+	s, err = rdbms.New(replicaDBURI)
+	if err != nil {
+		log.Fatalf("Could not initialize replica database: %v", err)
+	}
+	if err := storage.SetStorageAsync(s); err != nil {
+		log.Fatalf("Could not set replica storage: %v", err)
+	}
+
+	dbVer, err = s.Version()
+	if err != nil {
+		log.Warningf("Could not determine storage version: %v", err)
+	} else {
+		log.Infof("Storage version: %d", dbVer)
+	}
 	// set Locker engine
 	switch *flagTargetLocker {
 	case inmemory.Name:

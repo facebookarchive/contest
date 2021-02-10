@@ -60,7 +60,7 @@ type JobManager struct {
 	jobsMu sync.Mutex
 	jobsWg sync.WaitGroup
 
-	jobStorageManager storage.JobStorage
+	jobStorageManager storage.JobStorageManager
 
 	frameworkEvManager frameworkevent.EmitterFetcher
 	testEvManager      testevent.Fetcher

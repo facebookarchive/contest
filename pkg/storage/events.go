@@ -64,6 +64,14 @@ func (ev TestEventFetcher) Fetch(queryFields ...testevent.QueryField) ([]testeve
 	return storage.GetTestEvents(eventQuery)
 }
 
+func (ev FrameworkEventFetcher) FetchAsync(queryFields ...frameworkevent.QueryField) ([]frameworkevent.Event, error) {
+	eventQuery, err := frameworkevent.QueryFields(queryFields).BuildQuery()
+	if err != nil {
+		return nil, fmt.Errorf("unable to build a query: %w", err)
+	}
+	return storageAsync.GetFrameworkEvent(eventQuery)
+}
+
 // NewTestEventEmitter creates a new Emitter object associated with a Header
 func NewTestEventEmitter(header testevent.Header) testevent.Emitter {
 	return TestEventEmitter{header: header}
