@@ -16,7 +16,6 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/config"
-	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/statectx"
@@ -330,24 +329,23 @@ func (tr *testRunner) waitStepRunners(ctx statectx.Context) error {
 			tr.cond.Wait()
 		}
 	}()
-	var err error
 	select {
 	case <-swch:
 		tr.log.Debugf("step runners finished")
 		tr.mu.Lock()
 		defer tr.mu.Unlock()
-		err = tr.checkStepRunners()
+		return tr.checkStepRunners()
 	case <-time.After(tr.shutdownTimeout):
 		tr.log.Errorf("step runners failed to shut down correctly")
-		tr.mu.Lock()
-		defer tr.mu.Unlock()
 		// If there is a step with an error set, use that.
-		err = tr.checkStepRunners()
+		err := tr.checkStepRunners()
 		// If there isn't, enumerate ones that were still running at the time.
 		nrerr := &cerrors.ErrTestStepsNeverReturned{}
 		if err == nil {
 			err = nrerr
 		}
+		tr.mu.Lock()
+		defer tr.mu.Unlock()
 		for _, ss := range tr.steps {
 			if ss.stepRunning {
 				nrerr.StepNames = append(nrerr.StepNames, ss.sb.TestStepLabel)
@@ -355,16 +353,8 @@ func (tr *testRunner) waitStepRunners(ctx statectx.Context) error {
 				tr.safeCloseOutCh(ss)
 			}
 		}
+		return err
 	}
-	// Emit step error events.
-	for _, ss := range tr.steps {
-		if ss.runErr != nil && ss.runErr != statectx.ErrPaused && ss.runErr != statectx.ErrCanceled {
-			if err := ss.emitEvent(EventTestError, nil, ss.runErr.Error()); err != nil {
-				tr.log.Errorf("failed to emit event: %s", err)
-			}
-		}
-	}
-	return err
 }
 
 // targetRunner runs one target through all the steps of the pipeline.
@@ -403,28 +393,16 @@ loop:
 		select {
 		case ss.inCh <- ts.tgt:
 			// Injected successfully.
-			err := ss.ev.Emit(testevent.Data{EventName: target.EventTargetIn, Target: ts.tgt})
 			tr.mu.Lock()
 			ts.CurPhase = targetStepPhaseRun
 			ss.numInjected++
-			if err != nil {
-				ss.runErr = fmt.Errorf("failed to report target injection: %w", err)
-				ss.log.Errorf("%s", ss.runErr)
-			}
 			tr.mu.Unlock()
 			tr.cond.Signal()
-			if err != nil {
-				break loop
-			}
 		case <-time.After(tr.stepInjectTimeout):
 			tr.mu.Lock()
 			ss.log.Errorf("timed out while injecting a target")
 			ss.runErr = &cerrors.ErrTestTargetInjectionTimedOut{StepName: ss.sb.TestStepLabel}
 			tr.mu.Unlock()
-			err := ss.ev.Emit(testevent.Data{EventName: target.EventTargetInErr, Target: ts.tgt})
-			if err != nil {
-				ss.log.Errorf("failed to emit event: %s", err)
-			}
 			break loop
 		case <-ctx.Done():
 			log.Debugf("%s: canceled 1", ts)
@@ -438,15 +416,6 @@ loop:
 				break loop
 			}
 			log.Debugf("%s: result for %s recd", ts, ss)
-			var err error
-			if res == nil {
-				err = ss.emitEvent(target.EventTargetOut, ts.tgt, nil)
-			} else {
-				err = ss.emitEvent(target.EventTargetErr, ts.tgt, target.ErrPayload{Error: res.Error()})
-			}
-			if err != nil {
-				ss.log.Errorf("failed to emit event: %s", err)
-			}
 			tr.mu.Lock()
 			ts.CurPhase = targetStepPhaseEnd
 			ts.res = res
@@ -495,21 +464,20 @@ func (tr *testRunner) runStepIfNeeded(ctx statectx.Context, ss *stepState) {
 	go tr.stepReader(ctx, ss)
 }
 
-// emitEvent emits the specified event with the specified JSON payload (if any).
-func (ss *stepState) emitEvent(name event.Name, tgt *target.Target, payload interface{}) error {
-	var payloadJSON *json.RawMessage
-	if payload != nil {
-		payloadBytes, jmErr := json.Marshal(payload)
-		if jmErr != nil {
-			return fmt.Errorf("failed to marshal event: %w", jmErr)
-		}
-		pj := json.RawMessage(payloadBytes)
-		payloadJSON = &pj
+// emitStepEvent emits an error event if step resulted in an error.
+func (ss *stepState) emitStepEvent(tgt *target.Target, err error) error {
+	if err == nil {
+		return nil
 	}
+	payload, jmErr := json.Marshal(err.Error())
+	if jmErr != nil {
+		return fmt.Errorf("failed to marshal event: %w", err)
+	}
+	rm := json.RawMessage(payload)
 	errEv := testevent.Data{
-		EventName: name,
+		EventName: EventTestError,
 		Target:    tgt,
-		Payload:   payloadJSON,
+		Payload:   &rm,
 	}
 	return ss.ev.Emit(errEv)
 }
@@ -523,7 +491,7 @@ func (tr *testRunner) stepRunner(ctx statectx.Context, ss *stepState) {
 			ss.stepRunning = false
 			ss.runErr = &cerrors.ErrTestStepPaniced{
 				StepName:   ss.sb.TestStepLabel,
-				StackTrace: fmt.Sprintf("%s / %s", r, debug.Stack()),
+				StackTrace: string(debug.Stack()),
 			}
 			tr.mu.Unlock()
 			tr.safeCloseOutCh(ss)
@@ -531,6 +499,11 @@ func (tr *testRunner) stepRunner(ctx statectx.Context, ss *stepState) {
 	}()
 	chans := test.TestStepChannels{In: ss.inCh, Out: ss.outCh, Err: ss.errCh}
 	runErr := ss.sb.TestStep.Run(ctx, chans, ss.sb.Parameters, ss.ev)
+	if err := ss.emitStepEvent(nil, runErr); err != nil {
+		if ss.runErr == nil {
+			ss.runErr = err
+		}
+	}
 	tr.mu.Lock()
 	ss.stepRunning = false
 	if runErr != nil {
@@ -574,6 +547,11 @@ func (tr *testRunner) reportTargetResult(ctx statectx.Context, ss *stepState, tg
 	}()
 	if err != nil {
 		return err
+	}
+	if res != nil {
+		if err := ss.emitStepEvent(tgt, res); err != nil {
+			return err
+		}
 	}
 	select {
 	case resCh <- res:
