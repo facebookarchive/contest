@@ -209,6 +209,30 @@ func Test1Step1Success(t *testing.T) {
 `, getTargetEvents("T1"))
 }
 
+// Simple case: one target, one step that blocks for a bit, success.
+// We block for longer than the shutdown timeout of the test runner.
+func Test1StepLongerThanShutdown1Success(t *testing.T) {
+	resetEventStorage()
+	tr := NewTestRunnerWithTimeouts(stepInjectTimeout, 100 * time.Millisecond)
+	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
+		[]*target.Target{tgt("T1")},
+		[]test.TestStepBundle{
+			newTestStep("Step 1", 0, "", "T1=500"),
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, `
+{[1 1 SimpleTest Step 1][(*Target)(nil) TestStepRunningEvent]}
+{[1 1 SimpleTest Step 1][(*Target)(nil) TestStepFinishedEvent]}
+`, getStepEvents(""))
+	require.Equal(t, `
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TargetIn]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TestStartedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TestFinishedEvent]}
+{[1 1 SimpleTest Step 1][Target{ID: "T1"} TargetOut]}
+`, getTargetEvents("T1"))
+}
+
 // Simple case: one target, one step, failure.
 func Test1Step1Fail(t *testing.T) {
 	resetEventStorage()
