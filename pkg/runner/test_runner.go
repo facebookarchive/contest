@@ -26,11 +26,19 @@ import (
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
-// TestRunner is the state associated with a test run.
+// TestRunner is the interface test runner implements
+type TestRunner interface {
+	// ErrPaused will be returned when runner was able to pause successfully.
+	// When this error is returned from Run(), it is accompanied by valid serialized state
+	// that can be passed later to Run() to continue from where we left off.
+	Run(ctx statectx.Context, test *test.Test, targets []*target.Target, jobID types.JobID, runID types.RunID, resumeState []byte) ([]byte, error)
+}
+
+// testRunner is the state associated with a test run.
 // Here's how a test run works:
-//  * Each target gets a targetState and a "target handler" - a goroutine that takes that particular
+//  * Each target gets a targetState and a "target runner" - a goroutine that takes that particular
 //    target through each step of the pipeline in sequence. It injects the target, waits for the result,
-//    then moves on to the next step.
+//    then mves on to the next step.
 //  * Each step of the pipeline gets a stepState and:
 //    - A "step runner" - a goroutine that is responsible for running the step's Run() method
 //    - A "step reader" - a goroutine that processes results and sends them on to target runners that await them.
@@ -38,10 +46,10 @@ import (
 //    that checks on the pipeline's progress and is responsible for closing step input channels
 //    when all the targets have been injected.
 //  * Monitor loop finishes when all the targets have been injected into the last step
-//    or if a step has encountered an error.
+//    or if a step has encountered and error.
 //  * We then wait for all the step runners and readers to shut down.
 //  * Once all the activity has died down, resulting state is examined and an error is returned, if any.
-type TestRunner struct {
+type testRunner struct {
 	stepInjectTimeout time.Duration // Time to wait for steps to accept each target
 	shutdownTimeout   time.Duration // Time to wait for steps runners to finish a the end of the run
 
@@ -67,7 +75,8 @@ type stepState struct {
 	errCh chan cerrors.TargetError
 	ev    testevent.Emitter
 
-	tgtDone map[*target.Target]bool // Targets for which results have been received.
+	numInjected int                     // Number of targets injected.
+	tgtDone     map[*target.Target]bool // Targets for which results have been received.
 
 	stepRunning   bool  // testStep.Run() is currently running.
 	readerRunning bool  // Result reader is running.
@@ -80,11 +89,10 @@ type stepState struct {
 type targetStepPhase int
 
 const (
-	targetStepPhaseInvalid targetStepPhase = iota
-	targetStepPhaseInit                    // (1) Created
-	targetStepPhaseBegin                   // (2) Picked up for execution.
-	targetStepPhaseRun                     // (3) Injected into step.
-	targetStepPhaseEnd                     // (4) Finished running a step.
+	targetStepPhaseInit  targetStepPhase = 0
+	targetStepPhaseBegin targetStepPhase = 1 // Picked up for execution.
+	targetStepPhaseRun   targetStepPhase = 2 // Injected into step.
+	targetStepPhaseEnd   targetStepPhase = 3 // Finished running a step.
 )
 
 // targetState contains state associated with one target progressing through the pipeline.
@@ -113,7 +121,7 @@ type resumeStateStruct struct {
 const resumeStateStructVersion = 1
 
 // Run is the main enty point of the runner.
-func (tr *TestRunner) Run(
+func (tr *testRunner) Run(
 	ctx statectx.Context,
 	t *test.Test, targets []*target.Target,
 	jobID types.JobID, runID types.RunID,
@@ -133,7 +141,7 @@ func (tr *TestRunner) Run(
 	return resumeState, err
 }
 
-func (tr *TestRunner) run(
+func (tr *testRunner) run(
 	ctx statectx.Context,
 	t *test.Test, targets []*target.Target,
 	jobID types.JobID, runID types.RunID,
@@ -162,7 +170,6 @@ func (tr *TestRunner) run(
 			tgtDone: make(map[*target.Target]bool),
 			log:     logging.AddField(tr.log, "step", sb.TestStepLabel),
 		})
-		// Step handlers will be started from target handlers as targets reach them.
 	}
 
 	// Set up the targets
@@ -188,9 +195,7 @@ func (tr *TestRunner) run(
 	for _, tgt := range targets {
 		ts := tr.targets[tgt.ID]
 		if ts == nil {
-			ts = &targetState{
-				CurPhase: targetStepPhaseInit,
-			}
+			ts = &targetState{}
 		}
 		ts.tgt = tgt
 		ts.resCh = make(chan error)
@@ -198,10 +203,7 @@ func (tr *TestRunner) run(
 		tr.targets[tgt.ID] = ts
 		tr.mu.Unlock()
 		tr.targetsWg.Add(1)
-		go func() {
-			tr.targetHandler(targetCtx, stepCtx, ts)
-			tr.targetsWg.Done()
-		}()
+		go tr.targetRunner(targetCtx, stepCtx, ts)
 	}
 
 	// Run until no more progress can be made.
@@ -291,7 +293,7 @@ func (tr *TestRunner) run(
 	return resumeState, runErr
 }
 
-func (tr *TestRunner) waitStepRunners(ctx statectx.Context) error {
+func (tr *testRunner) waitStepRunners(ctx statectx.Context) error {
 	tr.log.Debugf("waiting for step runners to finish")
 	swch := make(chan struct{})
 	go func() {
@@ -365,77 +367,14 @@ func (tr *TestRunner) waitStepRunners(ctx statectx.Context) error {
 	return err
 }
 
-func (tr *TestRunner) injectTarget(ctx statectx.Context, ts *targetState, ss *stepState, log *logrus.Entry) error {
-	log.Debugf("%s: injecting into %s", ts, ss)
-	select {
-	case ss.inCh <- ts.tgt:
-		// Injected successfully.
-		err := ss.ev.Emit(testevent.Data{EventName: target.EventTargetIn, Target: ts.tgt})
-		tr.mu.Lock()
-		ts.CurPhase = targetStepPhaseRun
-		if err != nil {
-			return fmt.Errorf("failed to report target injection: %w", err)
-		}
-		tr.mu.Unlock()
-		tr.cond.Signal()
-		if err != nil {
-			return err
-		}
-	case <-time.After(tr.stepInjectTimeout):
-		ss.log.Errorf("timed out while injecting a target")
-		if err := ss.ev.Emit(testevent.Data{EventName: target.EventTargetInErr, Target: ts.tgt}); err != nil {
-			ss.log.Errorf("failed to emit event: %s", err)
-		}
-		return &cerrors.ErrTestTargetInjectionTimedOut{StepName: ss.sb.TestStepLabel}
-	case <-ctx.Done():
-		return statectx.ErrCanceled
-	}
-	return nil
-}
-
-func (tr *TestRunner) awaitTargetResult(ctx statectx.Context, ts *targetState, ss *stepState, log *logrus.Entry) error {
-	select {
-	case res, ok := <-ts.resCh:
-		if !ok {
-			log.Debugf("%s: result channel closed", ts)
-			return statectx.ErrCanceled
-		}
-		log.Debugf("%s: result for %s recd", ts, ss)
-		var err error
-		if res == nil {
-			err = ss.emitEvent(target.EventTargetOut, ts.tgt, nil)
-		} else {
-			err = ss.emitEvent(target.EventTargetErr, ts.tgt, target.ErrPayload{Error: res.Error()})
-		}
-		if err != nil {
-			ss.log.Errorf("failed to emit event: %s", err)
-		}
-		tr.mu.Lock()
-		ts.res = res
-		ts.CurPhase = targetStepPhaseEnd
-		tr.mu.Unlock()
-		tr.cond.Signal()
-		return err
-		// Check for cancellation.
-		// Notably we are not checking for the pause condition here:
-		// when paused, we want to let all the injected targets to finish
-		// and collect all the results they produce. If that doesn't happen,
-		// step runner will close resCh on its way out and unlock us.
-	case <-ctx.Done():
-		log.Debugf("%s: canceled 2", ts)
-		return statectx.ErrCanceled
-	}
-}
-
-// targetHandler takes a single target through each step of the pipeline in sequence.
-// It injects the target, waits for the result, then moves on to the next step.
-func (tr *TestRunner) targetHandler(ctx, stepCtx statectx.Context, ts *targetState) {
+// targetRunner runs one target through all the steps of the pipeline.
+func (tr *testRunner) targetRunner(ctx, stepCtx statectx.Context, ts *targetState) {
 	log := logging.AddField(tr.log, "target", ts.tgt.ID)
 	log.Debugf("%s: target runner active", ts)
 	// NB: CurStep may be non-zero on entry if resumed
 loop:
 	for i := ts.CurStep; i < len(tr.steps); {
-		// Early check for pause or cancelation.
+		// Early check for pause of cancelation.
 		select {
 		case <-ctx.Paused():
 			log.Debugf("%s: paused 0", ts)
@@ -456,47 +395,92 @@ loop:
 		ts.CurStep = i
 		ts.CurPhase = targetStepPhaseBegin
 		tr.mu.Unlock()
-		// Make sure we have a step runner active. If not, start one.
+		// Make sure we have a step runner active.
+		// These are started on-demand.
 		tr.runStepIfNeeded(stepCtx, ss)
 		// Inject the target.
-		err := tr.injectTarget(ctx, ts, ss, log)
-		// Await result. It will be communicated to us by the step runner
-		// and returned in ts.res.
-		if err == nil {
-			err = tr.awaitTargetResult(ctx, ts, ss, log)
-		}
-		if err != nil {
-			ss.log.Errorf("%s", err)
-			if err != statectx.ErrCanceled {
-				tr.mu.Lock()
-				ss.runErr = err
-				tr.mu.Unlock()
-			} else {
-				log.Debugf("%s: canceled 1", ts)
+		log.Debugf("%s: injecting into %s", ts, ss)
+		select {
+		case ss.inCh <- ts.tgt:
+			// Injected successfully.
+			err := ss.ev.Emit(testevent.Data{EventName: target.EventTargetIn, Target: ts.tgt})
+			tr.mu.Lock()
+			ts.CurPhase = targetStepPhaseRun
+			ss.numInjected++
+			if err != nil {
+				ss.runErr = fmt.Errorf("failed to report target injection: %w", err)
+				ss.log.Errorf("%s", ss.runErr)
 			}
-			break
-		}
-		tr.mu.Lock()
-		if ts.res != nil {
 			tr.mu.Unlock()
-			break
+			tr.cond.Signal()
+			if err != nil {
+				break loop
+			}
+		case <-time.After(tr.stepInjectTimeout):
+			tr.mu.Lock()
+			ss.log.Errorf("timed out while injecting a target")
+			ss.runErr = &cerrors.ErrTestTargetInjectionTimedOut{StepName: ss.sb.TestStepLabel}
+			tr.mu.Unlock()
+			err := ss.ev.Emit(testevent.Data{EventName: target.EventTargetInErr, Target: ts.tgt})
+			if err != nil {
+				ss.log.Errorf("failed to emit event: %s", err)
+			}
+			break loop
+		case <-ctx.Done():
+			log.Debugf("%s: canceled 1", ts)
+			break loop
 		}
-		i++
-		if i < len(tr.steps) {
-			ts.CurStep = i
-			ts.CurPhase = targetStepPhaseInit
+		// Await result. It will be communicated to us by the step runner.
+		select {
+		case res, ok := <-ts.resCh:
+			if !ok {
+				log.Debugf("%s: result channel closed", ts)
+				break loop
+			}
+			log.Debugf("%s: result for %s recd", ts, ss)
+			var err error
+			if res == nil {
+				err = ss.emitEvent(target.EventTargetOut, ts.tgt, nil)
+			} else {
+				err = ss.emitEvent(target.EventTargetErr, ts.tgt, target.ErrPayload{Error: res.Error()})
+			}
+			if err != nil {
+				ss.log.Errorf("failed to emit event: %s", err)
+			}
+			tr.mu.Lock()
+			ts.CurPhase = targetStepPhaseEnd
+			ts.res = res
+			tr.cond.Signal()
+			if res != nil {
+				tr.mu.Unlock()
+				break loop
+			}
+			i++
+			if i < len(tr.steps) {
+				ts.CurStep = i
+				ts.CurPhase = targetStepPhaseInit
+			}
+			tr.mu.Unlock()
+			// Check for cancellation.
+			// Notably we are not checking for the pause condition here:
+			// when paused, we want to let all the injected targets to finish
+			// and collect all the results they produce. If that doesn't happen,
+			// step runner will close resCh on its way out and unlock us.
+		case <-ctx.Done():
+			log.Debugf("%s: canceled 2", ts)
+			break loop
 		}
-		tr.mu.Unlock()
 	}
 	log.Debugf("%s: target runner finished", ts)
 	tr.mu.Lock()
 	ts.resCh = nil
 	tr.cond.Signal()
 	tr.mu.Unlock()
+	tr.targetsWg.Done()
 }
 
 // runStepIfNeeded starts the step runner goroutine if not already running.
-func (tr *TestRunner) runStepIfNeeded(ctx statectx.Context, ss *stepState) {
+func (tr *testRunner) runStepIfNeeded(ctx statectx.Context, ss *stepState) {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 	if ss.stepRunning {
@@ -531,7 +515,7 @@ func (ss *stepState) emitEvent(name event.Name, tgt *target.Target, payload inte
 }
 
 // stepRunner runs a test pipeline's step (the Run() method).
-func (tr *TestRunner) stepRunner(ctx statectx.Context, ss *stepState) {
+func (tr *testRunner) stepRunner(ctx statectx.Context, ss *stepState) {
 	ss.log.Debugf("%s: step runner active", ss)
 	defer func() {
 		if r := recover(); r != nil {
@@ -559,7 +543,7 @@ func (tr *TestRunner) stepRunner(ctx statectx.Context, ss *stepState) {
 }
 
 // reportTargetResult reports result of executing a step to the appropriate target runner.
-func (tr *TestRunner) reportTargetResult(ctx statectx.Context, ss *stepState, tgt *target.Target, res error) error {
+func (tr *testRunner) reportTargetResult(ctx statectx.Context, ss *stepState, tgt *target.Target, res error) error {
 	resCh, err := func() (chan error, error) {
 		tr.mu.Lock()
 		defer tr.mu.Unlock()
@@ -600,7 +584,7 @@ func (tr *TestRunner) reportTargetResult(ctx statectx.Context, ss *stepState, tg
 	return nil
 }
 
-func (tr *TestRunner) safeCloseOutCh(ss *stepState) {
+func (tr *testRunner) safeCloseOutCh(ss *stepState) {
 	defer func() {
 		if r := recover(); r != nil {
 			tr.mu.Lock()
@@ -612,7 +596,7 @@ func (tr *TestRunner) safeCloseOutCh(ss *stepState) {
 }
 
 // safeCloseErrCh closes error channel safely, even if it has already been closed.
-func (tr *TestRunner) safeCloseErrCh(ss *stepState) {
+func (tr *testRunner) safeCloseErrCh(ss *stepState) {
 	defer func() {
 		if r := recover(); r != nil {
 			tr.mu.Lock()
@@ -624,7 +608,7 @@ func (tr *TestRunner) safeCloseErrCh(ss *stepState) {
 }
 
 // stepReader receives results from the step's output channel and forwards them to the appropriate target runners.
-func (tr *TestRunner) stepReader(ctx statectx.Context, ss *stepState) {
+func (tr *testRunner) stepReader(ctx statectx.Context, ss *stepState) {
 	ss.log.Debugf("%s: step reader active", ss)
 	var err error
 	outCh := ss.outCh
@@ -636,9 +620,9 @@ loop:
 				ss.log.Debugf("%s: out chan closed", ss)
 				// At this point we may still have an error to report,
 				// wait until error channel is emptied too.
-				outCh = nil
+				outCh = make(chan *target.Target)
 				tr.safeCloseErrCh(ss)
-				continue loop
+				break
 			}
 			if err = tr.reportTargetResult(ctx, ss, tgt, nil); err != nil {
 				break loop
@@ -684,7 +668,7 @@ loop:
 }
 
 // checkStepRunnersLocked checks if any step runner has encountered an error.
-func (tr *TestRunner) checkStepRunners() error {
+func (tr *testRunner) checkStepRunners() error {
 	for _, ss := range tr.steps {
 		if ss.runErr != nil {
 			return ss.runErr
@@ -698,12 +682,12 @@ func (tr *TestRunner) checkStepRunners() error {
 // It also monitors steps for critical errors and cancels the whole run.
 // Note: input channels remain open when cancellation is requested,
 // plugins are expected to handle it explicitly.
-func (tr *TestRunner) runMonitor() error {
+func (tr *testRunner) runMonitor() error {
 	tr.log.Debugf("monitor: active")
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 	// First, compute the starting step of the pipeline (it may be non-zero
-	// if the pipeline was resumed).
+	// if the pipleine was resumed).
 	minStep := len(tr.steps)
 	for _, ts := range tr.targets {
 		if ts.CurStep < minStep {
@@ -751,8 +735,8 @@ loop:
 	return runErr
 }
 
-func NewTestRunnerWithTimeouts(stepInjectTimeout, shutdownTimeout time.Duration) *TestRunner {
-	tr := &TestRunner{
+func NewTestRunnerWithTimeouts(stepInjectTimeout, shutdownTimeout time.Duration) TestRunner {
+	tr := &testRunner{
 		stepInjectTimeout: stepInjectTimeout,
 		shutdownTimeout:   shutdownTimeout,
 	}
@@ -760,14 +744,12 @@ func NewTestRunnerWithTimeouts(stepInjectTimeout, shutdownTimeout time.Duration)
 	return tr
 }
 
-func NewTestRunner() *TestRunner {
+func NewTestRunner() TestRunner {
 	return NewTestRunnerWithTimeouts(config.StepInjectTimeout, config.TestRunnerShutdownTimeout)
 }
 
 func (tph targetStepPhase) String() string {
 	switch tph {
-	case targetStepPhaseInvalid:
-		return "INVALID"
 	case targetStepPhaseInit:
 		return "init"
 	case targetStepPhaseBegin:

@@ -84,7 +84,7 @@ func TestMain(m *testing.M) {
 	)
 }
 
-func newTestRunner() *TestRunner {
+func newTestRunner() TestRunner {
 	return NewTestRunnerWithTimeouts(stepInjectTimeout, shutdownTimeout)
 }
 
@@ -165,7 +165,7 @@ type runRes struct {
 	err error
 }
 
-func runWithTimeout(t *testing.T, tr *TestRunner, ctx statectx.Context, resumeState []byte, runID types.RunID, timeout time.Duration, targets []*target.Target, bundles []test.TestStepBundle) ([]byte, error) {
+func runWithTimeout(t *testing.T, tr TestRunner, ctx statectx.Context, resumeState []byte, runID types.RunID, timeout time.Duration, targets []*target.Target, bundles []test.TestStepBundle) ([]byte, error) {
 	newCtx, _, cancel := statectx.WithParent(ctx)
 	test := &test.Test{
 		Name:             testName,
