@@ -39,6 +39,11 @@ func (jsm JobStorageManager) GetJobRequest(jobID types.JobID) (*job.Request, err
 	return storage.GetJobRequest(jobID)
 }
 
+// GetJobRequest fetches a job request from the read-only storage layer
+func (jsm JobStorageManager) GetJobRequestAsync(jobID types.JobID) (*job.Request, error) {
+	return storageAsync.GetJobRequest(jobID)
+}
+
 // StoreJobReport submits a job report to the storage layer
 func (jsm JobStorageManager) StoreJobReport(report *job.JobReport) error {
 	return storage.StoreJobReport(report)
@@ -47,6 +52,11 @@ func (jsm JobStorageManager) StoreJobReport(report *job.JobReport) error {
 // GetJobReport fetches a job report from the storage layer
 func (jsm JobStorageManager) GetJobReport(jobID types.JobID) (*job.JobReport, error) {
 	return storage.GetJobReport(jobID)
+}
+
+// GetJobReport fetches a job report from the storage layer
+func (jsm JobStorageManager) GetJobReportAsync(jobID types.JobID) (*job.JobReport, error) {
+	return storageAsync.GetJobReport(jobID)
 }
 
 // ListJobs returns list of job IDs matching the query
