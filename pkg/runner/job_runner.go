@@ -186,7 +186,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				var resumeState []byte
 				resumeState, err := testRunner.Run(j.StateCtx, t, targets, j.ID, types.RunID(run+1), resumeState)
 				if err == statectx.ErrPaused {
-					jobLog.Errorf("Runner paused, state: %s", string(resumeState))
+					jobLog.Debugf("Runner paused, state: %s", string(resumeState))
 					// TODO(rojer): Persist the state.
 				} else {
 					runErr = err

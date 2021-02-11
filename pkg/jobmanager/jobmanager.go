@@ -159,6 +159,8 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 			if err != nil {
 				return nil, err
 			}
+			// test step index is incremented by 1 so we can use 0 to signal an
+			// anomaly.
 			tsb, err := pr.NewTestStepBundle(*testStepDesc, tse)
 			if err != nil {
 				return nil, fmt.Errorf("NewTestStepBundle for test step '%s' with index %d failed: %w", testStepDesc.Name, idx, err)
