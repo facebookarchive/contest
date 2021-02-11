@@ -26,14 +26,14 @@ func (jm *JobManager) stop(ev *api.Event) *api.EventResponse {
 		log.Errorf("Cannot stop job: %v", err)
 		return &api.EventResponse{Err: fmt.Errorf("could not stop job: %v", err)}
 	}
-	_ = jm.emitEvent(jobID, job.EventJobCancelling)
+	_ = jm.emitEvent(jobID, EventJobCancelling)
 	return &api.EventResponse{
 		JobID:     jobID,
 		Requestor: ev.Msg.Requestor(),
 		Err:       nil,
 		Status: &job.Status{
 			Name:      "UnknownJobName",
-			State:     string(job.EventJobCancelling),
+			State:     string(EventJobCancelling),
 			StartTime: time.Now(),
 		},
 	}

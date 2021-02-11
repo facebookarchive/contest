@@ -249,7 +249,7 @@ func (suite *TestJobManagerSuite) TearDownTest() {
 }
 
 func (suite *TestJobManagerSuite) TestPauseAndExit() {
-	suite.testExit(syscall.SIGINT, job.EventJobPaused, time.Second)
+	suite.testExit(syscall.SIGINT, jobmanager.EventJobPaused, time.Second)
 }
 
 func (suite *TestJobManagerSuite) testExit(
@@ -266,7 +266,7 @@ func (suite *TestJobManagerSuite) testExit(
 	require.NoError(suite.T(), err)
 
 	// JobManager will emit an EventJobStarted when the Job is started
-	ev, err := pollForEvent(suite.eventManager, job.EventJobStarted, jobID)
+	ev, err := pollForEvent(suite.eventManager, jobmanager.EventJobStarted, jobID)
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
@@ -315,12 +315,12 @@ func (suite *TestJobManagerSuite) TestJobManagerJobStartSingle() {
 	require.NotEqual(suite.T(), nil, r)
 
 	// JobManager will emit an EventJobStarted when the Job is started
-	ev, err := pollForEvent(suite.eventManager, job.EventJobStarted, types.JobID(jobID))
+	ev, err := pollForEvent(suite.eventManager, jobmanager.EventJobStarted, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
 	// JobManager will emit an EventJobCompleted when the Job completes
-	ev, err = pollForEvent(suite.eventManager, job.EventJobCompleted, types.JobID(jobID))
+	ev, err = pollForEvent(suite.eventManager, jobmanager.EventJobCompleted, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
@@ -336,7 +336,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobReport() {
 	require.NoError(suite.T(), err)
 
 	// JobManager will emit an EventJobCompleted when the Job completes
-	ev, err := pollForEvent(suite.eventManager, job.EventJobCompleted, types.JobID(jobID))
+	ev, err := pollForEvent(suite.eventManager, jobmanager.EventJobCompleted, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
@@ -365,7 +365,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCancellation() {
 
 	// Wait EventJobStarted event. This is necessary so that we can later issue a
 	// Stop command for a Job that we know is already running.
-	ev, err := pollForEvent(suite.eventManager, job.EventJobStarted, types.JobID(jobID))
+	ev, err := pollForEvent(suite.eventManager, jobmanager.EventJobStarted, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
@@ -375,7 +375,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCancellation() {
 
 	// JobManager will emit an EventJobCancelling as soon as the cancellation signal
 	// is asserted
-	ev, err = pollForEvent(suite.eventManager, job.EventJobCancelling, types.JobID(jobID))
+	ev, err = pollForEvent(suite.eventManager, jobmanager.EventJobCancelling, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
@@ -383,7 +383,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCancellation() {
 	// cancellation successfully (completing cancellation successfully means that
 	// the TestRunner returns within the timeout and that TargetManage.Release()
 	// all targets)
-	ev, err = pollForEvent(suite.eventManager, job.EventJobCancelled, types.JobID(jobID))
+	ev, err = pollForEvent(suite.eventManager, jobmanager.EventJobCancelled, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 }
@@ -400,7 +400,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobNotSuccessful() {
 
 	// If the Job completes, but the result of the reporting phase indicates a failure,
 	// an EventJobCompleted is emitted and the Report will indicate that the Job was unsuccessful
-	ev, err := pollForEvent(suite.eventManager, job.EventJobCompleted, types.JobID(jobID))
+	ev, err := pollForEvent(suite.eventManager, jobmanager.EventJobCompleted, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
@@ -422,7 +422,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobFailure() {
 
 	// If the Job completes, but the result of the reporting phase indicates a failure,
 	// an EventJobCompleted is emitted and the Report will indicate that the Job was unsuccessful
-	ev, err := pollForEvent(suite.eventManager, job.EventJobCompleted, types.JobID(jobID))
+	ev, err := pollForEvent(suite.eventManager, jobmanager.EventJobCompleted, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
@@ -443,7 +443,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCrash() {
 	// If the Job does not complete and returns an error instead, an EventJobFailed
 	// is emitted. The report will indicate that the job was unsuccessful, and
 	// the report calculate by the plugin will be nil
-	ev, err := pollForEvent(suite.eventManager, job.EventJobFailed, types.JobID(jobID))
+	ev, err := pollForEvent(suite.eventManager, jobmanager.EventJobFailed, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 	require.Equal(suite.T(), "{\"Err\":\"TestStep crashed\"}", string(*ev[0].Payload))
@@ -468,7 +468,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCancellationFailure() {
 
 	// Wait EventJobStarted event. This is necessary so that we can later issue a
 	// Stop command for a Job that we know is already running.
-	ev, err := pollForEvent(suite.eventManager, job.EventJobStarted, types.JobID(jobID))
+	ev, err := pollForEvent(suite.eventManager, jobmanager.EventJobStarted, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
@@ -477,7 +477,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCancellationFailure() {
 
 	// JobManager will emit an EventJobCancelling as soon as the cancellation signal
 	// is asserted
-	ev, err = pollForEvent(suite.eventManager, job.EventJobCancelling, types.JobID(jobID))
+	ev, err = pollForEvent(suite.eventManager, jobmanager.EventJobCancelling, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
@@ -485,7 +485,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCancellationFailure() {
 	// completed cancellation successfully (completing cancellation successfully
 	// means that the TestRunner returns within the timeout and that
 	// TargetManage.Release() all targets)
-	ev, err = pollForEvent(suite.eventManager, job.EventJobCancelling, types.JobID(jobID))
+	ev, err = pollForEvent(suite.eventManager, jobmanager.EventJobCancelling, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 

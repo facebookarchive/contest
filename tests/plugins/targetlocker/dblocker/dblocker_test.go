@@ -12,13 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/plugins/targetlocker/dblocker"
-	"github.com/facebookincubator/contest/tests/integ/common"
+	"github.com/stretchr/testify/assert"
 )
 
 var (
@@ -39,7 +37,8 @@ func TestMain(m *testing.M) {
 	logging.GetLogger("tests/integ")
 	logging.Disable()
 
-	locker, err := dblocker.New(common.GetDatabaseURI())
+	dbURI := "contest:contest@tcp(mysql:3306)/contest_integ?parseTime=true"
+	locker, err := dblocker.New(dbURI)
 	if err != nil {
 		panic(err)
 	}
