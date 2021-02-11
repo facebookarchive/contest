@@ -40,10 +40,9 @@ type ErrPayload struct {
 // FQDN, PrimaryIPv4, and PrimaryIPv6 are used by plugins to contact the target, set as many as possible for maximum plugin compatibility.
 // Plugins are generally expected to attempt contacting devices via FQDN, IPv4, and IPv6. Note there is no way to enforce this and more specialized plugins might only support a subset.
 type Target struct {
-	ID          string
-	FQDN        string
-	PrimaryIPv4 net.IP
-	PrimaryIPv6 net.IP
+	ID string
+    FQDN string
+    PrimaryIPv4, PrimaryIPv6 net.IP
 }
 
 func (t *Target) String() string {

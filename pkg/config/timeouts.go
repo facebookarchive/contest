@@ -16,13 +16,34 @@ var TargetManagerAcquireTimeout = 5 * time.Minute
 var TargetManagerReleaseTimeout = 5 * time.Minute
 
 // StepInjectTimeout represents the maximum time that TestRunner will wait for
-// a TestStep to accept a Target
+// the first TestStep of the pipeline to accept a Target
 var StepInjectTimeout = 30 * time.Second
 
-// TestRunnerShutdownTimeout represents the maximum time that the TestRunner
-// will wait for all TestSteps to complete after all Targets have reached the end
-// of the pipeline.
+// TestRunnerMsgTimeout represents the maximum time that any component of the
+// TestRunner will wait for the delivery of a message to any other subsystem
+// of the TestRunner
+var TestRunnerMsgTimeout = 5 * time.Second
+
+// TestRunnerShutdownTimeout represents the maximum time that the TestRunner will
+// wait for all the TestStep to complete after a cancellation signal has been
+// delivered
+
+// TestRunnerShutdownTimeout controls a block of the TestRunner which works as a
+// watchdog, i.e. if there are multiple steps that need to return, the timeout is
+// reset every time a step returns. The timeout should be handled so that it
+// doesn't reset when a TestStep returns.
 var TestRunnerShutdownTimeout = 30 * time.Second
+
+// TestRunnerStepShutdownTimeout represents the maximum time that the TestRunner
+// will wait for all TestSteps to complete after all Targets have reached the end
+// of the pipeline. This timeout is only relevant if a cancellation signal is *not*
+// delivered.
+
+// TestRunnerStepShutdownTimeout controls a block of the TestRunner which worksas
+// a watchdog, i.e. if there are multiple steps that need to return, the timeout
+// is reset every time a step returns. The timeout should be handled so that it
+// doesn't reset when a TestStep returns.
+var TestRunnerStepShutdownTimeout = 5 * time.Second
 
 // LockRefreshTimeout is the amount of time by which a target lock is extended
 // periodically while a job is running.

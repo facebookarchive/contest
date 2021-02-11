@@ -16,7 +16,7 @@ import (
 // Name is the name used to look this plugin up.
 var Name = "Channels"
 
-// Events defines the events that a TestStep is allowed to emit
+// Events defines the events that a TestStep is allow to emit
 var Events = []event.Name{}
 
 type channels struct {
@@ -27,14 +27,12 @@ func (ts *channels) Name() string {
 	return Name
 }
 
-// Run executes a step that runs fine but closes its output channels on exit.
+// Run executes a step which does never return.s
 func (ts *channels) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	for target := range ch.In {
 		ch.Out <- target
 	}
-	// This is bad, do not do this.
 	close(ch.Out)
-	close(ch.Err)
 	return nil
 }
 

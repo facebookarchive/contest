@@ -13,8 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
+	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
@@ -24,6 +23,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
+
 	"github.com/facebookincubator/contest/plugins/storage/memory"
 	"github.com/facebookincubator/contest/plugins/teststeps/cmd"
 	"github.com/facebookincubator/contest/plugins/teststeps/echo"
@@ -34,6 +34,8 @@ import (
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/hanging"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/noreturn"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/panicstep"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -128,7 +130,7 @@ func TestSuccessfulCompletion(t *testing.T) {
 
 	go func() {
 		tr := runner.NewTestRunner()
-		_, err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID, nil)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 	select {
@@ -136,6 +138,180 @@ func TestSuccessfulCompletion(t *testing.T) {
 		require.NoError(t, err)
 	case <-time.After(successTimeout):
 		t.Errorf("test should return within timeout (%s)", successTimeout.String())
+	}
+}
+
+func TestPanicStep(t *testing.T) {
+
+	jobID := types.JobID(1)
+	runID := types.RunID(1)
+
+	ts1, err := pluginRegistry.NewTestStep("Panic")
+	require.NoError(t, err)
+	ts2, err := pluginRegistry.NewTestStep("Example")
+	require.NoError(t, err)
+
+	params := make(test.TestStepParameters)
+	testSteps := []test.TestStepBundle{
+		test.TestStepBundle{TestStep: ts1, TestStepLabel: "StageOne", Parameters: params},
+		test.TestStepBundle{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
+	}
+
+	errCh := make(chan error, 1)
+	stateCtx, _, _ := statectx.New()
+
+	go func() {
+		tr := runner.NewTestRunner()
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		errCh <- err
+	}()
+	select {
+	case err = <-errCh:
+		require.Error(t, err)
+	case <-time.After(successTimeout):
+		t.Errorf("test should return within timeout: %+v", successTimeout)
+	}
+}
+
+func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
+
+	jobID := types.JobID(1)
+	runID := types.RunID(1)
+
+	ts1, err := pluginRegistry.NewTestStep("NoReturn")
+	require.NoError(t, err)
+	ts2, err := pluginRegistry.NewTestStep("Example")
+	require.NoError(t, err)
+
+	params := make(test.TestStepParameters)
+	testSteps := []test.TestStepBundle{
+		test.TestStepBundle{TestStep: ts1, Parameters: params, TestStepLabel: "NoReturn"},
+		test.TestStepBundle{TestStep: ts2, Parameters: params, TestStepLabel: "Example"},
+	}
+
+	stateCtx, _, _ := statectx.New()
+	errCh := make(chan error, 1)
+
+	timeouts := runner.TestRunnerTimeouts{
+		StepInjectTimeout:   30 * time.Second,
+		MessageTimeout:      5 * time.Second,
+		ShutdownTimeout:     1 * time.Second,
+		StepShutdownTimeout: 1 * time.Second,
+	}
+	go func() {
+		tr := runner.NewTestRunnerWithTimeouts(timeouts)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		errCh <- err
+	}()
+	select {
+	case err = <-errCh:
+		require.Error(t, err)
+		if _, ok := err.(*cerrors.ErrTestStepsNeverReturned); !ok {
+			errString := fmt.Sprintf("Error returned by TestRunner should be of type ErrTestStepsNeverReturned: %v", err)
+			assert.FailNow(t, errString)
+		}
+		assert.NotNil(t, err.(*cerrors.ErrTestStepsNeverReturned))
+	case <-time.After(successTimeout):
+		t.Errorf("test should return within timeout: %+v", successTimeout)
+	}
+}
+
+func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
+
+	jobID := types.JobID(1)
+	runID := types.RunID(1)
+
+	ts1, err := pluginRegistry.NewTestStep("Hanging")
+	require.NoError(t, err)
+	ts2, err := pluginRegistry.NewTestStep("Example")
+	require.NoError(t, err)
+
+	params := make(test.TestStepParameters)
+	testSteps := []test.TestStepBundle{
+		test.TestStepBundle{TestStep: ts1, TestStepLabel: "StageOne", Parameters: params},
+		test.TestStepBundle{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
+	}
+
+	stateCtx, _, cancel := statectx.New()
+	errCh := make(chan error, 1)
+
+	var (
+		StepInjectTimeout   = 30 * time.Second
+		MessageTimeout      = 5 * time.Second
+		ShutdownTimeout     = 1 * time.Second
+		StepShutdownTimeout = 1 * time.Second
+	)
+	timeouts := runner.TestRunnerTimeouts{
+		StepInjectTimeout:   StepInjectTimeout,
+		MessageTimeout:      MessageTimeout,
+		ShutdownTimeout:     ShutdownTimeout,
+		StepShutdownTimeout: StepShutdownTimeout,
+	}
+
+	go func() {
+		tr := runner.NewTestRunnerWithTimeouts(timeouts)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		errCh <- err
+	}()
+
+	testTimeout := 2 * time.Second
+	testShutdownTimeout := ShutdownTimeout + StepShutdownTimeout + 2
+	select {
+	case err = <-errCh:
+		// The TestRunner should never return and should instead time out
+		assert.FailNow(t, "TestRunner should not return, received an error instead: %v", err)
+	case <-time.After(testTimeout):
+		// Assert cancellation signal and expect the TestRunner to return within
+		// testShutdownTimeout
+		cancel()
+		select {
+		case err = <-errCh:
+			// The test timed out, which is an error from the perspective of the JobManager
+			require.Error(t, err)
+			if _, ok := err.(*cerrors.ErrTestStepsNeverReturned); !ok {
+				errString := fmt.Sprintf("Error returned by TestRunner should be of type ErrTestStepsNeverReturned: %v", err)
+				assert.FailNow(t, errString)
+			}
+		case <-time.After(testShutdownTimeout):
+			assert.FailNow(t, "TestRunner should return after cancellation before timeout")
+		}
+	}
+}
+
+func TestStepClosesChannels(t *testing.T) {
+
+	jobID := types.JobID(1)
+	runID := types.RunID(1)
+
+	ts1, err := pluginRegistry.NewTestStep("Channels")
+	require.NoError(t, err)
+	ts2, err := pluginRegistry.NewTestStep("Example")
+	require.NoError(t, err)
+
+	params := make(test.TestStepParameters)
+	testSteps := []test.TestStepBundle{
+		test.TestStepBundle{TestStep: ts1, TestStepLabel: "StageOne", Parameters: params},
+		test.TestStepBundle{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
+	}
+
+	stateCtx, _, _ := statectx.New()
+	errCh := make(chan error, 1)
+
+	go func() {
+		tr := runner.NewTestRunner()
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		errCh <- err
+	}()
+
+	testTimeout := 2 * time.Second
+	select {
+	case err = <-errCh:
+		if _, ok := err.(*cerrors.ErrTestStepClosedChannels); !ok {
+			errString := fmt.Sprintf("Error returned by TestRunner should be of type ErrTestStepClosedChannels, got %T(%v)", err, err)
+			assert.FailNow(t, errString)
+		}
+	case <-time.After(testTimeout):
+		assert.FailNow(t, "TestRunner should not time out")
 	}
 }
 
@@ -164,7 +340,7 @@ func TestCmdPlugin(t *testing.T) {
 
 	go func() {
 		tr := runner.NewTestRunner()
-		_, err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID, nil)
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
 		errCh <- err
 	}()
 
@@ -177,5 +353,39 @@ func TestCmdPlugin(t *testing.T) {
 	case <-errCh:
 	case <-time.After(successTimeout):
 		t.Errorf("test should return within timeout: %+v", successTimeout)
+	}
+}
+
+func TestNoRunTestStepIfNoTargets(t *testing.T) {
+
+	jobID := types.JobID(1)
+	runID := types.RunID(1)
+
+	ts1, err := pluginRegistry.NewTestStep("Fail")
+	require.NoError(t, err)
+	ts2, err := pluginRegistry.NewTestStep("Crash")
+	require.NoError(t, err)
+
+	params := make(test.TestStepParameters)
+	testSteps := []test.TestStepBundle{
+		{TestStep: ts1, TestStepLabel: "StageOne", Parameters: params},
+		{TestStep: ts2, TestStepLabel: "StageTwo", Parameters: params},
+	}
+
+	stateCtx, _, _ := statectx.New()
+	errCh := make(chan error, 1)
+
+	go func() {
+		tr := runner.NewTestRunner()
+		err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID)
+		errCh <- err
+	}()
+
+	testTimeout := 2 * time.Second
+	select {
+	case err = <-errCh:
+		assert.Nil(t, err, "the Crash TestStep shouldn't be ran")
+	case <-time.After(testTimeout):
+		assert.FailNow(t, "TestRunner should not time out")
 	}
 }

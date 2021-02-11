@@ -39,10 +39,10 @@ func Background() Context {
 	}
 }
 
-func newInternal(cctx, pctx, cpctx context.Context) (Context, func(), func()) {
-	cancelCtx, cancel := newCancelContext(cctx)
-	pauseCtx, pause := newCancelContext(pctx)
-	pauseOrDoneCtx, pauseOrDone := newCancelContext(cpctx)
+func New() (Context, func(), func()) {
+	cancelCtx, cancel := newCancelContext(context.Background())
+	pauseCtx, pause := newCancelContext(context.Background())
+	pauseOrDoneCtx, pauseOrDone := newCancelContext(context.Background())
 
 	resCtx := &stateCtx{
 		cancelCtx:      cancelCtx,
@@ -59,18 +59,24 @@ func newInternal(cctx, pctx, cpctx context.Context) (Context, func(), func()) {
 	return resCtx, wrap(pause, ErrPaused), wrap(cancel, ErrCanceled)
 }
 
-func New() (Context, func(), func()) {
-	return newInternal(context.Background(), context.Background(), context.Background())
-}
-
 func WithParent(ctx Context) (Context, func(), func()) {
-	if ctx == nil {
-		return New()
+	cancelCtx, cancel := newCancelContext(ctx)
+	pauseCtx, pause := newCancelContext(ctx.PausedCtx())
+	pauseOrDoneCtx, pauseOrDone := newCancelContext(ctx.PausedOrDoneCtx())
+
+	resCtx := &stateCtx{
+		cancelCtx:      cancelCtx,
+		pauseCtx:       pauseCtx,
+		pauseOrDoneCtx: pauseOrDoneCtx,
 	}
-	if stCtx, ok := ctx.(*stateCtx); ok {
-		return newInternal(stCtx.cancelCtx, stCtx.pauseCtx, stCtx.pauseOrDoneCtx)
+
+	wrap := func(action func(err error), err error) func() {
+		return func() {
+			pauseOrDone(err)
+			action(err)
+		}
 	}
-	return newInternal(ctx, ctx.PausedCtx(), ctx.PausedOrDoneCtx())
+	return resCtx, wrap(pause, ErrPaused), wrap(cancel, ErrCanceled)
 }
 
 type stateCtx struct {

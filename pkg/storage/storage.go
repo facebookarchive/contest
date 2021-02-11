@@ -58,7 +58,6 @@ type TransactionalStorage interface {
 
 // ResettableStorage is implemented by storage engines that support reset operation
 type ResettableStorage interface {
-	Storage
 	Reset() error
 }
 
