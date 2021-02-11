@@ -24,15 +24,6 @@ import (
 //
 // Get the status of a job whose ID is 10
 //   ./contestcli-http status 10
-//
-// List all the jobs:
-//   ./contestcli-http list
-//
-// List all the failed jobs:
-//   ./contestcli-http list -state JobStateFailed
-//
-// List all the failed jobs with tags "foo" and "bar":
-//   ./contestcli-http list -state JobStateFailed -tags foo,bar
 
 const (
 	defaultRequestor = "contestcli-http"
@@ -44,10 +35,6 @@ var (
 	flagRequestor = flag.StringP("requestor", "r", defaultRequestor, "Identifier of the requestor of the API call")
 	flagWait      = flag.BoolP("wait", "w", false, "After starting a job, wait for it to finish, and exit 0 only if it is successful")
 	flagYAML      = flag.BoolP("yaml", "Y", false, "Parse job descriptor as YAML instead of JSON")
-
-	// Flags for the "list" command.
-	flagStates = flag.StringSlice("states", []string{}, "List of job states for the list command. A job must be in any of the specified states to match.")
-	flagTags   = flag.StringSlice("tags", []string{}, "List of tags for the list command. A job must have all the tags to match.")
 )
 
 func main() {
@@ -65,8 +52,6 @@ func main() {
 		fmt.Fprintf(flag.CommandLine.Output(), "        get the status of a job by job ID\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  retry int\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "        retry a job by job ID\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  list [--states=JobStateStarted,...] [--tags=foo,...]\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "        list jobs by state and/or tags\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  version\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "        request the API version to the server\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "\nargs:\n")

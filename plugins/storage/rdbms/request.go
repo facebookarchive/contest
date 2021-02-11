@@ -14,30 +14,17 @@ import (
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
-const (
-	insertJobStmt    = "insert into jobs (name, descriptor, teststeps, requestor, server_id, request_time) values (?, ?, ?, ?, ?, ?)"
-	insertJobTagStmt = "insert into job_tags (job_id, tag) values (?, ?)"
-)
-
 // StoreJobRequest stores a new job request in the database
 func (r *RDBMS) StoreJobRequest(request *job.Request) (types.JobID, error) {
 
 	var jobID types.JobID
 
-	// Extract job tags for insertion.
-	var desc job.JobDescriptor
-	if err := json.Unmarshal([]byte(request.JobDescriptor), &desc); err != nil {
-		return 0, fmt.Errorf("invalid job descriptor: %w", err)
-	}
-	if err := job.CheckTags(desc.Tags); err != nil {
-		return 0, err
-	}
-
 	r.lockTx()
 	defer r.unlockTx()
 
 	// store job descriptor
-	result, err := r.db.Exec(insertJobStmt, request.JobName, request.JobDescriptor, request.TestDescriptors, request.Requestor, request.ServerID, request.RequestTime)
+	insertStatement := "insert into jobs (name, descriptor, teststeps, requestor, server_id, request_time) values (?, ?, ?, ?, ?, ?)"
+	result, err := r.db.Exec(insertStatement, request.JobName, request.JobDescriptor, request.TestDescriptors, request.Requestor, request.ServerID, request.RequestTime)
 	if err != nil {
 		return jobID, fmt.Errorf("could not store job request in database: %w", err)
 	}
@@ -46,12 +33,6 @@ func (r *RDBMS) StoreJobRequest(request *job.Request) (types.JobID, error) {
 		return jobID, fmt.Errorf("could not extract id of last request inserted into db")
 	}
 	jobID = types.JobID(lastID)
-
-	for _, tag := range desc.Tags {
-		if _, err := r.db.Exec(insertJobTagStmt, jobID, tag); err != nil {
-			return 0, fmt.Errorf("could not store job tag in the database: %w", err)
-		}
-	}
 
 	return jobID, nil
 }

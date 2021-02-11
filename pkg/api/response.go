@@ -22,7 +22,6 @@ const (
 	ResponseTypeStatus
 	ResponseTypeRetry
 	ResponseTypeVersion
-	ResponseTypeList
 )
 
 // ResponseTypeToName maps response types to their names.
@@ -32,7 +31,6 @@ var ResponseTypeToName = map[ResponseType]string{
 	ResponseTypeStatus:  "ResponseTypeStatus",
 	ResponseTypeRetry:   "ResponseTypeRetry",
 	ResponseTypeVersion: "ResponseTypeVersion",
-	ResponseTypeList:    "ResponseTypeList",
 }
 
 // Response is the type returned to any API request.
@@ -88,16 +86,6 @@ func (r ResponseDataRetry) Type() ResponseType {
 	return ResponseTypeRetry
 }
 
-// ResponseDataList is the response type for a List request.
-type ResponseDataList struct {
-	JobIDs []types.JobID
-}
-
-// Type returns the response type.
-func (r ResponseDataList) Type() ResponseType {
-	return ResponseTypeList
-}
-
 // ResponseDataVersion is the response type for a Version request.
 type ResponseDataVersion struct {
 	Version uint32
@@ -136,13 +124,6 @@ type StopResponse struct {
 type RetryResponse struct {
 	ServerID string
 	Data     ResponseDataRetry
-	Err      *xjson.Error
-}
-
-// ListResponse is a typesafe version of Response with a List payload
-type ListResponse struct {
-	ServerID string
-	Data     ResponseDataList
 	Err      *xjson.Error
 }
 

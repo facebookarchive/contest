@@ -38,7 +38,7 @@ type TestDescriptorMigrationSuite struct {
 func (suite *TestDescriptorMigrationSuite) SetupTest() {
 	// Setup raw connection to the db. We cannoit use storage plugin directly
 	// because we need to populate data into the db in a format
-	db, err := sql.Open("mysql", common.GetDatabaseURI())
+	db, err := sql.Open("mysql", common.DbURI)
 	if err != nil {
 		panic(fmt.Sprintf("could not initialize TestDescriptorMigrationSuite: %v", err))
 	}
