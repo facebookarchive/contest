@@ -1,8 +1,3 @@
-// Copyright (c) Facebook, Inc. and its affiliates.
-//
-// This source code is licensed under the MIT license found in the
-// LICENSE file in the root directory of this source tree.
-
 package runner
 
 import (
@@ -338,19 +333,16 @@ func (tr *testRunner) waitStepRunners(ctx statectx.Context) error {
 	case <-time.After(tr.shutdownTimeout):
 		tr.log.Errorf("step runners failed to shut down correctly")
 		// If there is a step with an error set, use that.
-		err := tr.checkStepRunners()
-		// If there isn't, enumerate ones that were still running at the time.
-		nrerr := &cerrors.ErrTestStepsNeverReturned{}
-		if err == nil {
-			err = nrerr
+		if err := tr.checkStepRunners(); err != nil {
+			return err
 		}
+		// If there isn't, enumerate ones that were still running at the time.
+		err := &cerrors.ErrTestStepsNeverReturned{}
 		tr.mu.Lock()
 		defer tr.mu.Unlock()
 		for _, ss := range tr.steps {
 			if ss.stepRunning {
-				nrerr.StepNames = append(nrerr.StepNames, ss.sb.TestStepLabel)
-				// We cannot make the step itself return but we can at least release the reader.
-				tr.safeCloseOutCh(ss)
+				err.StepNames = append(err.StepNames, ss.sb.TestStepLabel)
 			}
 		}
 		return err
