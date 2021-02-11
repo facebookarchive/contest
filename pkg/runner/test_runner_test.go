@@ -8,6 +8,7 @@ package runner
 import (
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -27,7 +28,6 @@ import (
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/plugins/storage/memory"
 	"github.com/facebookincubator/contest/plugins/teststeps/example"
-	"github.com/facebookincubator/contest/tests/common"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/badtargets"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/channels"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/hanging"
@@ -35,11 +35,7 @@ import (
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/panicstep"
 )
 
-const (
-	testName          = "SimpleTest"
-	stepInjectTimeout = 3 * time.Second
-	shutdownTimeout   = 3 * time.Second
-)
+const testName = "SimpleTest"
 
 var (
 	evs            storage.ResettableStorage
@@ -74,16 +70,7 @@ func TestMain(m *testing.M) {
 			panic(fmt.Sprintf("could not register TestStep: %v", err))
 		}
 	}
-	flag.Parse()
-	common.LeakCheckingTestMain(m,
-		// We expect these to leak.
-		"github.com/facebookincubator/contest/tests/plugins/teststeps/hanging.(*hanging).Run",
-		"github.com/facebookincubator/contest/tests/plugins/teststeps/noreturn.(*noreturnStep).Run",
-	)
-}
-
-func newTestRunner() TestRunner {
-	return NewTestRunnerWithTimeouts(stepInjectTimeout, shutdownTimeout)
+	os.Exit(m.Run())
 }
 
 func eventToStringNoTime(ev testevent.Event) string {
@@ -187,7 +174,7 @@ func runWithTimeout(t *testing.T, tr TestRunner, ctx statectx.Context, resumeSta
 // Simple case: one target, one step, success.
 func Test1Step1Success(t *testing.T) {
 	resetEventStorage()
-	tr := newTestRunner()
+	tr := NewTestRunner()
 	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1")},
 		[]test.TestStepBundle{
@@ -208,7 +195,7 @@ func Test1Step1Success(t *testing.T) {
 // Simple case: one target, one step, failure.
 func Test1Step1Fail(t *testing.T) {
 	resetEventStorage()
-	tr := newTestRunner()
+	tr := NewTestRunner()
 	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1")},
 		[]test.TestStepBundle{
@@ -230,7 +217,7 @@ func Test1Step1Fail(t *testing.T) {
 // One step pipeline with two targets - one fails, one succeeds.
 func Test1Step1Success1Fail(t *testing.T) {
 	resetEventStorage()
-	tr := newTestRunner()
+	tr := NewTestRunner()
 	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1"), tgt("T2")},
 		[]test.TestStepBundle{
@@ -257,7 +244,7 @@ func Test1Step1Success1Fail(t *testing.T) {
 // step 3 is not reached and not even run.
 func Test3StepsNotReachedStepNotRun(t *testing.T) {
 	resetEventStorage()
-	tr := newTestRunner()
+	tr := NewTestRunner()
 	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1"), tgt("T2")},
 		[]test.TestStepBundle{
@@ -326,7 +313,7 @@ func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 // A misbehaving step that panics.
 func TestStepPanics(t *testing.T) {
 	resetEventStorage()
-	tr := newTestRunner()
+	tr := NewTestRunner()
 	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1")},
 		[]test.TestStepBundle{
@@ -341,7 +328,7 @@ func TestStepPanics(t *testing.T) {
 // A misbehaving step that closes its output channel.
 func TestStepClosesChannels(t *testing.T) {
 	resetEventStorage()
-	tr := newTestRunner()
+	tr := NewTestRunner()
 	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1")},
 		[]test.TestStepBundle{
@@ -356,7 +343,7 @@ func TestStepClosesChannels(t *testing.T) {
 // A misbehaving step that yields a result for a target that does not exist.
 func TestStepYieldsResultForNonexistentTarget(t *testing.T) {
 	resetEventStorage()
-	tr := newTestRunner()
+	tr := NewTestRunner()
 	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1")},
 		[]test.TestStepBundle{
@@ -369,14 +356,14 @@ func TestStepYieldsResultForNonexistentTarget(t *testing.T) {
 // A misbehaving step that yields a result for a target that does not exist.
 func TestStepYieldsDuplicateResult(t *testing.T) {
 	resetEventStorage()
-	tr := newTestRunner()
+	tr := NewTestRunner()
 	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("TGood"), tgt("TDup")},
 		[]test.TestStepBundle{
 			// TGood makes it past here unscathed and gets delayed in Step 2,
 			// TDup also emerges fine at first but is then returned again, and that's bad.
 			newStep("Step 1", badtargets.Name, nil),
-			newExampleStep("Step 2", 0, "", "TGood=100"),
+			newExampleStep("Step 2", 0, "", "T2=100"),
 		},
 	)
 	require.Error(t, err)
@@ -386,7 +373,7 @@ func TestStepYieldsDuplicateResult(t *testing.T) {
 // A misbehaving step that loses targets.
 func TestStepLosesTargets(t *testing.T) {
 	resetEventStorage()
-	tr := newTestRunner()
+	tr := NewTestRunner()
 	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("TGood"), tgt("TDrop")},
 		[]test.TestStepBundle{
@@ -401,7 +388,7 @@ func TestStepLosesTargets(t *testing.T) {
 // but is not currently waiting for it.
 func TestStepYieldsResultForUnexpectedTarget(t *testing.T) {
 	resetEventStorage()
-	tr := newTestRunner()
+	tr := NewTestRunner()
 	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1"), tgt("T1XXX")},
 		[]test.TestStepBundle{
@@ -418,7 +405,7 @@ func TestStepYieldsResultForUnexpectedTarget(t *testing.T) {
 // Larger, randomized test - a number of steps, some targets failing, some succeeding.
 func TestRandomizedMultiStep(t *testing.T) {
 	resetEventStorage()
-	tr := newTestRunner()
+	tr := NewTestRunner()
 	var targets []*target.Target
 	for i := 1; i <= 100; i++ {
 		targets = append(targets, tgt(fmt.Sprintf("T%d", i)))
@@ -465,7 +452,7 @@ func TestPauseResumeSimple(t *testing.T) {
 		newExampleStep("Step 3", 0, "", ""),
 	}
 	{
-		tr1 := newTestRunner()
+		tr1 := NewTestRunner()
 		ctx1, pause, cancel := statectx.New()
 		defer cancel()
 		go func() {
@@ -481,7 +468,7 @@ func TestPauseResumeSimple(t *testing.T) {
 	log.Debugf("Resume state: %s", string(resumeState))
 	// Make sure that resume state is validated.
 	{
-		tr := newTestRunner()
+		tr := NewTestRunner()
 		ctx, _, cancel := statectx.New()
 		defer cancel()
 		resumeState2, err := runWithTimeout(
@@ -491,7 +478,7 @@ func TestPauseResumeSimple(t *testing.T) {
 		require.Nil(t, resumeState2)
 	}
 	{
-		tr := newTestRunner()
+		tr := NewTestRunner()
 		ctx, _, cancel := statectx.New()
 		defer cancel()
 		resumeState2 := strings.Replace(string(resumeState), `"version"`, `"Xversion"`, 1)
@@ -501,7 +488,7 @@ func TestPauseResumeSimple(t *testing.T) {
 		require.Contains(t, err.Error(), "incompatible resume state")
 	}
 	{
-		tr := newTestRunner()
+		tr := NewTestRunner()
 		ctx, _, cancel := statectx.New()
 		defer cancel()
 		resumeState2 := strings.Replace(string(resumeState), `"job_id":1`, `"job_id":2`, 1)
@@ -512,7 +499,7 @@ func TestPauseResumeSimple(t *testing.T) {
 	}
 	// Finally, resume and finish the job.
 	{
-		tr2 := newTestRunner()
+		tr2 := NewTestRunner()
 		ctx2, _, cancel := statectx.New()
 		defer cancel()
 		_, err := runWithTimeout(t, tr2, ctx2, resumeState, 5, 2*time.Second,
