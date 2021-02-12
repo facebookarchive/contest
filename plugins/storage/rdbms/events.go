@@ -14,7 +14,6 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
 )
@@ -251,8 +250,8 @@ func (r *RDBMS) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, e
 
 	// TargetID might be null, so a type which supports null should be used with Scan
 	var (
-		targetID sql.NullString
-		payload  sql.NullString
+		targetID   sql.NullString
+		payload    sql.NullString
 	)
 
 	defer func() {
@@ -335,36 +334,23 @@ func (r *RDBMS) StoreFrameworkEvent(event frameworkevent.Event) error {
 	return nil
 }
 
-const (
-	insertFEStmt       = "INSERT INTO framework_events (job_id, event_name, payload, emit_time) VALUES (?, ?, ?, ?)"
-	updateJobStateStmt = "UPDATE jobs SET state = ? WHERE job_id = ?"
-)
-
 // FlushFrameworkEvents forces a flush of the pending frameworks events to the database
 // Requires that the caller has already locked the corresponding buffer
 func (r *RDBMS) flushFrameworkEvents() error {
+
 	r.lockTx()
 	defer r.unlockTx()
 
-	// TODO: put this into a transaction.
-	jobStateUpdates := map[types.JobID]job.State{}
+	insertStatement := "insert into framework_events (job_id, event_name, payload, emit_time) values (?, ?, ?, ?)"
 	for _, event := range r.buffFrameworkEvents {
 		_, err := r.db.Exec(
-			insertFEStmt,
+			insertStatement,
 			FrameworkEventJobID(event),
 			FrameworkEventName(event),
 			FrameworkEventPayload(event),
 			FrameworkEventEmitTime(event))
 		if err != nil {
 			return fmt.Errorf("could not store event in database: %v", err)
-		}
-		if sn, err := job.EventNameToJobState(event.EventName); err == nil {
-			jobStateUpdates[event.JobID] = sn
-		}
-	}
-	for jobID, state := range jobStateUpdates {
-		if _, err := r.db.Exec(updateJobStateStmt, state, jobID); err != nil {
-			return fmt.Errorf("could not update state of job %d: %w", jobID, err)
 		}
 	}
 	r.buffFrameworkEvents = nil
@@ -378,6 +364,7 @@ func (r *RDBMS) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]framework
 	r.frameworkEventsLock.Lock()
 	err := r.flushFrameworkEvents()
 	r.frameworkEventsLock.Unlock()
+
 	if err != nil {
 		return nil, fmt.Errorf("could not flush events before reading events: %v", err)
 	}

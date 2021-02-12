@@ -15,10 +15,8 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/facebookincubator/contest/pkg/api"
-	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/plugins/listeners/httplistener"
 
@@ -28,9 +26,9 @@ import (
 // HttpPartiallyDecodedResponse is a httplistener.HTTPAPIResponse, but with the Data not fully decoded yet
 type HTTPPartiallyDecodedResponse struct {
 	ServerID string
-	Type     string
-	Data     json.RawMessage
-	Error    *xjson.Error
+	Type  string
+	Data  json.RawMessage
+	Error *xjson.Error
 }
 
 // HTTP communicates with ConTest Server via http(s)/json transport
@@ -41,7 +39,7 @@ type HTTP struct {
 
 func (h *HTTP) Version(ctx context.Context, requestor string) (*api.VersionResponse, error) {
 	resp, err := h.request(requestor, "version", url.Values{})
-	if err != nil {
+	if err != nil  {
 		return nil, err
 	}
 	data := api.ResponseDataVersion{}
@@ -50,12 +48,11 @@ func (h *HTTP) Version(ctx context.Context, requestor string) (*api.VersionRespo
 	}
 	return &api.VersionResponse{ServerID: resp.ServerID, Data: data, Err: resp.Error}, nil
 }
-
 func (h *HTTP) Start(ctx context.Context, requestor string, jobDescriptor string) (*api.StartResponse, error) {
 	params := url.Values{}
 	params.Add("jobDesc", jobDescriptor)
 	resp, err := h.request(requestor, "start", params)
-	if err != nil {
+	if err != nil  {
 		return nil, err
 	}
 	data := api.ResponseDataStart{}
@@ -64,12 +61,11 @@ func (h *HTTP) Start(ctx context.Context, requestor string, jobDescriptor string
 	}
 	return &api.StartResponse{ServerID: resp.ServerID, Data: data, Err: resp.Error}, nil
 }
-
 func (h *HTTP) Stop(ctx context.Context, requestor string, jobID types.JobID) (*api.StopResponse, error) {
 	params := url.Values{}
 	params.Add("jobID", strconv.Itoa(int(jobID)))
 	resp, err := h.request(requestor, "stop", params)
-	if err != nil {
+	if err != nil  {
 		return nil, err
 	}
 	data := api.ResponseDataStop{}
@@ -78,12 +74,11 @@ func (h *HTTP) Stop(ctx context.Context, requestor string, jobID types.JobID) (*
 	}
 	return &api.StopResponse{ServerID: resp.ServerID, Data: data, Err: resp.Error}, nil
 }
-
 func (h *HTTP) Status(ctx context.Context, requestor string, jobID types.JobID) (*api.StatusResponse, error) {
 	params := url.Values{}
 	params.Add("jobID", strconv.Itoa(int(jobID)))
 	resp, err := h.request(requestor, "status", params)
-	if err != nil {
+	if err != nil  {
 		return nil, err
 	}
 	data := api.ResponseDataStatus{}
@@ -92,12 +87,11 @@ func (h *HTTP) Status(ctx context.Context, requestor string, jobID types.JobID) 
 	}
 	return &api.StatusResponse{ServerID: resp.ServerID, Data: data, Err: resp.Error}, nil
 }
-
 func (h *HTTP) Retry(ctx context.Context, requestor string, jobID types.JobID) (*api.RetryResponse, error) {
 	params := url.Values{}
 	params.Add("jobID", strconv.Itoa(int(jobID)))
 	resp, err := h.request(requestor, "retry", params)
-	if err != nil {
+	if err != nil  {
 		return nil, err
 	}
 	data := api.ResponseDataRetry{}
@@ -105,29 +99,6 @@ func (h *HTTP) Retry(ctx context.Context, requestor string, jobID types.JobID) (
 		return nil, fmt.Errorf("cannot decode json response: %v", err)
 	}
 	return &api.RetryResponse{ServerID: resp.ServerID, Data: data, Err: resp.Error}, nil
-}
-
-func (h *HTTP) List(ctx context.Context, requestor string, states []job.State, tags []string) (*api.ListResponse, error) {
-	params := url.Values{}
-	if len(states) > 0 {
-		sts := make([]string, len(states))
-		for i, st := range states {
-			sts[i] = st.String()
-		}
-		params.Set("states", strings.Join(sts, ","))
-	}
-	if len(tags) > 0 {
-		params.Set("tags", strings.Join(tags, ","))
-	}
-	resp, err := h.request(requestor, "list", params)
-	if err != nil {
-		return nil, err
-	}
-	var data api.ResponseDataList
-	if err := json.Unmarshal([]byte(resp.Data), &data); err != nil {
-		return nil, fmt.Errorf("cannot decode json response: %v", err)
-	}
-	return &api.ListResponse{ServerID: resp.ServerID, Data: data, Err: resp.Error}, nil
 }
 
 func (h *HTTP) request(requestor string, verb string, params url.Values) (*HTTPPartiallyDecodedResponse, error) {

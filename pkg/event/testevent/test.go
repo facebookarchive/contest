@@ -16,7 +16,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
-// Header models the header of a test event, which consists in metadata that defines the
+// Header models the header of a test event, which consists in metadatat hat defines the
 // emitter of the events. The Header is under ConTest control and cannot be manipulated
 // by the TestStep
 type Header struct {
@@ -28,8 +28,8 @@ type Header struct {
 
 // Data models the data of a test event. It is populated by the TestStep
 type Data struct {
-	Target    *target.Target
 	EventName event.Name
+	Target    *target.Target
 	Payload   *json.RawMessage
 }
 
@@ -151,16 +151,4 @@ type Fetcher interface {
 type EmitterFetcher interface {
 	Emitter
 	Fetcher
-}
-
-func (h *Header) String() string {
-	return fmt.Sprintf("[%d %d %s %s]", h.JobID, h.RunID, h.TestName, h.TestStepLabel)
-}
-
-func (d *Data) String() string {
-	ps := ""
-	if d.Payload != nil {
-		ps = fmt.Sprintf(" %q", d.Payload) //nolint SA5009 - works fine
-	}
-	return fmt.Sprintf("[%s %s%s]", d.Target, d.EventName, ps)
 }

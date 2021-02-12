@@ -6,8 +6,6 @@
 package plugins
 
 import (
-	"sync"
-
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/userfunctions/donothing"
 	"github.com/facebookincubator/contest/pkg/userfunctions/ocp"
@@ -60,10 +58,9 @@ var userFunctions = []map[string]interface{}{
 	donothing.Load(),
 }
 
-var testInitOnce sync.Once
-
 // Init initializes the plugin registry
 func Init(pluginRegistry *pluginregistry.PluginRegistry, log *logrus.Entry) {
+
 	// Register TargetManager plugins
 	for _, tmloader := range targetManagers {
 		if err := pluginRegistry.RegisterTargetManager(tmloader()); err != nil {
@@ -94,13 +91,12 @@ func Init(pluginRegistry *pluginregistry.PluginRegistry, log *logrus.Entry) {
 	}
 
 	// user-defined function registration
-	testInitOnce.Do(func() {
-		for _, userFunction := range userFunctions {
-			for name, fn := range userFunction {
-				if err := test.RegisterFunction(name, fn); err != nil {
-					log.Fatal(err)
-				}
+	for _, userFunction := range userFunctions {
+		for name, fn := range userFunction {
+			if err := test.RegisterFunction(name, fn); err != nil {
+				log.Fatal(err)
 			}
 		}
-	})
+	}
+
 }
