@@ -66,10 +66,10 @@ func GetStorage() (Storage, error) {
 	return storage, nil
 }
 
-// SetStorage sets the desired storage engine for read-only events. Switching to a new
+// SetAsyncStorage sets the desired storage engine for read-only events. Switching to a new
 // storage engine implies garbage collecting the old one, with possible loss of
 // pending events if not flushed correctly
-func SetStorageAsync(storageEngine Storage) error {
+func SetAsyncStorage(storageEngine Storage) error {
 	if storageEngine == nil {
 		return fmt.Errorf("cannot configure a nil storage engine")
 	}

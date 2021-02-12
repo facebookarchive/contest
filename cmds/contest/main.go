@@ -56,31 +56,37 @@ func main() {
 		log.Fatalf("Could not set storage: %v", err)
 	}
 
-	dbVer, err := s.Version()
+	dbVerPrim, err := s.Version()
 	if err != nil {
 		log.Warningf("Could not determine storage version: %v", err)
 	} else {
-		log.Infof("Storage version: %d", dbVer)
+		log.Infof("Storage version: %d", dbVerPrim)
 	}
 
 	// replica storage initialization
 	log.Infof("Using database URI for replica storage: %s", *flagDBURI)
 
+	// pointing to main database for now but can be used to point to replica
 	replicaDBURI := *flagDBURI
-	s, err = rdbms.New(replicaDBURI)
+	r, err := rdbms.New(replicaDBURI)
 	if err != nil {
 		log.Fatalf("Could not initialize replica database: %v", err)
 	}
-	if err := storage.SetStorageAsync(s); err != nil {
+	if err := storage.SetAsyncStorage(r); err != nil {
 		log.Fatalf("Could not set replica storage: %v", err)
 	}
 
-	dbVer, err = s.Version()
+	dbVerRepl, err := r.Version()
 	if err != nil {
 		log.Warningf("Could not determine storage version: %v", err)
 	} else {
-		log.Infof("Storage version: %d", dbVer)
+		log.Infof("Storage version: %d", dbVerRepl)
 	}
+
+	if dbVerPrim != dbVerRepl {
+		log.Fatalf("Primary and Replica DB Versions are different: %v and %v", dbVerPrim, dbVerRepl)
+	}
+
 	// set Locker engine
 	switch *flagTargetLocker {
 	case inmemory.Name:
