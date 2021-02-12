@@ -159,7 +159,9 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 			if err != nil {
 				return nil, err
 			}
-			tsb, err := pr.NewTestStepBundle(*testStepDesc, tse)
+			// test step index is incremented by 1 so we can use 0 to signal an
+			// anomaly.
+			tsb, err := pr.NewTestStepBundle(*testStepDesc, uint(idx)+1, tse)
 			if err != nil {
 				return nil, fmt.Errorf("NewTestStepBundle for test step '%s' with index %d failed: %w", testStepDesc.Name, idx, err)
 			}
@@ -294,8 +296,6 @@ func (jm *JobManager) handleEvent(ev *api.Event) {
 		resp = jm.stop(ev)
 	case api.EventTypeRetry:
 		resp = jm.retry(ev)
-	case api.EventTypeList:
-		resp = jm.list(ev)
 	default:
 		resp = &api.EventResponse{
 			Requestor: ev.Msg.Requestor(),

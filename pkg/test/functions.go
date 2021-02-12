@@ -47,20 +47,3 @@ func RegisterFunction(name string, fn interface{}) error {
 	funcMap[name] = fn
 	return nil
 }
-
-// UnregisterFunction unregisters a previously registered function
-func UnregisterFunction(name string) error {
-	funcMapMutex.Lock()
-	defer funcMapMutex.Unlock()
-	ok := false
-	if funcMap != nil {
-		_, ok = funcMap[name]
-		if ok {
-			delete(funcMap, name)
-		}
-	}
-	if !ok {
-		return fmt.Errorf("function '%s' is not registered", name)
-	}
-	return nil
-}

@@ -37,7 +37,7 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 			Err:       fmt.Errorf("could not create job request: %v", err)}
 	}
 	j.ID = jobID
-	if err := jm.emitEvent(j.ID, job.EventJobStarted); err != nil {
+	if err := jm.emitEvent(j.ID, EventJobStarted); err != nil {
 		return &api.EventResponse{
 			Requestor: ev.Msg.Requestor(),
 			Err:       err,
@@ -63,18 +63,18 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 			if err != nil {
 				errCancellation := fmt.Errorf("Job %+v failed cancellation: %v", j, err)
 				log.Error(errCancellation)
-				_ = jm.emitErrEvent(jobID, job.EventJobCancellationFailed, errCancellation)
+				_ = jm.emitErrEvent(jobID, EventJobCancellationFailed, errCancellation)
 			} else {
-				_ = jm.emitEvent(jobID, job.EventJobCancelled)
+				_ = jm.emitEvent(jobID, EventJobCancelled)
 			}
 			return
 		case j.IsPaused():
 			if err != nil {
 				errPausing := fmt.Errorf("Job %+v failed pausing: %v", j, err)
 				log.Error(errPausing)
-				_ = jm.emitErrEvent(jobID, job.EventJobPauseFailed, errPausing)
+				_ = jm.emitErrEvent(jobID, EventJobPauseFailed, errPausing)
 			} else {
-				_ = jm.emitEvent(jobID, job.EventJobPaused)
+				_ = jm.emitEvent(jobID, EventJobPaused)
 			}
 			return
 		}
@@ -95,7 +95,7 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 		if err != nil {
 			errMsg := fmt.Sprintf("Job %+v failed after %s : %v", j, duration, err)
 			log.Errorf(errMsg)
-			_ = jm.emitErrEvent(jobID, job.EventJobFailed, err)
+			_ = jm.emitErrEvent(jobID, EventJobFailed, err)
 		} else {
 			// If the JobManager doesn't return any error, the outcome of the Job
 			// might have been any of the following:
@@ -106,13 +106,13 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 			switch {
 			case j.IsCancelled():
 				log.Infof("Job %+v completed cancellation", j)
-				eventToEmit = job.EventJobCancelled
+				eventToEmit = EventJobCancelled
 			case j.IsPaused():
 				log.Infof("Job %+v completed pausing", j)
-				eventToEmit = job.EventJobPaused
+				eventToEmit = EventJobPaused
 			default:
 				log.Infof("Job %+v completed after %s", j, duration)
-				eventToEmit = job.EventJobCompleted
+				eventToEmit = EventJobCompleted
 			}
 			log.Debugf("emitting: %v", eventToEmit)
 			err = jm.emitEvent(jobID, eventToEmit)
@@ -128,7 +128,7 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 		Err:       nil,
 		Status: &job.Status{
 			Name:      j.Name,
-			State:     string(job.EventJobStarted),
+			State:     string(EventJobStarted),
 			StartTime: time.Now(),
 		},
 	}

@@ -3,11 +3,9 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
-package job
+package jobmanager
 
 import (
-	"fmt"
-
 	"github.com/facebookincubator/contest/pkg/event"
 )
 
@@ -54,25 +52,4 @@ var JobStateEvents = []event.Name{
 	EventJobCancelling,
 	EventJobCancelled,
 	EventJobCancellationFailed,
-}
-
-// States corresponding to events.
-var jobStates = []State{
-	JobStateStarted,
-	JobStateCompleted,
-	JobStateFailed,
-	JobStatePaused,
-	JobStatePauseFailed,
-	JobStateCancelling,
-	JobStateCancelled,
-	JobStateCancellationFailed,
-}
-
-func EventNameToJobState(ev event.Name) (State, error) {
-	for i, e := range JobStateEvents {
-		if e == ev {
-			return jobStates[i], nil
-		}
-	}
-	return JobStateUnknown, fmt.Errorf("invalid job state %q", ev)
 }

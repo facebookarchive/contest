@@ -17,11 +17,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/facebookincubator/contest/pkg/transport"
 	"github.com/facebookincubator/contest/pkg/api"
 	"github.com/facebookincubator/contest/pkg/config"
-	"github.com/facebookincubator/contest/pkg/event"
-	"github.com/facebookincubator/contest/pkg/job"
-	"github.com/facebookincubator/contest/pkg/transport"
+	"github.com/facebookincubator/contest/pkg/jobmanager"
 	"github.com/facebookincubator/contest/pkg/types"
 
 	flag "github.com/spf13/pflag"
@@ -105,19 +104,6 @@ func run(requestor string, transport transport.Transport) error {
 		if err != nil {
 			return err
 		}
-	case "list":
-		var states []job.State
-		for _, sts := range *flagStates {
-			st, err := job.EventNameToJobState(event.Name(sts))
-			if err != nil {
-				return err
-			}
-			states = append(states, st)
-		}
-		resp, err = transport.List(context.Background(), requestor, states, *flagTags)
-		if err != nil {
-			return err
-		}
 	case "version":
 		resp, err = transport.Version(context.Background(), requestor)
 		if err != nil {
@@ -151,7 +137,7 @@ func wait(ctx context.Context, jobID types.JobID, jobWaitPoll time.Duration, req
 
 		jobState := resp.Data.Status.State
 
-		for _, eventName := range job.JobCompletionEvents {
+		for _, eventName := range jobmanager.JobCompletionEvents {
 			if string(jobState) == string(eventName) {
 				return resp, nil
 			}

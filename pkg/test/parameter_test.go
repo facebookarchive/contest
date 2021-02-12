@@ -31,14 +31,14 @@ func TestParameterExpand(t *testing.T) {
 }
 
 func TestParameterExpandUserFunctions(t *testing.T) {
-	require.Error(t, UnregisterFunction("NoSuchFunction"))
 	customFunc := func(a ...string) (string, error) {
 		if len(a) == 0 {
 			return "", errors.New("no params")
 		}
 		return strings.Title(a[0]), nil
 	}
-	require.NoError(t, RegisterFunction("CustomFunc", customFunc))
+	err := RegisterFunction("CustomFunc", customFunc)
+	require.NoError(t, err)
 	validExprs := [][4]string{
 		// expression, target FQDN, target ID, expected result
 		[4]string{"{{ CustomFunc .FQDN }}", "slackware.it", "1234", "Slackware.It"},
@@ -50,6 +50,4 @@ func TestParameterExpandUserFunctions(t *testing.T) {
 		require.NoError(t, err, x[0])
 		require.Equal(t, x[3], res, x[0])
 	}
-	require.NoError(t, UnregisterFunction("CustomFunc"))
-	require.Error(t, UnregisterFunction("NoSuchFunction"))
 }
