@@ -35,6 +35,15 @@ func (jsm JobStorageManager) GetJobRequest(jobID types.JobID) (*job.Request, err
 	return request, nil
 }
 
+// GetJobRequest fetches a job request from the read-only storage layer
+func (jsm JobStorageManager) GetJobRequestAsync(jobID types.JobID) (*job.Request, error) {
+	request, err := storageAsync.GetJobRequest(jobID)
+	if err != nil {
+		return nil, fmt.Errorf("could not fetch job request: %v", err)
+	}
+	return request, nil
+}
+
 // StoreJobReport submits a job report to the storage layer
 func (jsm JobStorageManager) StoreJobReport(report *job.JobReport) error {
 	if err := storage.StoreJobReport(report); err != nil {
@@ -43,9 +52,18 @@ func (jsm JobStorageManager) StoreJobReport(report *job.JobReport) error {
 	return nil
 }
 
-// GetJobReport fetches a job report to the storage layer
+// GetJobReport fetches a job report from the storage layer
 func (jsm JobStorageManager) GetJobReport(jobID types.JobID) (*job.JobReport, error) {
 	report, err := storage.GetJobReport(jobID)
+	if err != nil {
+		return nil, err
+	}
+	return report, nil
+}
+
+// GetJobReportAsync fetches a job report from the read-only storage layer
+func (jsm JobStorageManager) GetJobReportAsync(jobID types.JobID) (*job.JobReport, error) {
+	report, err := storageAsync.GetJobReport(jobID)
 	if err != nil {
 		return nil, err
 	}

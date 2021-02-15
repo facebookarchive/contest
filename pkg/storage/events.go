@@ -116,6 +116,17 @@ func (ev FrameworkEventFetcher) Fetch(queryFields ...frameworkevent.QueryField) 
 	return storage.GetFrameworkEvent(eventQuery)
 }
 
+// FetchAsync retrieves events based on QueryFields that are used to build a Query object for FrameworkEvents
+// from read-only storage
+func (ev FrameworkEventFetcher) FetchAsync(queryFields ...frameworkevent.QueryField) ([]frameworkevent.Event, error) {
+	eventQuery, err := frameworkevent.QueryFields(queryFields).BuildQuery()
+	if err != nil {
+		return nil, fmt.Errorf("unable to build a query: %w", err)
+	}
+	return storageAsync.GetFrameworkEvent(eventQuery)
+}
+
+
 // NewFrameworkEventEmitter creates a new Emitter object for framework events
 func NewFrameworkEventEmitter() FrameworkEventEmitter {
 	return FrameworkEventEmitter{}
