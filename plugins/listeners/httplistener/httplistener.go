@@ -221,7 +221,7 @@ func listenWithCancellation(ctx xcontext.Context, s *http.Server) error {
 	select {
 	case err := <-errCh:
 		return err
-	case <-ctx.Done():
+	case <-ctx.WaitFor():
 		ctx.Logger().Debugf("Received server shut down request")
 		return s.Close()
 	}
@@ -239,6 +239,7 @@ func (h *HTTPListener) Serve(ctx xcontext.Context, a *api.API) error {
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
+	ctx.Logger().Debugf("Serving a listener")
 	if err := listenWithCancellation(ctx, &s); err != nil {
 		return fmt.Errorf("HTTP listener failed: %v", err)
 	}

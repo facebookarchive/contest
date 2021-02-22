@@ -23,7 +23,7 @@ var ctx = logrusctx.NewContext(logger.LevelDebug)
 func TestOptions(t *testing.T) {
 	eventTimeout := 3141592654 * time.Second
 	serverID := "myUnitTestServerID"
-	api, err := New(ctx,
+	api, err := New(
 		OptionEventTimeout(eventTimeout),
 		OptionServerID(serverID),
 	)
@@ -40,7 +40,7 @@ func (d dummyEventMsg) Requestor() EventRequestor {
 
 func TestEventTimeout(t *testing.T) {
 	t.Run("timeout", func(t *testing.T) {
-		apiInstance, err := New(ctx, OptionServerID("unit-test"), OptionEventTimeout(time.Nanosecond))
+		apiInstance, err := New(OptionServerID("unit-test"), OptionEventTimeout(time.Nanosecond))
 		require.NoError(t, err)
 		t.Run("Status", func(t *testing.T) {
 			startTime := time.Now()
@@ -63,7 +63,7 @@ func TestEventTimeout(t *testing.T) {
 	})
 
 	t.Run("noTimeout", func(t *testing.T) {
-		apiInstance, err := New(ctx, OptionServerID("unit-test"))
+		apiInstance, err := New(OptionServerID("unit-test"))
 		require.NoError(t, err)
 
 		respExpected := &EventResponse{

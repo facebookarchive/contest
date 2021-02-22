@@ -39,7 +39,7 @@ var (
 )
 
 func TestServerID(t *testing.T) {
-	_, err := api.New(ctx, api.OptionServerID(strings.Repeat("A", limits.MaxServerIDLen+1)))
+	_, err := api.New(api.OptionServerID(strings.Repeat("A", limits.MaxServerIDLen+1)))
 	assertLenError(t, "Server ID", err)
 }
 

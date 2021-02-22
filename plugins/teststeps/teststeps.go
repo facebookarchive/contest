@@ -32,15 +32,15 @@ func ForEachTarget(pluginName string, ctx xcontext.Context, ch test.TestStepChan
 			ctx.Logger().Errorf("%s: ForEachTarget: failed to apply test step function on target %s: %v", pluginName, t, err)
 			select {
 			case ch.Err <- cerrors.TargetError{Target: t, Err: err}:
-			case <-ctx.WaitFor():
-				ctx.Logger().Debugf("%s: ForEachTarget: received cancellation/pause signal while reporting error", pluginName)
+			case <-ctx.Done():
+				ctx.Logger().Debugf("%s: ForEachTarget: received cancellation signal while reporting error", pluginName)
 			}
 		} else {
 			ctx.Logger().Debugf("%s: ForEachTarget: target %s completed successfully", pluginName, t)
 			select {
 			case ch.Out <- t:
-			case <-ctx.WaitFor():
-				ctx.Logger().Debugf("%s: ForEachTarget: received cancellation/pause signal while reporting success", pluginName)
+			case <-ctx.Done():
+				ctx.Logger().Debugf("%s: ForEachTarget: received pause signal while reporting success", pluginName)
 			}
 		}
 	}
@@ -50,12 +50,11 @@ func ForEachTarget(pluginName string, ctx xcontext.Context, ch test.TestStepChan
 		for {
 			select {
 			case tgt := <-ch.In:
-				ctx.Logger().Debugf("%s: ForEachTarget: received target %s", pluginName, tgt)
 				if tgt == nil {
 					ctx.Logger().Debugf("%s: ForEachTarget: all targets have been received", pluginName)
 					return
 				}
-
+				ctx.Logger().Debugf("%s: ForEachTarget: received target %s", pluginName, tgt)
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
@@ -65,9 +64,6 @@ func ForEachTarget(pluginName string, ctx xcontext.Context, ch test.TestStepChan
 				}()
 			case <-ctx.Done():
 				ctx.Logger().Debugf("%s: ForEachTarget: incoming loop canceled", pluginName)
-				return
-			case <-ctx.WaitFor(xcontext.Paused):
-				ctx.Logger().Debugf("%s: ForEachTarget: incoming loop paused", pluginName)
 				return
 			}
 		}

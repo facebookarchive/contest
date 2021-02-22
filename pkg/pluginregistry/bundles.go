@@ -16,7 +16,7 @@ import (
 )
 
 // NewTestStepBundle creates a TestStepBundle from a TestStepDescriptor
-func (r *PluginRegistry) NewTestStepBundle(ctx xcontext.Context, testStepDescriptor test.TestStepDescriptor, stepIndex uint, allowedEvents map[event.Name]bool) (*test.TestStepBundle, error) {
+func (r *PluginRegistry) NewTestStepBundle(ctx xcontext.Context, testStepDescriptor test.TestStepDescriptor, allowedEvents map[event.Name]bool) (*test.TestStepBundle, error) {
 	testStep, err := r.NewTestStep(testStepDescriptor.Name)
 	if err != nil {
 		return nil, fmt.Errorf("could not get the desired TestStep (%s): %v", testStepDescriptor.Name, err)

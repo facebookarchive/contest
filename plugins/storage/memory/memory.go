@@ -296,7 +296,7 @@ func (m *Memory) Version() (uint64, error) {
 }
 
 // New create a new Memory events storage backend
-func New() (storage.Storage, error) {
+func New() (storage.ResettableStorage, error) {
 	m := Memory{lock: &sync.Mutex{}}
 	m.jobInfo = make(map[types.JobID]*jobInfo)
 	m.jobIDCounter = 1

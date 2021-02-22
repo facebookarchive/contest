@@ -46,7 +46,7 @@ type API struct {
 
 // New returns an initialized instance of an API struct with the specified
 // server ID generation function.
-func New(ctx xcontext.Context, opts ...Option) (*API, error) {
+func New(opts ...Option) (*API, error) {
 	cfg := getConfig(opts...)
 	serverID, err := obtainServerID(cfg.ServerIDFunc)
 	if err != nil {

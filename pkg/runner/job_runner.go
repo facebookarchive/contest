@@ -127,7 +127,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				targets = <-targetsCh
 				if err != nil {
 					err = fmt.Errorf("run #%d: cannot fetch targets for test '%s': %v", run+1, t.Name, err)
-					j.StateCtx.Logger().Errorf("%v", err.Error())
+					j.StateCtx.Logger().Errorf(err.Error())
 					return nil, nil, err
 				}
 				// Associate the targets with the job for later retrievel
@@ -181,7 +181,13 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			if runErr = jr.emitAcquiredTargets(j.StateCtx, testEventEmitter, targets); runErr == nil {
 				j.StateCtx.Logger().Infof("Run #%d: running test #%d for job '%s' (job ID: %d) on %d targets", run+1, idx, j.Name, j.ID, len(targets))
 				testRunner := NewTestRunner()
-				runErr = testRunner.Run(j.StateCtx, t, targets, j.ID, types.RunID(run+1))
+				resumeState, err := testRunner.Run(j.StateCtx, t, targets, j.ID, types.RunID(run+1), nil)
+				if err == xcontext.Paused {
+					j.StateCtx.Logger().Debugf("Runner paused, state: %s", string(resumeState))
+					// TODO(rojer): Persist the state.
+				} else {
+					runErr = err
+				}
 			}
 
 			// Job is done, release all the targets
@@ -232,7 +238,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				j.StateCtx.Logger().Warnf("Run reporter failed while calculating run results, proceeding anyway: %v", err)
 			} else {
 				if success {
-					j.StateCtx.Logger().Warnf("Run #%d of job %d considered successful according to %s", run+1, j.ID, bundle.Reporter.Name())
+					j.StateCtx.Logger().Debugf("Run #%d of job %d considered successful according to %s", run+1, j.ID, bundle.Reporter.Name())
 				} else {
 					j.StateCtx.Logger().Errorf("Run #%d of job %d considered failed according to %s", run+1, j.ID, bundle.Reporter.Name())
 				}

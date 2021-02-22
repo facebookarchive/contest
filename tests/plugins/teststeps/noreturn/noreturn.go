@@ -27,7 +27,7 @@ func (ts *noreturnStep) Name() string {
 	return Name
 }
 
-// Run executes a step which does never return.
+// Run executes a step that never returns.
 func (ts *noreturnStep) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	for target := range ch.In {
 		ch.Out <- target

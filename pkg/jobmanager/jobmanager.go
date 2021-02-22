@@ -135,13 +135,15 @@ func (jm *JobManager) handleEvent(ev *api.Event) {
 // signals, propagating the signals downwards to all jobs.
 func (jm *JobManager) Start(ctx xcontext.Context, sigs chan os.Signal) error {
 	log := ctx.Logger()
+	log.Debugf("Starting JobManager")
 
-	a, err := api.New(ctx, jm.config.apiOptions...)
+	a, err := api.New(jm.config.apiOptions...)
 	if err != nil {
 		return fmt.Errorf("Cannot start JobManager: %w", err)
 	}
 
 	apiCtx, apiCancel := xcontext.WithCancel(ctx)
+	apiCtx, apiPause := xcontext.WithNotify(apiCtx, xcontext.Paused)
 	errCh := make(chan error, 1)
 	go func() {
 		lErr := jm.apiListener.Serve(apiCtx, a)
@@ -176,7 +178,7 @@ loop:
 				apiCancel()
 			} else {
 				log.Debugf("Interrupted by signal '%s': pause jobs and exit", sig)
-				apiCancel()
+				apiPause()
 				jm.PauseJobs(ctx)
 			}
 			select {

@@ -72,8 +72,7 @@ func newBundlesFromSteps(ctx xcontext.Context, descriptors []*test.TestStepDescr
 		if err != nil {
 			return nil, err
 		}
-		// test step index is incremented by 1 so we can use 0 to signal an anomaly
-		tsb, err := registry.NewTestStepBundle(ctx, *descriptor, uint(idx)+1, tse)
+		tsb, err := registry.NewTestStepBundle(ctx, *descriptor, tse)
 		if err != nil {
 			return nil, fmt.Errorf("NewStepBundle for test step '%s' with index %d failed: %w", descriptor.Name, idx, err)
 		}
