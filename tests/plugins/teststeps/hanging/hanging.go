@@ -27,7 +27,7 @@ func (ts *hanging) Name() string {
 	return Name
 }
 
-// Run executes a step which does never return.
+// Run executes a step that does not process any targets and never returns.
 func (ts *hanging) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	channel := make(chan struct{})
 	<-channel

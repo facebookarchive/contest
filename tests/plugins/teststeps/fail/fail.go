@@ -38,7 +38,7 @@ func (ts *fail) Run(ctx statectx.Context, ch test.TestStepChannels, params test.
 				return nil
 			}
 			ch.Err <- cerrors.TargetError{Target: target, Err: fmt.Errorf("Integration test failure for %v", target)}
-		case <-ctx.PausedOrDone():
+		case <-ctx.Done():
 			return nil
 		}
 	}
