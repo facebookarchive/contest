@@ -418,7 +418,9 @@ func (tr *TestRunner) awaitTargetResult(ctx statectx.Context, tgs *targetState, 
 		// and collect all the results they produce. If that doesn't happen,
 		// step runner will close resCh on its way out and unlock us.
 	case <-ctx.Done():
+		tr.mu.Lock()
 		log.Debugf("%s: canceled 2", tgs)
+		tr.mu.Unlock()
 		return statectx.ErrCanceled
 	}
 }
@@ -460,16 +462,17 @@ loop:
 		if err == nil {
 			err = tr.awaitTargetResult(ctx, tgs, ss, log)
 		}
+		tr.mu.Lock()
 		if err != nil {
 			ss.log.Errorf("%s", err)
 			if err != statectx.ErrCanceled {
-				ss.setErr(&tr.mu, err)
+				ss.setErrLocked(err)
 			} else {
 				log.Debugf("%s: canceled 1", tgs)
 			}
+			tr.mu.Unlock()
 			break
 		}
-		tr.mu.Lock()
 		if tgs.Res != nil {
 			tr.mu.Unlock()
 			break
@@ -481,8 +484,8 @@ loop:
 		}
 		tr.mu.Unlock()
 	}
-	log.Debugf("%s: target handler finished", tgs)
 	tr.mu.Lock()
+	log.Debugf("%s: target handler finished", tgs)
 	tgs.resCh = nil
 	tr.cond.Signal()
 	tr.mu.Unlock()
