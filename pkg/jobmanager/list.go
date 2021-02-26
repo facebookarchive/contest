@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/facebookincubator/contest/pkg/api"
+	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/storage"
 )
 
@@ -26,8 +27,13 @@ func (jm *JobManager) list(ev *api.Event) *api.EventResponse {
 	if len(msg.States) > 0 {
 		queryFields = append(queryFields, storage.QueryJobStates(msg.States...))
 	}
-	if len(msg.Tags) > 0 {
-		queryFields = append(queryFields, storage.QueryJobTags(msg.Tags...))
+	var tags []string
+	if jm.config.instanceTag != "" {
+		tags = job.AddTags(tags, jm.config.instanceTag)
+	}
+	job.AddTags(tags, msg.Tags...)
+	if len(tags) > 0 {
+		queryFields = append(queryFields, storage.QueryJobTags(tags...))
 	}
 	jobQuery, err := storage.BuildJobQuery(queryFields...)
 	if err != nil {

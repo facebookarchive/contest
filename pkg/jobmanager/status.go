@@ -25,15 +25,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 		Err:       nil,
 	}
 
-	// Fetch all the events associated to changes of state of the Job
-	jobEvents, err := jm.frameworkEvManager.FetchAsync(
-		frameworkevent.QueryJobID(jobID),
-		frameworkevent.QueryEventNames(job.JobStateEvents),
-	)
-	if err != nil {
-		evResp.Err = fmt.Errorf("could not fetch events associated to job state: %v", err)
-		return &evResp
-	}
+	// Look up job request.
 	req, err := jm.jobStorageManager.GetJobRequestAsync(jobID)
 	if err != nil {
 		evResp.Err = fmt.Errorf("failed to fetch request for job ID %d: %w", jobID, err)
@@ -42,6 +34,32 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 	currentJob, err := NewJobFromRequest(jm.pluginRegistry, req)
 	if err != nil {
 		evResp.Err = fmt.Errorf("failed to build job object from job request: %w", err)
+		return &evResp
+	}
+
+	// Is it for our instance?
+	if jm.config.instanceTag != "" {
+		found := false
+		for _, tag := range currentJob.Tags {
+			if tag == jm.config.instanceTag {
+				found = true
+				break
+			}
+		}
+		if !found {
+			evResp.Err = fmt.Errorf("job %d belongs to a different instance, this is %q",
+				jobID, jm.config.instanceTag)
+			return &evResp
+		}
+	}
+
+	// Fetch all the events associated to changes of state of the Job
+	jobEvents, err := jm.frameworkEvManager.FetchAsync(
+		frameworkevent.QueryJobID(jobID),
+		frameworkevent.QueryEventNames(job.JobStateEvents),
+	)
+	if err != nil {
+		evResp.Err = fmt.Errorf("could not fetch events associated to job state: %v", err)
 		return &evResp
 	}
 

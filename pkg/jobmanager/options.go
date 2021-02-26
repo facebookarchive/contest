@@ -16,7 +16,8 @@ type Option interface {
 }
 
 type config struct {
-	apiOptions []api.Option
+	apiOptions  []api.Option
+	instanceTag string
 }
 
 // OptionAPI wraps api.Option to implement Option.
@@ -33,6 +34,13 @@ func (opt OptionAPI) apply(config *config) {
 // into OptionAPI.
 func APIOption(option api.Option) Option {
 	return OptionAPI{Option: option}
+}
+
+// OptionInstanceTag wraps a string to be used as instance tag.
+type OptionInstanceTag string
+
+func (opt OptionInstanceTag) apply(config *config) {
+	config.instanceTag = string(opt)
 }
 
 // getConfig converts a set of Option-s into one structure "Config".

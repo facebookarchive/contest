@@ -36,12 +36,14 @@ var (
 	flagServerID       = flag.String("serverID", "", "Set a static server ID, e.g. the host name or another unique identifier. If unset, will use the listener's default")
 	flagProcessTimeout = flag.Duration("processTimeout", api.DefaultEventTimeout, "API request processing timeout")
 	flagTargetLocker   = flag.String("targetLocker", inmemory.Name, "Target locker implementation to use")
+	flagInstanceTag    = flag.String("instanceTag", "", "A tag for this instance. Server will only operate on jobs with this tag and will add this tag to the jobs it creates.")
 )
 
 func main() {
 	flag.Parse()
 	log := logging.GetLogger("contest")
 	log.Level = logrus.DebugLevel
+	logging.Debug()
 
 	pluginRegistry := pluginregistry.NewPluginRegistry()
 
@@ -126,6 +128,9 @@ func main() {
 	}
 	if *flagServerID != "" {
 		opts = append(opts, jobmanager.APIOption(api.OptionServerID(*flagServerID)))
+	}
+	if *flagInstanceTag != "" {
+		opts = append(opts, jobmanager.OptionInstanceTag(*flagInstanceTag))
 	}
 
 	jm, err := jobmanager.New(&listener, pluginRegistry, opts...)

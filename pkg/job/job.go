@@ -7,7 +7,6 @@ package job
 
 import (
 	"fmt"
-	"regexp"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/statectx"
@@ -20,12 +19,12 @@ import (
 // JobDescriptor models the JSON encoded blob which is given as input to the
 // job creation request. A JobDescriptor embeds a list of TestDescriptor.
 type JobDescriptor struct {
-	JobName         string
-	Tags            []string
-	Runs            uint
-	RunInterval     xjson.Duration
-	TestDescriptors []*test.TestDescriptor
-	Reporting       Reporting
+	JobName                     string
+	Tags                        []string
+	Runs                        uint
+	RunInterval                 xjson.Duration
+	TestDescriptors             []*test.TestDescriptor
+	Reporting                   Reporting
 	TargetManagerAcquireTimeout *xjson.Duration // optional
 	TargetManagerReleaseTimeout *xjson.Duration // optional
 }
@@ -127,17 +126,4 @@ type InfoFetcher interface {
 	FetchJob(types.JobID) (*Job, error)
 	FetchJobs([]types.JobID) ([]*Job, error)
 	FetchJobIDsByServerID(serverID string) ([]types.JobID, error)
-}
-
-// Note that at present we depend on this regex for SQL query safety.
-var validTagRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
-
-// CheckTags validates the format of tags, only allowing [a-zA-Z0-9_-].
-func CheckTags(tags []string) error {
-	for _, tag := range tags {
-		if !validTagRegex.MatchString(tag) {
-			return fmt.Errorf("%q is not a valid tag", tag)
-		}
-	}
-	return nil
 }

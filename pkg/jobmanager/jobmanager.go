@@ -202,11 +202,11 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 	}
 
 	j := job.Job{
-		ID:          types.JobID(0),
-		Name:        jd.JobName,
-		Tags:        jd.Tags,
-		Runs:        jd.Runs,
-		RunInterval: time.Duration(jd.RunInterval),
+		ID:                          types.JobID(0),
+		Name:                        jd.JobName,
+		Tags:                        jd.Tags,
+		Runs:                        jd.Runs,
+		RunInterval:                 time.Duration(jd.RunInterval),
 		TargetManagerAcquireTimeout: targetManagerAcquireTimeout,
 		TargetManagerReleaseTimeout: targetManagerReleaseTimeout,
 		// reporter bundles must be set externally
@@ -221,11 +221,7 @@ func newPartialJobFromDescriptor(pr *pluginregistry.PluginRegistry, jd *job.JobD
 }
 
 // NewJob returns a new Job object and the fetched test descriptors
-func NewJob(pr *pluginregistry.PluginRegistry, jobDescriptor string) (*job.Job, error) {
-	var jd *job.JobDescriptor
-	if err := json.Unmarshal([]byte(jobDescriptor), &jd); err != nil {
-		return nil, err
-	}
+func NewJob(pr *pluginregistry.PluginRegistry, jd *job.JobDescriptor) (*job.Job, error) {
 	j, err := newPartialJobFromDescriptor(pr, jd)
 	if err != nil {
 		return nil, err
@@ -270,8 +266,18 @@ func New(l api.Listener, pr *pluginregistry.PluginRegistry, opts ...Option) (*Jo
 	frameworkEvManager := storage.NewFrameworkEventEmitterFetcher()
 	testEvManager := storage.NewTestEventFetcher()
 
+	cfg := getConfig(opts...)
+	if cfg.instanceTag != "" {
+		if err := job.IsValidTag(cfg.instanceTag, true /* allowInternal */); err != nil {
+			return nil, fmt.Errorf("invalid instaceTag: %w", err)
+		}
+		if !job.IsInternalTag(cfg.instanceTag) {
+			return nil, fmt.Errorf("instaceTag must be an internal tag (start with %q)", job.InternalTagPrefix)
+		}
+	}
+
 	jm := JobManager{
-		config:             getConfig(opts...),
+		config:             cfg,
 		apiListener:        l,
 		pluginRegistry:     pr,
 		jobs:               make(map[types.JobID]*job.Job),
