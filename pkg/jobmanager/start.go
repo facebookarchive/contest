@@ -6,6 +6,7 @@
 package jobmanager
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -16,7 +17,22 @@ import (
 
 func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 	msg := ev.Msg.(api.EventStartMsg)
-	j, err := NewJob(jm.pluginRegistry, msg.JobDescriptor)
+	var jd job.JobDescriptor
+	if err := json.Unmarshal([]byte(msg.JobDescriptor), &jd); err != nil {
+		return &api.EventResponse{Err: err}
+	}
+	if err := job.CheckTags(jd.Tags, false /* allowInternal */); err != nil {
+		return &api.EventResponse{Err: err}
+	}
+	// Add instance tag, if specified.
+	if jm.config.instanceTag != "" {
+		jd.Tags = job.AddTags(jd.Tags, jm.config.instanceTag)
+	}
+	j, err := NewJob(jm.pluginRegistry, &jd)
+	if err != nil {
+		return &api.EventResponse{Err: err}
+	}
+	jdJSON, err := json.MarshalIndent(&jd, "", "    ")
 	if err != nil {
 		return &api.EventResponse{Err: err}
 	}
@@ -27,7 +43,7 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 		Requestor:       string(ev.Msg.Requestor()),
 		ServerID:        ev.ServerID,
 		RequestTime:     time.Now(),
-		JobDescriptor:   msg.JobDescriptor,
+		JobDescriptor:   string(jdJSON),
 		TestDescriptors: j.TestDescriptors,
 	}
 	jobID, err := jm.jobStorageManager.StoreJobRequest(&request)

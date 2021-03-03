@@ -22,6 +22,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/target"
 
 	"github.com/facebookincubator/contest/plugins/listeners/httplistener"
+	"github.com/facebookincubator/contest/plugins/storage/memory"
 	"github.com/facebookincubator/contest/plugins/storage/rdbms"
 
 	"github.com/facebookincubator/contest/plugins/targetlocker/dblocker"
@@ -35,56 +36,72 @@ var (
 	flagServerID       = flag.String("serverID", "", "Set a static server ID, e.g. the host name or another unique identifier. If unset, will use the listener's default")
 	flagProcessTimeout = flag.Duration("processTimeout", api.DefaultEventTimeout, "API request processing timeout")
 	flagTargetLocker   = flag.String("targetLocker", inmemory.Name, "Target locker implementation to use")
+	flagInstanceTag    = flag.String("instanceTag", "", "A tag for this instance. Server will only operate on jobs with this tag and will add this tag to the jobs it creates.")
 )
 
 func main() {
 	flag.Parse()
 	log := logging.GetLogger("contest")
 	log.Level = logrus.DebugLevel
+	logging.Debug()
 
 	pluginRegistry := pluginregistry.NewPluginRegistry()
 
 	// primary storage initialization
-	log.Infof("Using database URI for primary storage: %s", *flagDBURI)
+	if *flagDBURI != "" {
+		log.Infof("Using database URI for primary storage: %s", *flagDBURI)
 
-	primaryDBURI := *flagDBURI
-	s, err := rdbms.New(primaryDBURI)
-	if err != nil {
-		log.Fatalf("Could not initialize database: %v", err)
-	}
-	if err := storage.SetStorage(s); err != nil {
-		log.Fatalf("Could not set storage: %v", err)
-	}
+		primaryDBURI := *flagDBURI
+		s, err := rdbms.New(primaryDBURI)
+		if err != nil {
+			log.Fatalf("Could not initialize database: %v", err)
+		}
+		if err := storage.SetStorage(s); err != nil {
+			log.Fatalf("Could not set storage: %v", err)
+		}
 
-	dbVerPrim, err := s.Version()
-	if err != nil {
-		log.Warningf("Could not determine storage version: %v", err)
+		dbVerPrim, err := s.Version()
+		if err != nil {
+			log.Warningf("Could not determine storage version: %v", err)
+		} else {
+			log.Infof("Storage version: %d", dbVerPrim)
+		}
+
+		// replica storage initialization
+		log.Infof("Using database URI for replica storage: %s", *flagDBURI)
+
+		// pointing to main database for now but can be used to point to replica
+		replicaDBURI := *flagDBURI
+		r, err := rdbms.New(replicaDBURI)
+		if err != nil {
+			log.Fatalf("Could not initialize replica database: %v", err)
+		}
+		if err := storage.SetAsyncStorage(r); err != nil {
+			log.Fatalf("Could not set replica storage: %v", err)
+		}
+
+		dbVerRepl, err := r.Version()
+		if err != nil {
+			log.Warningf("Could not determine storage version: %v", err)
+		} else {
+			log.Infof("Storage version: %d", dbVerRepl)
+		}
+
+		if dbVerPrim != dbVerRepl {
+			log.Fatalf("Primary and Replica DB Versions are different: %v and %v", dbVerPrim, dbVerRepl)
+		}
 	} else {
-		log.Infof("Storage version: %d", dbVerPrim)
-	}
-
-	// replica storage initialization
-	log.Infof("Using database URI for replica storage: %s", *flagDBURI)
-
-	// pointing to main database for now but can be used to point to replica
-	replicaDBURI := *flagDBURI
-	r, err := rdbms.New(replicaDBURI)
-	if err != nil {
-		log.Fatalf("Could not initialize replica database: %v", err)
-	}
-	if err := storage.SetAsyncStorage(r); err != nil {
-		log.Fatalf("Could not set replica storage: %v", err)
-	}
-
-	dbVerRepl, err := r.Version()
-	if err != nil {
-		log.Warningf("Could not determine storage version: %v", err)
-	} else {
-		log.Infof("Storage version: %d", dbVerRepl)
-	}
-
-	if dbVerPrim != dbVerRepl {
-		log.Fatalf("Primary and Replica DB Versions are different: %v and %v", dbVerPrim, dbVerRepl)
+		log.Warningf("Using in-memory storage")
+		if ms, err := memory.New(); err == nil {
+			if err := storage.SetStorage(ms); err != nil {
+				log.Fatalf("Could not set storage: %v", err)
+			}
+			if err := storage.SetAsyncStorage(ms); err != nil {
+				log.Fatalf("Could not set replica storage: %v", err)
+			}
+		} else {
+			log.Fatalf("Could not create storage: %v", err)
+		}
 	}
 
 	// set Locker engine
@@ -111,6 +128,9 @@ func main() {
 	}
 	if *flagServerID != "" {
 		opts = append(opts, jobmanager.APIOption(api.OptionServerID(*flagServerID)))
+	}
+	if *flagInstanceTag != "" {
+		opts = append(opts, jobmanager.OptionInstanceTag(*flagInstanceTag))
 	}
 
 	jm, err := jobmanager.New(&listener, pluginRegistry, opts...)

@@ -215,7 +215,7 @@ func (m *Memory) ListJobs(query *storage.JobQuery) ([]types.JobID, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	res := []types.JobID{}
-	if err := job.CheckTags(query.Tags); err != nil {
+	if err := job.CheckTags(query.Tags, true /* allowInternal */); err != nil {
 		return nil, err
 	}
 jobLoop:

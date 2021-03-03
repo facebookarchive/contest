@@ -6,11 +6,9 @@
 package slowecho
 
 import (
-	"context"
 	"errors"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
@@ -20,6 +18,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/plugins/teststeps"
 )
 
 // Name is the name used to look this plugin up.
@@ -51,14 +50,14 @@ func (e *Step) Name() string {
 }
 
 func sleepTime(secStr string) (time.Duration, error) {
-	seconds, err := strconv.Atoi(secStr)
+	seconds, err := strconv.ParseFloat(secStr, 64)
 	if err != nil {
 		return 0, err
 	}
 	if seconds < 0 {
 		return 0, errors.New("seconds cannot be negative in slowecho parameters")
 	}
-	return time.Duration(seconds) * time.Second, nil
+	return time.Duration(seconds*1000) * time.Millisecond, nil
 
 }
 
@@ -86,47 +85,18 @@ func (e *Step) Run(ctx statectx.Context, ch test.TestStepChannels, params test.T
 	if err != nil {
 		return err
 	}
-	var wg sync.WaitGroup
-processing:
-	for {
+	f := func(ctx statectx.Context, t *target.Target) error {
+		log.Infof("Waiting %v for target %s", sleep, t.ID)
 		select {
-		case t := <-ch.In:
-			if t == nil {
-				// no more targets incoming
-				wg.Wait()
-				return nil
-			}
-			wg.Add(1)
-			go func(t *target.Target) {
-				defer wg.Done()
-
-				log.Infof("Waiting %v for target %s", sleep, t.ID)
-				timeCtx, timeCancel := context.WithTimeout(ctx.PausedOrDoneCtx(), sleep)
-				defer timeCancel()
-				<-timeCtx.Done()
-
-				if timeCtx.Err() != context.DeadlineExceeded {
-					log.Infof("Returning because cancellation or pause is requested")
-					return
-				}
-
-				log.Infof("target %s: %s", t, params.GetOne("text"))
-				select {
-				case <-ctx.PausedOrDone():
-					log.Debug("Returning because cancellation or pause is requested")
-					return
-				case ch.Out <- t:
-				}
-			}(t)
-		case <-ctx.PausedOrDone():
-			log.Infof("Requested cancellation or pause")
-			break processing
+		case <-time.After(sleep):
+		case <-ctx.Done():
+			log.Infof("Returning because cancellation is requested")
+			return statectx.ErrCanceled
 		}
+		log.Infof("target %s: %s", t, params.GetOne("text"))
+		return nil
 	}
-	log.Debugf("Waiting for all goroutines to terminate")
-	wg.Wait()
-	log.Debugf("All goroutines terminated")
-	return nil
+	return teststeps.ForEachTarget(Name, ctx, ch, f)
 }
 
 // CanResume tells whether this step is able to resume.

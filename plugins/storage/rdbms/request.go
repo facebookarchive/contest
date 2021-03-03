@@ -29,7 +29,7 @@ func (r *RDBMS) StoreJobRequest(request *job.Request) (types.JobID, error) {
 	if err := json.Unmarshal([]byte(request.JobDescriptor), &desc); err != nil {
 		return 0, fmt.Errorf("invalid job descriptor: %w", err)
 	}
-	if err := job.CheckTags(desc.Tags); err != nil {
+	if err := job.CheckTags(desc.Tags, true /* allowInternal */); err != nil {
 		return 0, err
 	}
 

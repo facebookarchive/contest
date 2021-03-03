@@ -19,7 +19,7 @@ func (r *RDBMS) ListJobs(query *storage.JobQuery) ([]types.JobID, error) {
 
 	// Quoting SQL strings is hard. https://github.com/golang/go/issues/18478
 	// For now, just disallow anything that is not [a-zA-Z0-9_-]
-	if err := job.CheckTags(query.Tags); err != nil {
+	if err := job.CheckTags(query.Tags, true /* allowInternal */); err != nil {
 		return nil, err
 	}
 
