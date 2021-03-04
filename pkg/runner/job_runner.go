@@ -103,7 +103,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				// the Acquire semantic is synchronous, so that the implementation
 				// is simpler on the user's side. We run it in a goroutine in
 				// order to use a timeout for target acquisition.
-				targets, err := bundle.TargetManager.Acquire(j.StateCtx, j.ID, j.TargetManagerAcquireTimeout + config.LockRefreshTimeout, bundle.AcquireParameters, tl)
+				targets, err := bundle.TargetManager.Acquire(j.StateCtx, j.ID, j.TargetManagerAcquireTimeout+config.LockRefreshTimeout, bundle.AcquireParameters, tl)
 				if err != nil {
 					errCh <- err
 					targetsCh <- nil
