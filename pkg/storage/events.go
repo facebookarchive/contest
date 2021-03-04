@@ -136,7 +136,6 @@ func (ev FrameworkEventFetcher) FetchAsync(queryFields ...frameworkevent.QueryFi
 	return storageAsync.GetFrameworkEvent(eventQuery)
 }
 
-
 // NewFrameworkEventEmitter creates a new Emitter object for framework events
 func NewFrameworkEventEmitter() FrameworkEventEmitter {
 	return FrameworkEventEmitter{}
