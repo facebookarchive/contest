@@ -54,15 +54,16 @@ const defaultTimeoutParameter = "10m"
 
 // SSHCmd is used to run arbitrary commands as test steps.
 type SSHCmd struct {
-	Host           *test.Param
-	Port           *test.Param
-	User           *test.Param
-	PrivateKeyFile *test.Param
-	Password       *test.Param
-	Executable     *test.Param
-	Args           []test.Param
-	Expect         *test.Param
-	Timeout        *test.Param
+	Host            *test.Param
+	Port            *test.Param
+	User            *test.Param
+	PrivateKeyFile  *test.Param
+	Password        *test.Param
+	Executable      *test.Param
+	Args            []test.Param
+	Expect          *test.Param
+	Timeout         *test.Param
+	SkipIfEmptyHost *test.Param
 }
 
 // Name returns the plugin name.
@@ -94,6 +95,23 @@ func (ts *SSHCmd) Run(ctx statectx.Context, ch test.TestStepChannels, params tes
 		host, err := ts.Host.Expand(target)
 		if err != nil {
 			return fmt.Errorf("cannot expand host parameter: %v", err)
+		}
+
+		if len(host) == 0 {
+			shouldSkip := false
+			if !ts.SkipIfEmptyHost.IsEmpty() {
+				var err error
+				shouldSkip, err = strconv.ParseBool(ts.SkipIfEmptyHost.String())
+				if err != nil {
+					return fmt.Errorf("cannot expand 'skip_if_empty_host' parameter value '%s': %w", ts.SkipIfEmptyHost, err)
+				}
+			}
+
+			if shouldSkip {
+				return nil
+			} else {
+				return fmt.Errorf("host value is empty")
+			}
 		}
 
 		portStr, err := ts.Port.Expand(target)
@@ -172,7 +190,7 @@ func (ts *SSHCmd) Run(ctx statectx.Context, ch test.TestStepChannels, params tes
 		}
 
 		// connect to the host
-		addr := net.JoinHostPort(host, strconv.Itoa(int(port)))
+		addr := net.JoinHostPort(host, strconv.Itoa(port))
 		client, err := ssh.Dial("tcp", addr, &config)
 		if err != nil {
 			return fmt.Errorf("cannot connect to SSH server %s: %v", addr, err)
@@ -300,6 +318,8 @@ func (ts *SSHCmd) validateAndPopulate(params test.TestStepParameters) error {
 	} else {
 		ts.Timeout = params.GetOne("timeout")
 	}
+
+	ts.SkipIfEmptyHost = params.GetOne("skip_if_empty_host")
 	return nil
 }
 
