@@ -10,12 +10,11 @@ import (
 	"fmt"
 
 	"github.com/facebookincubator/contest/pkg/job"
-	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
 const (
-	insertJobStmt    = "insert into jobs (name, descriptor, teststeps, requestor, server_id, request_time) values (?, ?, ?, ?, ?, ?)"
+	insertJobStmt    = "insert into jobs (name, descriptor, extended_descriptor, requestor, server_id, request_time) values (?, ?, ?, ?, ?, ?)"
 	insertJobTagStmt = "insert into job_tags (job_id, tag) values (?, ?)"
 )
 
@@ -25,7 +24,7 @@ func (r *RDBMS) StoreJobRequest(request *job.Request) (types.JobID, error) {
 	var jobID types.JobID
 
 	// Extract job tags for insertion.
-	var desc job.JobDescriptor
+	var desc job.Descriptor
 	if err := json.Unmarshal([]byte(request.JobDescriptor), &desc); err != nil {
 		return 0, fmt.Errorf("invalid job descriptor: %w", err)
 	}
@@ -36,8 +35,14 @@ func (r *RDBMS) StoreJobRequest(request *job.Request) (types.JobID, error) {
 	r.lockTx()
 	defer r.unlockTx()
 
+	// serialize the extended descriptor
+	extendedDescriptor, err := json.Marshal(request.ExtendedDescriptor)
+	if err != nil {
+		return jobID, fmt.Errorf("could not serialize extended job descriptor")
+	}
+
 	// store job descriptor
-	result, err := r.db.Exec(insertJobStmt, request.JobName, request.JobDescriptor, request.TestDescriptors, request.Requestor, request.ServerID, request.RequestTime)
+	result, err := r.db.Exec(insertJobStmt, request.JobName, request.JobDescriptor, extendedDescriptor, request.Requestor, request.ServerID, request.RequestTime)
 	if err != nil {
 		return jobID, fmt.Errorf("could not store job request in database: %w", err)
 	}
@@ -62,7 +67,7 @@ func (r *RDBMS) GetJobRequest(jobID types.JobID) (*job.Request, error) {
 	r.lockTx()
 	defer r.unlockTx()
 
-	selectStatement := "select job_id, name, requestor, server_id, request_time, descriptor, teststeps from jobs where job_id = ?"
+	selectStatement := "select job_id, name, requestor, server_id, request_time, descriptor,  extended_descriptor from jobs where job_id = ?"
 	log.Debugf("Executing query: %s", selectStatement)
 	rows, err := r.db.Query(selectStatement, jobID)
 	if err != nil {
@@ -75,16 +80,15 @@ func (r *RDBMS) GetJobRequest(jobID types.JobID) (*job.Request, error) {
 	}()
 
 	var (
-		req *job.Request
+		req                    *job.Request
+		extendedDescriptorJSON string
 	)
-	found := false
 	for rows.Next() {
 		if req != nil {
 			// We have already found a matching request. If we find more than one,
 			// then we have a problem
 			return nil, fmt.Errorf("multiple requests found with job id %v", jobID)
 		}
-		found = true
 		currRequest := job.Request{}
 		err := rows.Scan(
 			&currRequest.JobID,
@@ -93,29 +97,23 @@ func (r *RDBMS) GetJobRequest(jobID types.JobID) (*job.Request, error) {
 			&currRequest.ServerID,
 			&currRequest.RequestTime,
 			&currRequest.JobDescriptor,
-			&currRequest.TestDescriptors,
+			&extendedDescriptorJSON,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("could not get job request with job id %v: %v", jobID, err)
 		}
 		req = &currRequest
 	}
-	if !found {
-		return nil, fmt.Errorf("no job request found for job ID %d", jobID)
-	}
-	// check that job descriptor is valid JSON
-	var jobDesc job.JobDescriptor
-	if err := json.Unmarshal([]byte(req.JobDescriptor), &jobDesc); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal job descriptor: %w", err)
-	}
-	// check that test step descriptors are valid JSON
-	var testStepDescs [][]*test.TestStepDescriptor
-	if err := json.Unmarshal([]byte(req.TestDescriptors), &testStepDescs); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal test step descriptors: %w", err)
-	}
 
 	if req == nil {
 		return nil, fmt.Errorf("could not find request with JobID %d", jobID)
 	}
+
+	extendedDescriptor := job.ExtendedDescriptor{}
+	if err := json.Unmarshal([]byte(extendedDescriptorJSON), &extendedDescriptor); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal extended job descriptor: %w", err)
+	}
+	req.ExtendedDescriptor = &extendedDescriptor
+
 	return req, nil
 }

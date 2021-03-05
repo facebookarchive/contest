@@ -40,6 +40,9 @@ func (r *PluginRegistry) NewTestStepBundle(testStepDescriptor test.TestStepDescr
 // the content of the job descriptor
 func (r *PluginRegistry) NewTestFetcherBundle(testDescriptor *test.TestDescriptor) (*test.TestFetcherBundle, error) {
 	// Initialization and validation of the TestFetcher and its parameters
+	if testDescriptor == nil {
+		return nil, fmt.Errorf("test description is null")
+	}
 	testFetcher, err := r.NewTestFetcher(testDescriptor.TestFetcherName)
 	if err != nil {
 		return nil, fmt.Errorf("could not get the desired TestFetcher (%s): %v", testDescriptor.TestFetcherName, err)

@@ -351,7 +351,7 @@ commented for clarity:
             "TargetManagerAcquireParameters": {
                 // the URI for the CSV file that contains a list of targets in
                 the format "id,fqdn,ipv4,ipv6". This is intentionally very simple.
-                "FileURI": "hosts02.csv",
+                "FileURI": "hosts.csv",
                 // The minimum number of targets needed for the test. If we
                 // don't get at least this number of devices, the job will fail.
                 "MinNumberDevices": 10,

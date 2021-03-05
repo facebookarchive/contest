@@ -7,7 +7,7 @@
         {
             "TargetManagerName": "CSVFileTargetManager",
             "TargetManagerAcquireParameters": {
-                "FileURI": "hosts02.csv",
+                "FileURI": "hosts.csv",
                 "MinNumberDevices": 2,
                 "MaxNumberDevices": 4,
                 "HostPrefixes": [
@@ -24,7 +24,7 @@
         {
             "TargetManagerName": "CSVFileTargetManager",
             "TargetManagerAcquireParameters": {
-                "FileURI": "hosts02.csv",
+                "FileURI": "hosts.csv",
                 "MinNumberDevices": 2,
                 "MaxNumberDevices": 4,
                 "HostPrefixes": [

@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
-// +build integration integration_storage
+// +build integration_storage
 
 package test
 
@@ -106,13 +106,13 @@ func (suite *TestDescriptorMigrationSuite) TestUpMigratesToExtendedDescriptor() 
 	err = json.Unmarshal([]byte(extendedDescriptorJSON), &extendedDescriptor)
 	require.NoError(suite.T(), err)
 
-	stepDescriptors := extendedDescriptor.StepsDescriptors
-	require.Equal(suite.T(), 1, len(stepDescriptors), fmt.Sprintf("len(%s) != 1", stepDescriptors))
+	stepDescriptors := extendedDescriptor.TestStepsDescriptors
+	require.Equal(suite.T(), 1, len(stepDescriptors), fmt.Sprintf("%d != 1", len(stepDescriptors)))
 
-	require.Equal(suite.T(), extendedDescriptor.StepsDescriptors[0].TestName, "Literal test")
+	require.Equal(suite.T(), extendedDescriptor.TestStepsDescriptors[0].TestName, "Literal test")
 
-	test := extendedDescriptor.StepsDescriptors[0].Test
-	require.Equal(suite.T(), len(test), 1, fmt.Sprintf("len(%s) != 1", test))
+	test := extendedDescriptor.TestStepsDescriptors[0].TestSteps
+	require.Equal(suite.T(), len(test), 1, fmt.Sprintf("%d!= 1", len(test)))
 	require.Equal(suite.T(), "cmd", test[0].Name)
 	require.Equal(suite.T(), "some label", test[0].Label)
 

@@ -20,6 +20,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/storage/limits"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/plugins/reporters/noop"
 	"github.com/facebookincubator/contest/plugins/targetmanagers/targetlist"
 	"github.com/facebookincubator/contest/plugins/testfetchers/literal"
 
@@ -56,24 +57,22 @@ func TestEventName(t *testing.T) {
 }
 
 func TestJobName(t *testing.T) {
-	jd := job.JobDescriptor{TestDescriptors: []*test.TestDescriptor{{}}, JobName: strings.Repeat("A", limits.MaxJobNameLen+1)}
+	jd := job.Descriptor{TestDescriptors: []*test.TestDescriptor{{}}, JobName: strings.Repeat("A", limits.MaxJobNameLen+1)}
 	jsonJd, err := json.Marshal(&jd)
 	require.NoError(t, err)
-	_, err = jobmanager.NewJobFromRequest(&pluginregistry.PluginRegistry{}, &job.Request{JobDescriptor: string(jsonJd)})
+	_, err = jobmanager.NewJobFromJSONDescriptor(&pluginregistry.PluginRegistry{}, string(jsonJd))
 	assertLenError(t, "Job name", err)
 }
 
 func TestReporterName(t *testing.T) {
-	jd := job.JobDescriptor{
+	jd := job.Descriptor{
 		TestDescriptors: []*test.TestDescriptor{{}},
 		JobName:         "AA",
 		Reporting:       job.Reporting{RunReporters: []job.ReporterConfig{{Name: strings.Repeat("A", limits.MaxReporterNameLen+1)}}},
 	}
 	jsonJd, err := json.Marshal(&jd)
 	require.NoError(t, err)
-	_, err = jobmanager.NewJobFromRequest(&pluginregistry.PluginRegistry{},
-		&job.Request{JobDescriptor: string(jsonJd)},
-	)
+	_, err = jobmanager.NewJobFromJSONDescriptor(&pluginregistry.PluginRegistry{}, string(jsonJd))
 	assertLenError(t, "Reporter name", err)
 }
 func TestTestName(t *testing.T) {
@@ -82,26 +81,26 @@ func TestTestName(t *testing.T) {
 	require.NoError(t, err)
 	err = pluginRegistry.RegisterTestFetcher(literal.Load())
 	require.NoError(t, err)
+	err = pluginRegistry.RegisterReporter(noop.Load())
+	require.NoError(t, err)
 
 	testFetchParams, err := json.Marshal(&literal.FetchParameters{
 		TestName: strings.Repeat("A", limits.MaxTestNameLen+1),
 	})
 	require.NoError(t, err)
 
-	jd := job.JobDescriptor{
+	jd := job.Descriptor{
 		TestDescriptors: []*test.TestDescriptor{{
 			TargetManagerName:          "targetList",
 			TestFetcherName:            "literal",
 			TestFetcherFetchParameters: testFetchParams,
 		}},
 		JobName:   "AA",
-		Reporting: job.Reporting{RunReporters: []job.ReporterConfig{{Name: "BB"}}},
+		Reporting: job.Reporting{RunReporters: []job.ReporterConfig{{Name: "noop"}}},
 	}
 	jsonJd, err := json.Marshal(&jd)
 	require.NoError(t, err)
-	_, err = jobmanager.NewJobFromRequest(pluginRegistry,
-		&job.Request{JobDescriptor: string(jsonJd)},
-	)
+	_, err = jobmanager.NewJobFromJSONDescriptor(pluginRegistry, string(jsonJd))
 	assertLenError(t, "Test name", err)
 }
 
@@ -110,6 +109,8 @@ func TestTestStepLabel(t *testing.T) {
 	err := pluginRegistry.RegisterTargetManager(targetlist.Load())
 	require.NoError(t, err)
 	err = pluginRegistry.RegisterTestFetcher(literal.Load())
+	require.NoError(t, err)
+	err = pluginRegistry.RegisterReporter(noop.Load())
 	require.NoError(t, err)
 
 	testFetchParams, err := json.Marshal(&literal.FetchParameters{
@@ -120,20 +121,18 @@ func TestTestStepLabel(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	jd := job.JobDescriptor{
+	jd := job.Descriptor{
 		TestDescriptors: []*test.TestDescriptor{{
 			TargetManagerName:          "targetList",
 			TestFetcherName:            "literal",
 			TestFetcherFetchParameters: testFetchParams,
 		}},
 		JobName:   "AA",
-		Reporting: job.Reporting{RunReporters: []job.ReporterConfig{{Name: "BB"}}},
+		Reporting: job.Reporting{RunReporters: []job.ReporterConfig{{Name: "noop"}}},
 	}
 	jsonJd, err := json.Marshal(&jd)
 	require.NoError(t, err)
-	_, err = jobmanager.NewJobFromRequest(pluginRegistry,
-		&job.Request{JobDescriptor: string(jsonJd)},
-	)
+	_, err = jobmanager.NewJobFromJSONDescriptor(pluginRegistry, string(jsonJd))
 	assertLenError(t, "Test step label", err)
 }
 
