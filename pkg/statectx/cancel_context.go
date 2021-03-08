@@ -1,4 +1,7 @@
-// Note: unfortunately context.WithCancel can't redefine error code
+// Copyright (c) Facebook, Inc. and its affiliates.
+//
+// This source code is licensed under the MIT license found in the
+// LICENSE file in the root directory of this source tree.
 
 package statectx
 
@@ -7,6 +10,8 @@ import (
 	"sync"
 	"time"
 )
+
+// Note: unfortunately context.WithCancel can't redefine error code
 
 func newCancelContext(ctx context.Context) (context.Context, func(err error)) {
 	result := &cancelContext{
