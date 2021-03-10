@@ -31,7 +31,7 @@ func (jm *JobManager) list(ev *api.Event) *api.EventResponse {
 	if jm.config.instanceTag != "" {
 		tags = job.AddTags(tags, jm.config.instanceTag)
 	}
-	job.AddTags(tags, msg.Tags...)
+	tags = job.AddTags(tags, msg.Tags...)
 	if len(tags) > 0 {
 		queryFields = append(queryFields, storage.QueryJobTags(tags...))
 	}

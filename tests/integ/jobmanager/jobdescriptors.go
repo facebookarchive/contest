@@ -77,7 +77,7 @@ func descriptorMust(def string) string {
 	return descriptorMust2(&templateData{Runs: 1, RunInterval: "1s", Def: def})
 }
 
-var jobDescriptorNoop = descriptorMust(`
+var testStepsNoop = `
     "TestFetcherFetchParameters": {
         "Steps": [
             {
@@ -87,7 +87,11 @@ var jobDescriptorNoop = descriptorMust(`
             }
         ],
         "TestName": "IntegrationTest: noop"
-    }`)
+    }`
+var jobDescriptorNoop = descriptorMust(testStepsNoop)
+var jobDescriptorNoop2 = descriptorMust2(
+	&templateData{Runs: 1, RunInterval: "1s", Def: testStepsNoop, ExtraTags: `, "foo"`},
+)
 
 var jobDescriptorSlowEcho = descriptorMust(`
    "TestFetcherFetchParameters": {

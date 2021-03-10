@@ -57,6 +57,9 @@ type command struct {
 	commandType   CommandType
 	jobID         types.JobID
 	jobDescriptor string
+	// List arguments
+	states []job.State
+	tags   []string
 }
 
 // TestListener implements a dummy api.Listener interface for testing purposes
@@ -99,7 +102,7 @@ func (tl *TestListener) Serve(cancel <-chan struct{}, contestApi *api.API) error
 				}
 				tl.responseCh <- resp
 			case List:
-				resp, err := contestApi.List("IntegrationTest", nil, nil)
+				resp, err := contestApi.List("IntegrationTest", command.states, command.tags)
 				if err != nil {
 					tl.errorCh <- err
 				}
@@ -223,8 +226,8 @@ func (suite *TestJobManagerSuite) jobStatus(jobID types.JobID) (*job.Status, err
 	return resp.Data.(api.ResponseDataStatus).Status, nil
 }
 
-func (suite *TestJobManagerSuite) listJobs() ([]types.JobID, error) {
-	suite.commandCh <- command{commandType: List}
+func (suite *TestJobManagerSuite) listJobs(states []job.State, tags []string) ([]types.JobID, error) {
+	suite.commandCh <- command{commandType: List, states: states, tags: tags}
 	var resp api.Response
 	select {
 	case resp = <-suite.responseCh:
@@ -360,11 +363,6 @@ func (suite *TestJobManagerSuite) TestPauseAndExit() {
 func (suite *TestJobManagerSuite) TestJobManagerJobStartSingle() {
 	suite.startJobManager()
 
-	// There are no jobs to begin with.
-	jobIDs, err := suite.listJobs()
-	require.NoError(suite.T(), err)
-	require.Empty(suite.T(), jobIDs)
-
 	jobID, err := suite.startJob(jobDescriptorNoop)
 	require.NoError(suite.T(), err)
 
@@ -384,11 +382,6 @@ func (suite *TestJobManagerSuite) TestJobManagerJobStartSingle() {
 	ev, err = pollForEvent(suite.eventManager, job.EventJobCompleted, jobID, 1*time.Second)
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
-
-	// Make sure we can list the job.
-	jobIDs, err = suite.listJobs()
-	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), []types.JobID{jobID}, jobIDs)
 }
 
 func (suite *TestJobManagerSuite) TestJobManagerJobReport() {
@@ -618,7 +611,7 @@ func (suite *TestJobManagerSuite) TestJobManagerDifferentInstances() {
 		require.Equal(suite.T(), 1, len(ev))
 
 		// Make sure we can list the job and get its status.
-		jobIDs, err := suite.listJobs()
+		jobIDs, err := suite.listJobs(nil, nil)
 		require.NoError(suite.T(), err)
 		require.Equal(suite.T(), []types.JobID{jobID}, jobIDs)
 		jobStatus, err := suite.jobStatus(jobID)
@@ -632,7 +625,7 @@ func (suite *TestJobManagerSuite) TestJobManagerDifferentInstances() {
 	{
 		suite.initJobManager("_B")
 		suite.startJobManager()
-		jobIDs, err := suite.listJobs()
+		jobIDs, err := suite.listJobs(nil, nil)
 		require.NoError(suite.T(), err)
 		require.Empty(suite.T(), jobIDs)
 		jobStatus, err := suite.jobStatus(jobID)
@@ -640,4 +633,54 @@ func (suite *TestJobManagerSuite) TestJobManagerDifferentInstances() {
 		require.Contains(suite.T(), err.Error(), "different instance")
 		require.Nil(suite.T(), jobStatus)
 	}
+}
+
+func (suite *TestJobManagerSuite) TestJobListing() {
+	suite.startJobManager()
+
+	// There are no jobs to begin with.
+	jobIDs, err := suite.listJobs(nil, nil)
+	require.NoError(suite.T(), err)
+	require.Empty(suite.T(), jobIDs)
+
+	// Run two jobs, one successful one not.
+	jobID1, err := suite.startJob(jobDescriptorNoop2)
+	require.NoError(suite.T(), err)
+	ev, err := pollForEvent(suite.eventManager, job.EventJobCompleted, jobID1, 1*time.Second)
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), 1, len(ev))
+	jobID2, err := suite.startJob(jobDescriptorCrash)
+	require.NoError(suite.T(), err)
+	ev, err = pollForEvent(suite.eventManager, job.EventJobFailed, jobID2, 1*time.Second)
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), 1, len(ev))
+
+	// No filters
+	jobIDs, err = suite.listJobs(nil, nil)
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), []types.JobID{jobID1, jobID2}, jobIDs)
+
+	// Filter by state - any state should match
+	jobIDs, err = suite.listJobs([]job.State{job.JobStateCompleted}, nil)
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), []types.JobID{jobID1}, jobIDs)
+	jobIDs, err = suite.listJobs([]job.State{job.JobStateFailed}, nil)
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), []types.JobID{jobID2}, jobIDs)
+	jobIDs, err = suite.listJobs([]job.State{job.JobStateCompleted, job.JobStateCancelled, job.JobStateFailed}, nil)
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), []types.JobID{jobID1, jobID2}, jobIDs)
+
+	// Filter by tags - all that specified tags must be present.
+	jobIDs, err = suite.listJobs(nil, []string{"integration_testing"})
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), []types.JobID{jobID1, jobID2}, jobIDs)
+	jobIDs, err = suite.listJobs(nil, []string{"foo", "integration_testing"})
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), []types.JobID{jobID1}, jobIDs)
+
+	// Filter by both tags and state.
+	jobIDs, err = suite.listJobs([]job.State{job.JobStateCompleted}, []string{"integration_testing"})
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), []types.JobID{jobID1}, jobIDs)
 }
