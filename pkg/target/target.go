@@ -40,9 +40,10 @@ type ErrPayload struct {
 // FQDN, PrimaryIPv4, and PrimaryIPv6 are used by plugins to contact the target, set as many as possible for maximum plugin compatibility.
 // Plugins are generally expected to attempt contacting devices via FQDN, IPv4, and IPv6. Note there is no way to enforce this and more specialized plugins might only support a subset.
 type Target struct {
-	ID                       string
-	FQDN                     string
-	PrimaryIPv4, PrimaryIPv6 net.IP
+	ID          string `json:"ID"`
+	FQDN        string `json:"FQDN,omitempty"`
+	PrimaryIPv4 net.IP `json:"PrimaryIPv4,omitempty"`
+	PrimaryIPv6 net.IP `json:"PrimaryIPv6,omitempty"`
 }
 
 func (t *Target) String() string {
@@ -50,16 +51,16 @@ func (t *Target) String() string {
 		return "(*Target)(nil)"
 	}
 	var res strings.Builder
-	res.WriteString(fmt.Sprintf("Target{ID: \"%s\"", t.ID))
+	res.WriteString(fmt.Sprintf(`Target{ID: "%s"`, t.ID))
 	// deref params if they are set, to be more useful than %v
 	if t.FQDN != "" {
-		res.WriteString(fmt.Sprintf(", FQDN: \"%s\"", t.FQDN))
+		res.WriteString(fmt.Sprintf(`, FQDN: "%s"`, t.FQDN))
 	}
 	if t.PrimaryIPv4 != nil {
-		res.WriteString(fmt.Sprintf(", PrimaryIPv4: \"%v\"", t.PrimaryIPv4))
+		res.WriteString(fmt.Sprintf(`, PrimaryIPv4: "%v"`, t.PrimaryIPv4))
 	}
 	if t.PrimaryIPv6 != nil {
-		res.WriteString(fmt.Sprintf(", PrimaryIPv6: \"%v\"", t.PrimaryIPv6))
+		res.WriteString(fmt.Sprintf(`, PrimaryIPv6: "%v"`, t.PrimaryIPv6))
 	}
 	res.WriteString("}")
 	return res.String()
