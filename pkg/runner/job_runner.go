@@ -20,6 +20,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 var jobLog = logging.GetLogger("pkg/runner")
@@ -157,7 +158,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 						if err := tl.Unlock(j.ID, targets); err != nil {
 							jobLog.Warningf("Failed to unlock targets (%v) for job ID %d: %v", targets, j.ID, err)
 						}
-					case <-j.StateCtx.Paused():
+					case <-j.StateCtx.WaitFor(xcontext.Paused):
 						jobLog.Debugf("Received pause request, NOT releasing targets so the job can be resumed")
 						return
 					case <-done:

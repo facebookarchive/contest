@@ -248,7 +248,7 @@ func (ts *SSHCmd) Run(ctx xcontext.Context, ch test.TestStepChannels, params tes
 					log.Warningf("Stderr of command '%s' is '%s'", cmd, stderr.Bytes())
 				}
 				return err
-			case <-ctx.PausedOrDone():
+			case <-ctx.WaitFor():
 				return session.Signal(ssh.SIGKILL)
 			case <-time.After(250 * time.Millisecond):
 				keepAliveCnt++

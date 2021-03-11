@@ -80,7 +80,7 @@ func (ts *TerminalExpect) Run(ctx xcontext.Context, ch test.TestStepChannels, pa
 			return err
 		case <-time.After(ts.Timeout):
 			return fmt.Errorf("timed out after %s", ts.Timeout)
-		case <-ctx.PausedOrDone():
+		case <-ctx.WaitFor():
 			return nil
 		}
 	}

@@ -6,7 +6,6 @@
 package runner
 
 import (
-	"context"
 	"github.com/facebookincubator/contest/pkg/target"
 )
 
@@ -26,7 +25,7 @@ import (
 // the order of targets (which is handy and not misleading
 // while reading logs). Here we implement the second one:
 func waitForFirstTarget(
-	ctx context.Context,
+	cancelCh <-chan struct{},
 	in <-chan *target.Target,
 ) (out chan *target.Target, onFirstTarget, onNoTargets <-chan struct{}) {
 	onFirstTargetCh := make(chan struct{})
@@ -44,7 +43,7 @@ func waitForFirstTarget(
 			}
 			close(onFirstTargetCh)
 			out <- t
-		case <-ctx.Done():
+		case <-cancelCh:
 			return
 		}
 

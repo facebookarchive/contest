@@ -67,7 +67,7 @@ func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, _ test.TestS
 			}
 			if r == 1 {
 				select {
-				case <-ctx.PausedOrDone():
+				case <-ctx.WaitFor():
 					return nil
 				case ch.Err <- cerrors.TargetError{Target: target, Err: fmt.Errorf("target failed")}:
 					if err := ev.Emit(testevent.Data{EventName: FinishedEvent, Target: target, Payload: nil}); err != nil {
@@ -76,7 +76,7 @@ func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, _ test.TestS
 				}
 			} else {
 				select {
-				case <-ctx.PausedOrDone():
+				case <-ctx.WaitFor():
 					return nil
 				case ch.Out <- target:
 					if err := ev.Emit(testevent.Data{EventName: FailedEvent, Target: target, Payload: nil}); err != nil {
@@ -84,7 +84,7 @@ func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, _ test.TestS
 					}
 				}
 			}
-		case <-ctx.PausedOrDone():
+		case <-ctx.WaitFor():
 			return nil
 		}
 	}

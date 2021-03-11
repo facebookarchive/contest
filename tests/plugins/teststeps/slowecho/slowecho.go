@@ -91,7 +91,7 @@ func (e *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.T
 		case <-time.After(sleep):
 		case <-ctx.Done():
 			log.Infof("Returning because cancellation is requested")
-			return xcontext.ErrCanceled
+			return xcontext.Canceled
 		}
 		log.Infof("target %s: %s", t, params.GetOne("text"))
 		return nil

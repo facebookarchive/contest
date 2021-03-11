@@ -90,7 +90,7 @@ func (p *pipeline) runStep(ctx xcontext.Context, jobID types.JobID, runID types.
 	// then we call `bundle.TestStep.Run()`.
 	//
 	// ITS: https://github.com/facebookincubator/contest/issues/101
-	stepIn, onFirstTargetChan, onNoTargetsChan := waitForFirstTarget(ctx.PausedOrDoneCtx(), stepCh.stepIn)
+	stepIn, onFirstTargetChan, onNoTargetsChan := waitForFirstTarget(ctx.WaitFor(), stepCh.stepIn)
 
 	haveTargets := false
 	select {
@@ -99,7 +99,7 @@ func (p *pipeline) runStep(ctx xcontext.Context, jobID types.JobID, runID types.
 		haveTargets = true
 	case <-ctx.Done():
 		log.Debugf("cancelled")
-	case <-ctx.Paused():
+	case <-ctx.WaitFor(xcontext.Paused):
 		log.Debugf("paused")
 	case <-onNoTargetsChan:
 		log.Debugf("no targets")
@@ -124,8 +124,8 @@ func (p *pipeline) runStep(ctx xcontext.Context, jobID types.JobID, runID types.
 	// channels but return immediately as the TestStep itself probably returned
 	// because it honored the termination signal.
 
-	cancellationAsserted := ctx.PausedOrDoneCtx().Err() == xcontext.ErrCanceled
-	pauseAsserted := ctx.PausedOrDoneCtx().Err() == xcontext.ErrPaused
+	cancellationAsserted := ctx.Err() != nil
+	pauseAsserted := ctx.IsSignaledWith(xcontext.Paused)
 
 	if cancellationAsserted && err == nil {
 		err = fmt.Errorf("test step cancelled")
@@ -412,7 +412,8 @@ func (p *pipeline) init(ctx xcontext.Context) (routeInFirst chan *target.Target)
 		routeIn  chan *target.Target
 	)
 
-	pipelineCtx, pause, cancel := xcontext.WithParent(ctx)
+	pipelineCtx, pause := xcontext.WithNotify(ctx, xcontext.Paused)
+	pipelineCtx, cancel := xcontext.WithCancel(pipelineCtx)
 
 	// result channels used to communicate result information from the routing blocks
 	// and step executors
@@ -468,7 +469,7 @@ func (p *pipeline) init(ctx xcontext.Context) (routeInFirst chan *target.Target)
 		ev := storage.NewTestEventEmitterFetcherWithAllowedEvents(Header, &testStepBundle.AllowedEvents)
 
 		router := newStepRouter(p.log, testStepBundle, routingChannels, ev, p.timeouts)
-		go router.route(pipelineCtx.PausedOrDoneCtx(), routingResultCh)
+		go router.route(pipelineCtx.StdCtxWaitFor(), routingResultCh)
 		go p.runStep(pipelineCtx, p.jobID, p.runID, testStepBundle, stepChannels, stepResultCh, ev)
 		// The input of the next routing block is the output of the current routing block
 		routeIn = routeOut
@@ -499,10 +500,10 @@ func (p *pipeline) run(completedTargetsCh chan<- *target.Target) error {
 	// Wait for the pipeline to complete. If an error occurrs, cancel all TestSteps
 	// and routing blocks and wait again for completion until shutdown timeout occurrs.
 	p.log.Infof("waiting for pipeline to complete")
-	completionError := p.waitTargets(ctx.PausedOrDoneCtx(), completedTargetsCh)
+	completionError := p.waitTargets(ctx.StdCtxWaitFor(), completedTargetsCh)
 
-	pauseAsserted := ctx.PausedOrDoneCtx().Err() == xcontext.ErrPaused
-	cancellationAsserted := ctx.PausedOrDoneCtx().Err() == xcontext.ErrCanceled
+	pauseAsserted := ctx.IsSignaledWith(xcontext.Paused)
+	cancellationAsserted := ctx.Err() != nil
 
 	if completionError != nil {
 		p.log.Warningf("test failed to complete: %v. Forcing cancellation.", completionError)

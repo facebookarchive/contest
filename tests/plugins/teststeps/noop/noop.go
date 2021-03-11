@@ -36,7 +36,7 @@ func (ts *noop) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.
 				return nil
 			}
 			ch.Out <- target
-		case <-ctx.PausedOrDone():
+		case <-ctx.WaitFor():
 			return nil
 		}
 	}

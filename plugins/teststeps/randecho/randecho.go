@@ -84,7 +84,7 @@ func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.Te
 				log.Infof("Run: target %s failed: %s", target, params.GetOne("text"))
 				ch.Err <- cerrors.TargetError{Target: target, Err: fmt.Errorf("target randomly failed")}
 			}
-		case <-ctx.PausedOrDone():
+		case <-ctx.WaitFor():
 			return nil
 		}
 	}

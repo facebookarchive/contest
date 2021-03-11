@@ -112,7 +112,8 @@ func newJob(registry *pluginregistry.PluginRegistry, jobDescriptor *job.Descript
 		FinalReporterBundles:        finalReportersBundle,
 	}
 
-	job.StateCtx, job.StateCtxPause, job.StateCtxCancel = xcontext.New()
+	job.StateCtx, job.StateCtxPause = xcontext.WithNotify(nil, xcontext.Paused)
+	job.StateCtx, job.StateCtxCancel = xcontext.WithCancel(job.StateCtx)
 	return &job, nil
 
 }

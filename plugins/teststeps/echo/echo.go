@@ -64,7 +64,7 @@ func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.Te
 			}
 			log.Infof("Running on target %s with text '%s'", target, params.GetOne("text"))
 			ch.Out <- target
-		case <-ctx.PausedOrDone():
+		case <-ctx.WaitFor():
 			return nil
 		}
 	}

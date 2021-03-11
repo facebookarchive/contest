@@ -6,6 +6,7 @@ require (
 	github.com/chappjc/logrus-prefix v0.0.0-20180227015900-3a1d64819adb
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-sql-driver/mysql v1.5.0
+	github.com/google/uuid v1.2.0
 	github.com/insomniacslk/termhook v0.0.0-20190716141402-454368e885ec
 	github.com/insomniacslk/xjson v0.0.0-20210106140854-1589ccfd1a1a
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
@@ -20,6 +21,8 @@ require (
 	github.com/spf13/pflag v1.0.6-0.20200504143853-81378bbcd8a1
 	github.com/stretchr/testify v1.5.1
 	github.com/x-cray/logrus-prefixed-formatter v0.5.2 // indirect
+	go.uber.org/atomic v1.7.0
+	go.uber.org/zap v1.16.0
 	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
 	gopkg.in/yaml.v3 v3.0.0-20200605160147-a5ece683394c
 )

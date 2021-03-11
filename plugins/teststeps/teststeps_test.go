@@ -31,7 +31,8 @@ type data struct {
 }
 
 func newData() data {
-	ctx, pause, cancel := xcontext.New()
+	ctx, pause := xcontext.WithNotify(nil, xcontext.Paused)
+	ctx, cancel := xcontext.WithCancel(ctx)
 	inCh := make(chan *target.Target)
 	outCh := make(chan *target.Target)
 	errCh := make(chan cerrors.TargetError)
@@ -230,7 +231,7 @@ func TestForEachTargetTenTargetsParallelism(t *testing.T) {
 		select {
 		case <-ctx.Done():
 			log.Printf("target %+v cancelled", tgt)
-		case <-ctx.Paused():
+		case <-ctx.WaitFor(xcontext.Paused):
 			log.Printf("target %+v paused", tgt)
 		case <-time.After(sleepTime):
 			log.Printf("target %+v processed", tgt)
@@ -308,7 +309,7 @@ func TestForEachTargetCancelSignalPropagation(t *testing.T) {
 		case <-ctx.Done():
 			log.Printf("target %+v caneled", tgt)
 			atomic.AddInt32(&canceledTargets, 1)
-		case <-ctx.Paused():
+		case <-ctx.WaitFor(xcontext.Paused):
 			log.Printf("target %+v paused", tgt)
 		case <-time.After(sleepTime):
 			log.Printf("target %+v processed", tgt)
@@ -347,7 +348,7 @@ func TestForEachTargetCancelBeforeInputChannelClosed(t *testing.T) {
 		case <-ctx.Done():
 			log.Printf("target %+v cancelled", tgt)
 			atomic.AddInt32(&canceledTargets, 1)
-		case <-ctx.Paused():
+		case <-ctx.WaitFor(xcontext.Paused):
 			log.Printf("target %+v paused", tgt)
 		case <-time.After(sleepTime):
 			log.Printf("target %+v processed", tgt)
