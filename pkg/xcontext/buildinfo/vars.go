@@ -13,5 +13,5 @@ var (
 	BuildDate string
 
 	// Revision is the commit.
-	Revision  string
+	Revision string
 )

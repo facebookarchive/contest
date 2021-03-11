@@ -10,7 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/facebookincubator/contest/pkg/statectx"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -97,11 +97,11 @@ func emitEvent(name event.Name, payload interface{}, tgt *target.Target, ev test
 }
 
 // Run executes the cmd step.
-func (ts *Cmd) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *Cmd) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	if err := ts.validateAndPopulate(params); err != nil {
 		return err
 	}
-	f := func(ctx statectx.Context, target *target.Target) error {
+	f := func(ctx xcontext.Context, target *target.Target) error {
 		// expand args
 		var args []string
 		for _, arg := range ts.args {
@@ -202,7 +202,7 @@ func (ts *Cmd) ValidateParameters(params test.TestStepParameters) error {
 
 // Resume tries to resume a previously interrupted test step. Cmd cannot
 // resume.
-func (ts *Cmd) Resume(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *Cmd) Resume(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

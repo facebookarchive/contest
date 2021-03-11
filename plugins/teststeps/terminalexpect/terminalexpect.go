@@ -16,9 +16,9 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/plugins/teststeps"
 	"github.com/insomniacslk/termhook"
 )
@@ -57,7 +57,7 @@ func match(match string) termhook.LineHandler {
 }
 
 // Run executes the terminal step.
-func (ts *TerminalExpect) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *TerminalExpect) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	if err := ts.validateAndPopulate(params); err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func (ts *TerminalExpect) Run(ctx statectx.Context, ch test.TestStepChannels, pa
 	}
 	hook.ReadOnly = true
 	// f implements plugins.PerTargetFunc
-	f := func(ctx statectx.Context, target *target.Target) error {
+	f := func(ctx xcontext.Context, target *target.Target) error {
 		errCh := make(chan error, 1)
 		go func() {
 			errCh <- hook.Run()
@@ -124,7 +124,7 @@ func (ts *TerminalExpect) ValidateParameters(params test.TestStepParameters) err
 
 // Resume tries to resume a previously interrupted test step. TerminalExpect cannot
 // resume.
-func (ts *TerminalExpect) Resume(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *TerminalExpect) Resume(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

@@ -14,9 +14,9 @@ import (
 	pkg_config "github.com/facebookincubator/contest/pkg/config"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/storage/limits"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 func newJob(registry *pluginregistry.PluginRegistry, jobDescriptor *job.Descriptor, resolver stepsResolver) (*job.Job, error) {
@@ -112,7 +112,7 @@ func newJob(registry *pluginregistry.PluginRegistry, jobDescriptor *job.Descript
 		FinalReporterBundles:        finalReportersBundle,
 	}
 
-	job.StateCtx, job.StateCtxPause, job.StateCtxCancel = statectx.New()
+	job.StateCtx, job.StateCtxPause, job.StateCtxCancel = xcontext.New()
 	return &job, nil
 
 }

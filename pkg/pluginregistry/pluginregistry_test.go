@@ -11,8 +11,8 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 
 	"github.com/stretchr/testify/require"
 )
@@ -38,7 +38,7 @@ func (e AStep) Name() string {
 }
 
 // Run executes the AStep
-func (e AStep) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (e AStep) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	return nil
 }
 
@@ -48,7 +48,7 @@ func (e AStep) CanResume() bool {
 }
 
 // Resume tries to resume AStep
-func (e AStep) Resume(ctx statectx.Context, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (e AStep) Resume(ctx xcontext.Context, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: "AStep"}
 }
 

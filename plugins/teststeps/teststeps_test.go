@@ -15,15 +15,15 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/logging"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 type data struct {
-	ctx           statectx.Context
+	ctx           xcontext.Context
 	cancel, pause func()
 	inCh, outCh   chan *target.Target
 	errCh         chan cerrors.TargetError
@@ -31,7 +31,7 @@ type data struct {
 }
 
 func newData() data {
-	ctx, pause, cancel := statectx.New()
+	ctx, pause, cancel := xcontext.New()
 	inCh := make(chan *target.Target)
 	outCh := make(chan *target.Target)
 	errCh := make(chan cerrors.TargetError)
@@ -52,7 +52,7 @@ func newData() data {
 
 func TestForEachTargetOneTarget(t *testing.T) {
 	d := newData()
-	fn := func(ctx statectx.Context, tgt *target.Target) error {
+	fn := func(ctx xcontext.Context, tgt *target.Target) error {
 		log.Printf("Handling target %+v", tgt)
 		return nil
 	}
@@ -81,7 +81,7 @@ func TestForEachTargetOneTarget(t *testing.T) {
 
 func TestForEachTargetOneTargetAllFail(t *testing.T) {
 	d := newData()
-	fn := func(ctx statectx.Context, t *target.Target) error {
+	fn := func(ctx xcontext.Context, t *target.Target) error {
 		log.Printf("Handling target %+v", t)
 		return fmt.Errorf("error with target %+v", t)
 	}
@@ -110,7 +110,7 @@ func TestForEachTargetOneTargetAllFail(t *testing.T) {
 
 func TestForEachTargetTenTargets(t *testing.T) {
 	d := newData()
-	fn := func(ctx statectx.Context, tgt *target.Target) error {
+	fn := func(ctx xcontext.Context, tgt *target.Target) error {
 		log.Printf("Handling target %+v", tgt)
 		return nil
 	}
@@ -142,7 +142,7 @@ func TestForEachTargetTenTargets(t *testing.T) {
 func TestForEachTargetTenTargetsAllFail(t *testing.T) {
 	logging.Debug()
 	d := newData()
-	fn := func(ctx statectx.Context, tgt *target.Target) error {
+	fn := func(ctx xcontext.Context, tgt *target.Target) error {
 		log.Printf("Handling target %+v", tgt)
 		return fmt.Errorf("error with target %+v", tgt)
 	}
@@ -176,7 +176,7 @@ func TestForEachTargetTenTargetsOneFails(t *testing.T) {
 	// chosen by fair dice roll.
 	// guaranteed to be random.
 	failingTarget := "target004"
-	fn := func(ctx statectx.Context, tgt *target.Target) error {
+	fn := func(ctx xcontext.Context, tgt *target.Target) error {
 		log.Printf("Handling target %+v", tgt)
 		if tgt.ID == failingTarget {
 			return fmt.Errorf("error with target %+v", tgt)
@@ -225,7 +225,7 @@ func TestForEachTargetTenTargetsParallelism(t *testing.T) {
 	logging.Debug()
 	sleepTime := time.Second
 	d := newData()
-	fn := func(ctx statectx.Context, tgt *target.Target) error {
+	fn := func(ctx xcontext.Context, tgt *target.Target) error {
 		log.Printf("Handling target %+v", tgt)
 		select {
 		case <-ctx.Done():
@@ -302,7 +302,7 @@ func TestForEachTargetCancelSignalPropagation(t *testing.T) {
 	var canceledTargets int32
 	d := newData()
 
-	fn := func(ctx statectx.Context, tgt *target.Target) error {
+	fn := func(ctx xcontext.Context, tgt *target.Target) error {
 		log.Printf("Handling target %+v", tgt)
 		select {
 		case <-ctx.Done():
@@ -341,7 +341,7 @@ func TestForEachTargetCancelBeforeInputChannelClosed(t *testing.T) {
 	var canceledTargets int32
 	d := newData()
 
-	fn := func(ctx statectx.Context, tgt *target.Target) error {
+	fn := func(ctx xcontext.Context, tgt *target.Target) error {
 		log.Printf("Handling target %+v", tgt)
 		select {
 		case <-ctx.Done():

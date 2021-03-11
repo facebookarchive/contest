@@ -31,9 +31,9 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/plugins/teststeps"
 	shellquote "github.com/kballard/go-shellquote"
 	"golang.org/x/crypto/ssh"
@@ -72,7 +72,7 @@ func (ts SSHCmd) Name() string {
 }
 
 // Run executes the cmd step.
-func (ts *SSHCmd) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *SSHCmd) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	// XXX: Dragons ahead! The target (%t) substitution, and function
 	// expression evaluations are done at run-time, so they may still fail
 	// despite passing at early validation time.
@@ -85,7 +85,7 @@ func (ts *SSHCmd) Run(ctx statectx.Context, ch test.TestStepChannels, params tes
 		return err
 	}
 
-	f := func(ctx statectx.Context, target *target.Target) error {
+	f := func(ctx xcontext.Context, target *target.Target) error {
 		// apply filters and substitutions to user, host, private key, and command args
 		user, err := ts.User.Expand(target)
 		if err != nil {
@@ -331,7 +331,7 @@ func (ts *SSHCmd) ValidateParameters(params test.TestStepParameters) error {
 
 // Resume tries to resume a previously interrupted test step. SSHCmd cannot
 // resume.
-func (ts *SSHCmd) Resume(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *SSHCmd) Resume(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

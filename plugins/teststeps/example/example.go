@@ -14,8 +14,8 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Name is the name used to look this plugin up.
@@ -49,7 +49,7 @@ func (ts Step) Name() string {
 }
 
 // Run executes the example step.
-func (ts *Step) Run(ctx statectx.Context, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.Emitter) error {
 	for {
 
 		r := rand.Intn(3)
@@ -97,7 +97,7 @@ func (ts *Step) ValidateParameters(_ test.TestStepParameters) error {
 
 // Resume tries to resume a previously interrupted test step. ExampleTestStep
 // cannot resume.
-func (ts *Step) Resume(ctx statectx.Context, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *Step) Resume(ctx xcontext.Context, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

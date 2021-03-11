@@ -13,10 +13,10 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/config"
 	"github.com/facebookincubator/contest/pkg/logging"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/sirupsen/logrus"
 )
 
@@ -92,7 +92,7 @@ type pipelineCtrlCh struct {
 	targetErr       <-chan cerrors.TargetError
 
 	// ctx  is a control context used to cancel/pause the steps of the pipeline
-	ctx    statectx.Context
+	ctx    xcontext.Context
 	pause  func()
 	cancel func()
 }
@@ -153,7 +153,7 @@ func newTargetWriter(log *logrus.Entry, timeouts TestRunnerTimeouts) *targetWrit
 
 // Run implements the main logic of the TestRunner, i.e. the instantiation and
 // connection of the TestSteps, routing blocks and pipeline runner.
-func (tr *TestRunner) Run(ctx statectx.Context, test *test.Test, targets []*target.Target, jobID types.JobID, runID types.RunID) error {
+func (tr *TestRunner) Run(ctx xcontext.Context, test *test.Test, targets []*target.Target, jobID types.JobID, runID types.RunID) error {
 
 	if len(test.TestStepsBundles) == 0 {
 		return fmt.Errorf("no steps to run for test")

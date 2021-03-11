@@ -16,11 +16,11 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/sirupsen/logrus"
 )
 
@@ -64,7 +64,7 @@ type pipeline struct {
 // indefinitely and does not respond to cancellation signals, the TestRunner will
 // flag it as misbehaving and return. If the TestStep returns once the TestRunner
 // has completed, it will timeout trying to write on the result channel.
-func (p *pipeline) runStep(ctx statectx.Context, jobID types.JobID, runID types.RunID, bundle test.TestStepBundle, stepCh stepCh, resultCh chan<- stepResult, ev testevent.EmitterFetcher) {
+func (p *pipeline) runStep(ctx xcontext.Context, jobID types.JobID, runID types.RunID, bundle test.TestStepBundle, stepCh stepCh, resultCh chan<- stepResult, ev testevent.EmitterFetcher) {
 
 	stepLabel := bundle.TestStepLabel
 	log := logging.AddField(p.log, "step", stepLabel)
@@ -124,8 +124,8 @@ func (p *pipeline) runStep(ctx statectx.Context, jobID types.JobID, runID types.
 	// channels but return immediately as the TestStep itself probably returned
 	// because it honored the termination signal.
 
-	cancellationAsserted := ctx.PausedOrDoneCtx().Err() == statectx.ErrCanceled
-	pauseAsserted := ctx.PausedOrDoneCtx().Err() == statectx.ErrPaused
+	cancellationAsserted := ctx.PausedOrDoneCtx().Err() == xcontext.ErrCanceled
+	pauseAsserted := ctx.PausedOrDoneCtx().Err() == xcontext.ErrPaused
 
 	if cancellationAsserted && err == nil {
 		err = fmt.Errorf("test step cancelled")
@@ -400,7 +400,7 @@ func (p *pipeline) waitSteps() error {
 // init initializes the pipeline by connecting steps and routing blocks. The result of pipeline
 // initialization is a set of control/result channels assigned to the pipeline object. The pipeline
 // input channel is returned.
-func (p *pipeline) init(ctx statectx.Context) (routeInFirst chan *target.Target) {
+func (p *pipeline) init(ctx xcontext.Context) (routeInFirst chan *target.Target) {
 	p.log.Debugf("starting")
 
 	if p.ctrlChannels != nil {
@@ -412,7 +412,7 @@ func (p *pipeline) init(ctx statectx.Context) (routeInFirst chan *target.Target)
 		routeIn  chan *target.Target
 	)
 
-	pipelineCtx, pause, cancel := statectx.WithParent(ctx)
+	pipelineCtx, pause, cancel := xcontext.WithParent(ctx)
 
 	// result channels used to communicate result information from the routing blocks
 	// and step executors
@@ -501,8 +501,8 @@ func (p *pipeline) run(completedTargetsCh chan<- *target.Target) error {
 	p.log.Infof("waiting for pipeline to complete")
 	completionError := p.waitTargets(ctx.PausedOrDoneCtx(), completedTargetsCh)
 
-	pauseAsserted := ctx.PausedOrDoneCtx().Err() == statectx.ErrPaused
-	cancellationAsserted := ctx.PausedOrDoneCtx().Err() == statectx.ErrCanceled
+	pauseAsserted := ctx.PausedOrDoneCtx().Err() == xcontext.ErrPaused
+	cancellationAsserted := ctx.PausedOrDoneCtx().Err() == xcontext.ErrCanceled
 
 	if completionError != nil {
 		p.log.Warningf("test failed to complete: %v. Forcing cancellation.", completionError)
