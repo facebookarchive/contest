@@ -24,25 +24,22 @@ import (
 	"net"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
+
+	"github.com/kballard/go-shellquote"
+	"golang.org/x/crypto/ssh"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/plugins/teststeps"
-	shellquote "github.com/kballard/go-shellquote"
-	"golang.org/x/crypto/ssh"
 )
 
 // Name is the name used to look this plugin up.
 var Name = "SSHCmd"
-
-var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
 // Events is used by the framework to determine which events this plugin will
 // emit. Any emitted event that is not registered here will cause the plugin to
@@ -73,6 +70,8 @@ func (ts SSHCmd) Name() string {
 
 // Run executes the cmd step.
 func (ts *SSHCmd) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+	log := ctx.Logger()
+
 	// XXX: Dragons ahead! The target (%t) substitution, and function
 	// expression evaluations are done at run-time, so they may still fail
 	// despite passing at early validation time.
@@ -197,7 +196,7 @@ func (ts *SSHCmd) Run(ctx xcontext.Context, ch test.TestStepChannels, params tes
 		}
 		defer func() {
 			if err := client.Close(); err != nil {
-				log.Warningf("Failed to close SSH connection to %s: %v", addr, err)
+				ctx.Logger().Warnf("Failed to close SSH connection to %s: %v", addr, err)
 			}
 		}()
 		session, err := client.NewSession()
@@ -206,14 +205,14 @@ func (ts *SSHCmd) Run(ctx xcontext.Context, ch test.TestStepChannels, params tes
 		}
 		defer func() {
 			if err := session.Close(); err != nil && err != io.EOF {
-				log.Warningf("Failed to close SSH session to %s: %v", addr, err)
+				ctx.Logger().Warnf("Failed to close SSH session to %s: %v", addr, err)
 			}
 		}()
 		// run the remote command and catch stdout/stderr
 		var stdout, stderr bytes.Buffer
 		session.Stdout, session.Stderr = &stdout, &stderr
 		cmd := shellquote.Join(append([]string{executable}, args...)...)
-		log.Printf("Running remote SSH command on %s: '%v'", addr, cmd)
+		log.Debugf("Running remote SSH command on %s: '%v'", addr, cmd)
 		errCh := make(chan error, 1)
 		go func() {
 			innerErr := session.Run(cmd)
@@ -235,7 +234,7 @@ func (ts *SSHCmd) Run(ctx xcontext.Context, ch test.TestStepChannels, params tes
 				if err == nil {
 					// Execute expectations
 					if expect == "" {
-						log.Warningf("no expectations specified")
+						ctx.Logger().Warnf("no expectations specified")
 					} else {
 						matches := re.FindAll(stdout.Bytes(), -1)
 						if len(matches) > 0 {
@@ -245,7 +244,7 @@ func (ts *SSHCmd) Run(ctx xcontext.Context, ch test.TestStepChannels, params tes
 						}
 					}
 				} else {
-					log.Warningf("Stderr of command '%s' is '%s'", cmd, stderr.Bytes())
+					ctx.Logger().Warnf("Stderr of command '%s' is '%s'", cmd, stderr.Bytes())
 				}
 				return err
 			case <-ctx.WaitFor():
@@ -324,8 +323,8 @@ func (ts *SSHCmd) validateAndPopulate(params test.TestStepParameters) error {
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *SSHCmd) ValidateParameters(params test.TestStepParameters) error {
-	log.Printf("Params %+v", params)
+func (ts *SSHCmd) ValidateParameters(ctx xcontext.Context, params test.TestStepParameters) error {
+	ctx.Logger().Debugf("Params %+v", params)
 	return ts.validateAndPopulate(params)
 }
 

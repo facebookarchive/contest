@@ -6,7 +6,6 @@
 package runner
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"runtime/debug"
@@ -15,20 +14,16 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
-	"github.com/sirupsen/logrus"
 )
 
 // pipeline represents a sequence of steps through which targets flow. A pipeline could implement
 // either a test sequence or a cleanup sequence
 type pipeline struct {
-	log *logrus.Entry
-
 	bundles []test.TestStepBundle
 
 	jobID types.JobID
@@ -65,20 +60,18 @@ type pipeline struct {
 // flag it as misbehaving and return. If the TestStep returns once the TestRunner
 // has completed, it will timeout trying to write on the result channel.
 func (p *pipeline) runStep(ctx xcontext.Context, jobID types.JobID, runID types.RunID, bundle test.TestStepBundle, stepCh stepCh, resultCh chan<- stepResult, ev testevent.EmitterFetcher) {
-
 	stepLabel := bundle.TestStepLabel
-	log := logging.AddField(p.log, "step", stepLabel)
-	log = logging.AddField(log, "phase", "runStep")
+	ctx = ctx.WithField("step", stepLabel).WithTag("phase", "runStep")
 
-	log.Debugf("initializing step")
+	ctx.Logger().Debugf("initializing step")
 	timeout := p.timeouts.MessageTimeout
 	defer func() {
 		if r := recover(); r != nil {
-			err := fmt.Errorf("step %s paniced (%v): %s", stepLabel, r, debug.Stack())
+			err := fmt.Errorf("step %s panicked (%v): %s", stepLabel, r, debug.Stack())
 			select {
 			case resultCh <- stepResult{jobID: jobID, runID: runID, bundle: bundle, err: err}:
 			case <-time.After(p.timeouts.MessageTimeout):
-				log.Warningf("sending error back from test step runner timed out after %v: %v", timeout, err)
+				ctx.Logger().Warnf("sending error back from test step runner timed out after %v: %v", timeout, err)
 				return
 			}
 			return
@@ -95,14 +88,14 @@ func (p *pipeline) runStep(ctx xcontext.Context, jobID types.JobID, runID types.
 	haveTargets := false
 	select {
 	case <-onFirstTargetChan:
-		log.Debugf("first target received, will start step")
+		ctx.Logger().Debugf("first target received, will start step")
 		haveTargets = true
 	case <-ctx.Done():
-		log.Debugf("cancelled")
+		ctx.Logger().Debugf("cancelled")
 	case <-ctx.WaitFor(xcontext.Paused):
-		log.Debugf("paused")
+		ctx.Logger().Debugf("paused")
 	case <-onNoTargetsChan:
-		log.Debugf("no targets")
+		ctx.Logger().Debugf("no targets")
 	}
 
 	var err error
@@ -118,7 +111,7 @@ func (p *pipeline) runStep(ctx xcontext.Context, jobID types.JobID, runID types.
 		err = bundle.TestStep.Run(ctx, channels, bundle.Parameters, ev)
 	}
 
-	log.Debugf("step %s returned", bundle.TestStepLabel)
+	ctx.Logger().Debugf("step %s returned", bundle.TestStepLabel)
 
 	// Check if we are shutting down. If so, do not perform sanity checks on the
 	// channels but return immediately as the TestStep itself probably returned
@@ -135,7 +128,7 @@ func (p *pipeline) runStep(ctx xcontext.Context, jobID types.JobID, runID types.
 		select {
 		case resultCh <- stepResult{jobID: jobID, runID: runID, bundle: bundle, err: err}:
 		case <-time.After(timeout):
-			log.Warningf("sending error back from TestStep runner timed out after %v: %v", timeout, err)
+			ctx.Logger().Warnf("sending error back from TestStep runner timed out after %v: %v", timeout, err)
 		}
 		return
 	}
@@ -146,7 +139,7 @@ func (p *pipeline) runStep(ctx xcontext.Context, jobID types.JobID, runID types.
 		select {
 		case resultCh <- stepResult{jobID: jobID, runID: runID, bundle: bundle, err: err}:
 		case <-time.After(timeout):
-			log.Warningf("sending error back from test step runner (%s) timed out after %v: %v", stepLabel, timeout, err)
+			ctx.Logger().Warnf("sending error back from test step runner (%s) timed out after %v: %v", stepLabel, timeout, err)
 		}
 		return
 	}
@@ -203,7 +196,7 @@ func (p *pipeline) runStep(ctx xcontext.Context, jobID types.JobID, runID types.
 	select {
 	case resultCh <- stepResult{jobID: jobID, runID: runID, bundle: bundle, err: err}:
 	case <-time.After(timeout):
-		log.Warningf("sending error back from step runner (%s) timed out after %v: %v", stepLabel, timeout, err)
+		ctx.Logger().Warnf("sending error back from step runner (%s) timed out after %v: %v", stepLabel, timeout, err)
 		return
 	}
 }
@@ -212,9 +205,8 @@ func (p *pipeline) runStep(ctx xcontext.Context, jobID types.JobID, runID types.
 // have completed or an error occurs. If all Targets complete successfully, it checks
 // whether TestSteps and routing blocks have completed as well. If not, returns an
 // error. Termination is signalled via terminate channel.
-func (p *pipeline) waitTargets(ctx context.Context, completedCh chan<- *target.Target) error {
-
-	log := logging.AddField(p.log, "phase", "waitTargets")
+func (p *pipeline) waitTargets(ctx xcontext.Context, completedCh chan<- *target.Target) error {
+	ctx = ctx.WithTag("phase", "waitTargets")
 
 	var (
 		err                  error
@@ -224,20 +216,20 @@ func (p *pipeline) waitTargets(ctx context.Context, completedCh chan<- *target.T
 
 	outChannel := p.ctrlChannels.targetOut
 
-	writer := newTargetWriter(log, p.timeouts)
+	writer := newTargetWriter(p.timeouts)
 	for {
 		select {
 		case t, ok := <-outChannel:
 			if !ok {
-				log.Debugf("pipeline output channel was closed, no more targets will come through")
+				ctx.Logger().Debugf("pipeline output channel was closed, no more targets will come through")
 				outChannel = nil
 				break
 			}
 			completedTarget = t
-		case <-ctx.Done():
+		case <-ctx.WaitFor():
 			// When termination is signaled just stop wait. It is up
 			// to the caller to decide how to further handle pipeline termination.
-			log.Debugf("termination requested")
+			ctx.Logger().Debugf("termination requested")
 			return nil
 		case res := <-p.ctrlChannels.routingResultCh:
 			err = res.err
@@ -247,7 +239,7 @@ func (p *pipeline) waitTargets(ctx context.Context, completedCh chan<- *target.T
 			if err != nil {
 				payload, jmErr := json.Marshal(err.Error())
 				if jmErr != nil {
-					log.Warningf("failed to marshal error string to JSON: %v", jmErr)
+					ctx.Logger().Warnf("failed to marshal error string to JSON: %v", jmErr)
 					continue
 				}
 				rm := json.RawMessage(payload)
@@ -261,8 +253,8 @@ func (p *pipeline) waitTargets(ctx context.Context, completedCh chan<- *target.T
 				// this event is not associated to any target, e.g. a plugin has returned an error.
 				errEv := testevent.Data{EventName: EventTestError, Target: nil, Payload: &rm}
 				// emit test event containing the completion error
-				if err := ev.Emit(errEv); err != nil {
-					log.Warningf("could not emit completion error event %v", errEv)
+				if err := ev.Emit(ctx, errEv); err != nil {
+					ctx.Logger().Warnf("could not emit completion error event %v", errEv)
 				}
 			}
 			p.state.SetStep(res.bundle.TestStepLabel, res.err)
@@ -277,15 +269,15 @@ func (p *pipeline) waitTargets(ctx context.Context, completedCh chan<- *target.T
 		}
 
 		if outChannel == nil {
-			log.Debugf("no more targets to wait, output channel is closed")
+			ctx.Logger().Debugf("no more targets to wait, output channel is closed")
 			break
 		}
 
 		if completedTarget != nil {
 			p.state.SetTarget(completedTarget, completedTargetError)
-			log.Debugf("writing target %+v on the completed channel", completedTarget)
+			ctx.Logger().Debugf("writing target %+v on the completed channel", completedTarget)
 			if err := writer.writeTimeout(ctx, completedCh, completedTarget, p.timeouts.MessageTimeout); err != nil {
-				log.Panicf("could not write completed target: %v", err)
+				ctx.Logger().Panicf("could not write completed target: %v", err)
 			}
 			completedTarget = nil
 			completedTargetError = nil
@@ -293,9 +285,9 @@ func (p *pipeline) waitTargets(ctx context.Context, completedCh chan<- *target.T
 
 		numIngress := atomic.LoadUint64(&p.numIngress)
 		numCompleted := uint64(len(p.state.CompletedTargets()))
-		log.Debugf("targets completed: %d, expected: %d", numCompleted, numIngress)
+		ctx.Logger().Debugf("targets completed: %d, expected: %d", numCompleted, numIngress)
 		if numIngress != 0 && numCompleted == numIngress {
-			log.Debugf("no more targets to wait, all targets (%d) completed", numCompleted)
+			ctx.Logger().Debugf("no more targets to wait, all targets (%d) completed", numCompleted)
 			break
 		}
 	}
@@ -305,27 +297,27 @@ func (p *pipeline) waitTargets(ctx context.Context, completedCh chan<- *target.T
 	// sequence of close operations has completed). If `ch.out` is still open,
 	// there are still TestSteps that might have not returned. Wait for all
 	// TestSteps to complete or `StepShutdownTimeout` to occur.
-	log.Infof("waiting for all steps to complete")
-	return p.waitSteps()
+	ctx.Logger().Infof("waiting for all steps to complete")
+	return p.waitSteps(ctx)
 }
 
 // waitTermination reads results coming from result channels waiting
 // for the pipeline to completely shutdown before `ShutdownTimeout` occurs. A
 // "complete shutdown" means that all TestSteps and routing blocks have sent
 // downstream their results.
-func (p *pipeline) waitTermination() error {
+func (p *pipeline) waitTermination(ctx xcontext.Context) error {
 
 	if len(p.bundles) == 0 {
 		return fmt.Errorf("no bundles specified for waitTermination")
 	}
 
-	log := logging.AddField(p.log, "phase", "waitTermination")
-	log.Printf("waiting for pipeline to terminate")
+	ctx = ctx.WithTag("phase", "waitTermination")
+	ctx.Logger().Debugf("waiting for pipeline to terminate")
 
 	for {
 
-		log.Debugf("steps completed: %d", len(p.state.CompletedSteps()))
-		log.Debugf("routing completed: %d", len(p.state.CompletedRouting()))
+		ctx.Logger().Debugf("steps completed: %d", len(p.state.CompletedSteps()))
+		ctx.Logger().Debugf("routing completed: %d", len(p.state.CompletedRouting()))
 		stepsCompleted := len(p.state.CompletedSteps()) == len(p.bundles)
 		routingCompleted := len(p.state.CompletedRouting()) == len(p.bundles)
 		if stepsCompleted && routingCompleted {
@@ -350,21 +342,21 @@ func (p *pipeline) waitTermination() error {
 // waitSteps reads results coming from result channels until `StepShutdownTimeout`
 // occurs or an error is encountered. It then checks whether TestSteps and routing
 // blocks have all returned correctly. If not, it returns an error.
-func (p *pipeline) waitSteps() error {
+func (p *pipeline) waitSteps(ctx xcontext.Context) error {
 
 	if len(p.bundles) == 0 {
 		return fmt.Errorf("no bundles specified for waitSteps")
 	}
 
-	log := logging.AddField(p.log, "phase", "waitSteps")
+	ctx = ctx.WithTag("phase", "waitSteps")
 
 	var err error
 
-	log.Debugf("waiting for test steps to terminate")
+	ctx.Logger().Debugf("waiting for test steps to terminate")
 	for {
 		select {
 		case <-time.After(p.timeouts.StepShutdownTimeout):
-			log.Warningf("timed out waiting for steps to complete after %v", p.timeouts.StepShutdownTimeout)
+			ctx.Logger().Warnf("timed out waiting for steps to complete after %v", p.timeouts.StepShutdownTimeout)
 			incompleteSteps := p.state.IncompleteSteps(p.bundles)
 			if len(incompleteSteps) > 0 {
 				err = &cerrors.ErrTestStepsNeverReturned{StepNames: incompleteSteps}
@@ -374,19 +366,19 @@ func (p *pipeline) waitSteps() error {
 				err = fmt.Errorf("not all routing completed: %d!=%d", len(p.state.CompletedRouting()), len(p.bundles))
 			}
 		case res := <-p.ctrlChannels.routingResultCh:
-			log.Debugf("received routing block result for %s", res.bundle.TestStepLabel)
+			ctx.Logger().Debugf("received routing block result for %s", res.bundle.TestStepLabel)
 			p.state.SetRouting(res.bundle.TestStepLabel, res.err)
 			err = res.err
 		case res := <-p.ctrlChannels.stepResultCh:
-			log.Debugf("received step result for %s", res.bundle.TestStepLabel)
+			ctx.Logger().Debugf("received step result for %s", res.bundle.TestStepLabel)
 			p.state.SetStep(res.bundle.TestStepLabel, res.err)
 			err = res.err
 		}
 		if err != nil {
 			return err
 		}
-		log.Debugf("steps completed: %d, expected: %d", len(p.state.CompletedSteps()), len(p.bundles))
-		log.Debugf("routing completed: %d, expected: %d", len(p.state.CompletedRouting()), len(p.bundles))
+		ctx.Logger().Debugf("steps completed: %d, expected: %d", len(p.state.CompletedSteps()), len(p.bundles))
+		ctx.Logger().Debugf("routing completed: %d, expected: %d", len(p.state.CompletedRouting()), len(p.bundles))
 		stepsCompleted := len(p.state.CompletedSteps()) == len(p.bundles)
 		routingCompleted := len(p.state.CompletedRouting()) == len(p.bundles)
 		if stepsCompleted && routingCompleted {
@@ -401,10 +393,10 @@ func (p *pipeline) waitSteps() error {
 // initialization is a set of control/result channels assigned to the pipeline object. The pipeline
 // input channel is returned.
 func (p *pipeline) init(ctx xcontext.Context) (routeInFirst chan *target.Target) {
-	p.log.Debugf("starting")
+	ctx.Logger().Debugf("starting")
 
 	if p.ctrlChannels != nil {
-		p.log.Panicf("pipeline is already initialized, control channel are already configured")
+		ctx.Logger().Panicf("pipeline is already initialized, control channel are already configured")
 	}
 
 	var (
@@ -468,9 +460,13 @@ func (p *pipeline) init(ctx xcontext.Context) (routeInFirst chan *target.Target)
 		}
 		ev := storage.NewTestEventEmitterFetcherWithAllowedEvents(Header, &testStepBundle.AllowedEvents)
 
-		router := newStepRouter(p.log, testStepBundle, routingChannels, ev, p.timeouts)
-		go router.route(pipelineCtx.StdCtxWaitFor(), routingResultCh)
-		go p.runStep(pipelineCtx, p.jobID, p.runID, testStepBundle, stepChannels, stepResultCh, ev)
+		stepCtx := pipelineCtx.WithFields(xcontext.Fields{
+			"run_id": p.runID,
+			"step":   testStepBundle.TestStepLabel,
+		})
+		router := newStepRouter(testStepBundle, routingChannels, ev, p.timeouts)
+		go router.route(stepCtx, routingResultCh)
+		go p.runStep(stepCtx, p.jobID, p.runID, testStepBundle, stepChannels, stepResultCh, ev)
 		// The input of the next routing block is the output of the current routing block
 		routeIn = routeOut
 	}
@@ -490,28 +486,29 @@ func (p *pipeline) init(ctx xcontext.Context) (routeInFirst chan *target.Target)
 }
 
 // run is a blocking method which executes the pipeline until successful or failed termination
-func (p *pipeline) run(completedTargetsCh chan<- *target.Target) error {
-	p.log.Debugf("run")
+func (p *pipeline) run(pipelineCtx xcontext.Context, completedTargetsCh chan<- *target.Target) error {
+	log := pipelineCtx.Logger()
+	log.Debugf("run")
 	if p.ctrlChannels == nil {
-		p.log.Panicf("pipeline is not initialized, control channels are not available")
+		log.Panicf("pipeline is not initialized, control channels are not available")
 	}
-	ctx := p.ctrlChannels.ctx
+	channelsCtx := p.ctrlChannels.ctx
 
-	// Wait for the pipeline to complete. If an error occurrs, cancel all TestSteps
-	// and routing blocks and wait again for completion until shutdown timeout occurrs.
-	p.log.Infof("waiting for pipeline to complete")
-	completionError := p.waitTargets(ctx.StdCtxWaitFor(), completedTargetsCh)
+	// Wait for the pipeline to complete. If an error occurs, cancel all TestSteps
+	// and routing blocks and wait again for completion until shutdown timeout occurs.
+	log.Infof("waiting for pipeline to complete")
+	completionError := p.waitTargets(channelsCtx, completedTargetsCh)
 
-	pauseAsserted := ctx.IsSignaledWith(xcontext.Paused)
-	cancellationAsserted := ctx.Err() != nil
+	pauseAsserted := channelsCtx.IsSignaledWith(xcontext.Paused)
+	cancellationAsserted := channelsCtx.Err() != nil
 
 	if completionError != nil {
-		p.log.Warningf("test failed to complete: %v. Forcing cancellation.", completionError)
+		log.Warnf("test failed to complete: %v. Forcing cancellation.", completionError)
 		p.ctrlChannels.cancel() // terminate routing and and propagate cancellation to the steps
 	} else if cancellationAsserted {
-		p.log.Infof("cancellation was asserted")
+		log.Infof("cancellation was asserted")
 	} else if pauseAsserted {
-		p.log.Warningf("received pause request")
+		log.Warnf("received pause request")
 	}
 
 	// If either cancellation or pause have been asserted, we need to wait for the
@@ -521,23 +518,23 @@ func (p *pipeline) run(completedTargetsCh chan<- *target.Target) error {
 		if pauseAsserted {
 			signal = "pause"
 		}
-		terminationError := p.waitTermination()
+		terminationError := p.waitTermination(channelsCtx)
 		if terminationError != nil {
-			p.log.Infof("test did not terminate correctly after %s signal: %v", signal, terminationError)
+			log.Infof("test did not terminate correctly after %s signal: %v", signal, terminationError)
 		} else {
-			p.log.Infof("test terminated correctly after %s signal", signal)
+			log.Infof("test terminated correctly after %s signal", signal)
 		}
 		if completionError != nil {
 			return completionError
 		}
 		return terminationError
 	}
-	p.log.Infof("completed")
+	log.Infof("completed")
 	return nil
 }
 
-func newPipeline(log *logrus.Entry, bundles []test.TestStepBundle, test *test.Test, jobID types.JobID, runID types.RunID, timeouts TestRunnerTimeouts) *pipeline {
-	p := pipeline{log: log, bundles: bundles, jobID: jobID, runID: runID, test: test, timeouts: timeouts}
+func newPipeline(bundles []test.TestStepBundle, test *test.Test, jobID types.JobID, runID types.RunID, timeouts TestRunnerTimeouts) *pipeline {
+	p := pipeline{bundles: bundles, jobID: jobID, runID: runID, test: test, timeouts: timeouts}
 	p.state = NewState()
 	return &p
 }

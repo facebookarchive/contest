@@ -12,6 +12,7 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/job"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,10 +20,10 @@ type dummyFrameworkEventManager struct {
 	t *testing.T
 }
 
-func (fem dummyFrameworkEventManager) Emit(event frameworkevent.Event) error {
+func (fem dummyFrameworkEventManager) Emit(ctx xcontext.Context, event frameworkevent.Event) error {
 	return nil
 }
-func (fem dummyFrameworkEventManager) Fetch(fields ...frameworkevent.QueryField) ([]frameworkevent.Event, error) {
+func (fem dummyFrameworkEventManager) Fetch(ctx xcontext.Context, fields ...frameworkevent.QueryField) ([]frameworkevent.Event, error) {
 	require.Len(fem.t, fields, 2)
 	require.Equal(fem.t, frameworkevent.QueryEventName(EventRunStarted), fields[0])
 	require.Equal(fem.t, frameworkevent.QueryJobID(1), fields[1])
@@ -42,7 +43,7 @@ func (fem dummyFrameworkEventManager) Fetch(fields ...frameworkevent.QueryField)
 	}, nil
 }
 
-func (fem dummyFrameworkEventManager) FetchAsync(fields ...frameworkevent.QueryField) ([]frameworkevent.Event, error) {
+func (fem dummyFrameworkEventManager) FetchAsync(ctx xcontext.Context, fields ...frameworkevent.QueryField) ([]frameworkevent.Event, error) {
 	require.Len(fem.t, fields, 2)
 	require.Equal(fem.t, frameworkevent.QueryEventName(EventRunStarted), fields[0])
 	require.Equal(fem.t, frameworkevent.QueryJobID(1), fields[1])

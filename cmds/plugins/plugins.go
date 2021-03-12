@@ -9,6 +9,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/userfunctions/donothing"
 	"github.com/facebookincubator/contest/pkg/userfunctions/ocp"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -25,7 +26,6 @@ import (
 	"github.com/facebookincubator/contest/plugins/teststeps/example"
 	"github.com/facebookincubator/contest/plugins/teststeps/randecho"
 	"github.com/facebookincubator/contest/plugins/teststeps/sshcmd"
-	"github.com/sirupsen/logrus"
 )
 
 var targetManagers = []target.TargetManagerLoader{
@@ -57,26 +57,26 @@ var userFunctions = []map[string]interface{}{
 }
 
 // Init initializes the plugin registry
-func Init(pluginRegistry *pluginregistry.PluginRegistry, log *logrus.Entry) {
+func Init(pluginRegistry *pluginregistry.PluginRegistry, log xcontext.Logger) {
 
 	// Register TargetManager plugins
 	for _, tmloader := range targetManagers {
 		if err := pluginRegistry.RegisterTargetManager(tmloader()); err != nil {
-			log.Fatal(err)
+			log.Fatalf("%v", err)
 		}
 	}
 
 	// Register TestFetcher plugins
 	for _, tfloader := range testFetchers {
 		if err := pluginRegistry.RegisterTestFetcher(tfloader()); err != nil {
-			log.Fatal(err)
+			log.Fatalf("%v", err)
 		}
 	}
 
 	// Register TestStep plugins
 	for _, tsloader := range testSteps {
 		if err := pluginRegistry.RegisterTestStep(tsloader()); err != nil {
-			log.Fatal(err)
+			log.Fatalf("%v", err)
 
 		}
 	}
@@ -84,7 +84,7 @@ func Init(pluginRegistry *pluginregistry.PluginRegistry, log *logrus.Entry) {
 	// Register Reporter plugins
 	for _, rfloader := range reporters {
 		if err := pluginRegistry.RegisterReporter(rfloader()); err != nil {
-			log.Fatal(err)
+			log.Fatalf("%v", err)
 		}
 	}
 
@@ -92,7 +92,7 @@ func Init(pluginRegistry *pluginregistry.PluginRegistry, log *logrus.Entry) {
 	for _, userFunction := range userFunctions {
 		for name, fn := range userFunction {
 			if err := test.RegisterFunction(name, fn); err != nil {
-				log.Fatal(err)
+				log.Fatalf("%v", err)
 			}
 		}
 	}

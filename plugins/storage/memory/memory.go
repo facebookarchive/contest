@@ -18,6 +18,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Memory implements a storage engine which stores everything in memory. This
@@ -58,7 +59,7 @@ func emptyTestEventQuery(eventQuery *testevent.Query) bool {
 }
 
 // StoreTestEvent stores a test event into the database
-func (m *Memory) StoreTestEvent(event testevent.Event) error {
+func (m *Memory) StoreTestEvent(_ xcontext.Context, event testevent.Event) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	m.testEvents = append(m.testEvents, event)
@@ -118,7 +119,7 @@ func eventTestStepMatch(queryTestStepLabel, testStepLabel string) bool {
 }
 
 // GetTestEvents returns all test events that match the given query.
-func (m *Memory) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, error) {
+func (m *Memory) GetTestEvents(_ xcontext.Context, eventQuery *testevent.Query) ([]testevent.Event, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
@@ -153,7 +154,7 @@ func (m *Memory) Reset() error {
 }
 
 // StoreJobRequest stores a new job request
-func (m *Memory) StoreJobRequest(request *job.Request) (types.JobID, error) {
+func (m *Memory) StoreJobRequest(_ xcontext.Context, request *job.Request) (types.JobID, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
@@ -173,7 +174,7 @@ func (m *Memory) StoreJobRequest(request *job.Request) (types.JobID, error) {
 }
 
 // GetJobRequest retrieves a job request from the in memory list
-func (m *Memory) GetJobRequest(jobID types.JobID) (*job.Request, error) {
+func (m *Memory) GetJobRequest(_ xcontext.Context, jobID types.JobID) (*job.Request, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	v := m.jobInfo[jobID]
@@ -185,7 +186,7 @@ func (m *Memory) GetJobRequest(jobID types.JobID) (*job.Request, error) {
 
 // StoreJobReport stores a report associated to a job. Returns an error if there is
 // already a report associated to the job
-func (m *Memory) StoreJobReport(report *job.JobReport) error {
+func (m *Memory) StoreJobReport(_ xcontext.Context, report *job.JobReport) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	v := m.jobInfo[report.JobID]
@@ -200,7 +201,7 @@ func (m *Memory) StoreJobReport(report *job.JobReport) error {
 }
 
 // GetJobReport returns the report associated to a given job
-func (m *Memory) GetJobReport(jobID types.JobID) (*job.JobReport, error) {
+func (m *Memory) GetJobReport(_ xcontext.Context, jobID types.JobID) (*job.JobReport, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	v := m.jobInfo[jobID]
@@ -211,7 +212,7 @@ func (m *Memory) GetJobReport(jobID types.JobID) (*job.JobReport, error) {
 	return v.report, nil
 }
 
-func (m *Memory) ListJobs(query *storage.JobQuery) ([]types.JobID, error) {
+func (m *Memory) ListJobs(_ xcontext.Context, query *storage.JobQuery) ([]types.JobID, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	res := []types.JobID{}
@@ -262,7 +263,7 @@ jobLoop:
 }
 
 // StoreFrameworkEvent stores a framework event into the database
-func (m *Memory) StoreFrameworkEvent(event frameworkevent.Event) error {
+func (m *Memory) StoreFrameworkEvent(_ xcontext.Context, event frameworkevent.Event) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	m.frameworkEvents = append(m.frameworkEvents, event)
@@ -270,7 +271,7 @@ func (m *Memory) StoreFrameworkEvent(event frameworkevent.Event) error {
 }
 
 // GetFrameworkEvent retrieves a framework event from storage
-func (m *Memory) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]frameworkevent.Event, error) {
+func (m *Memory) GetFrameworkEvent(_ xcontext.Context, eventQuery *frameworkevent.Query) ([]frameworkevent.Event, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 

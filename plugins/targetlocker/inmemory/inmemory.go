@@ -10,21 +10,19 @@ package inmemory
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/config"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Name is the name used to look this plugin up.
 var Name = "InMemory"
 
-var log = logging.GetLogger("targetlocker/" + strings.ToLower(Name))
-
 type request struct {
+	ctx     xcontext.Context
 	targets []*target.Target
 	// allowConflicts enabled tryLock semantics: Return what can be locked, but
 	// don't error on conflicts
@@ -73,14 +71,13 @@ func broker(lockRequests, unlockRequests <-chan *request, done <-chan struct{}) 
 	for {
 		select {
 		case <-done:
-			log.Debugf("Shutting down in-memory target locker")
 			return
 		case req := <-lockRequests:
 			if err := validateRequest(req); err != nil {
 				req.err <- fmt.Errorf("lock request: %w", err)
 				continue
 			}
-			log.Debugf("Requested to lock %d targets for job ID %d: %v", len(req.targets), req.owner, req.targets)
+			req.ctx.Logger().Debugf("Requested to lock %d targets for job ID %d: %v", len(req.targets), req.owner, req.targets)
 			var lockErr error
 			// newLocks is the state of the locks that have been modified by this transaction
 			// If there is an error, we discard newLocks leaving the state of 'locks' untouched
@@ -141,7 +138,7 @@ func broker(lockRequests, unlockRequests <-chan *request, done <-chan struct{}) 
 				req.err <- fmt.Errorf("unlock request: %w", err)
 				continue
 			}
-			log.Debugf("Requested to transactionally unlock %d targets: %v", len(req.targets), req.targets)
+			req.ctx.Logger().Debugf("Requested to transactionally unlock %d targets: %v", len(req.targets), req.targets)
 			var unlockErr error
 			for _, t := range req.targets {
 				if l, ok := locks[t.ID]; ok {
@@ -167,8 +164,9 @@ type InMemory struct {
 	done                         chan struct{}
 }
 
-func newReq(jobID types.JobID, targets []*target.Target) request {
+func newReq(ctx xcontext.Context, jobID types.JobID, targets []*target.Target) request {
 	return request{
+		ctx:     ctx,
 		targets: targets,
 		owner:   jobID,
 		err:     make(chan error),
@@ -176,9 +174,9 @@ func newReq(jobID types.JobID, targets []*target.Target) request {
 }
 
 // Lock locks the specified targets.
-func (tl *InMemory) Lock(jobID types.JobID, duration time.Duration, targets []*target.Target) error {
-	log.Infof("Trying to lock %d targets", len(targets))
-	req := newReq(jobID, targets)
+func (tl *InMemory) Lock(ctx xcontext.Context, jobID types.JobID, duration time.Duration, targets []*target.Target) error {
+	ctx.Logger().Infof("Trying to lock %d targets", len(targets))
+	req := newReq(ctx, jobID, targets)
 	req.timeout = duration
 	req.limit = uint(len(targets))
 	tl.lockRequests <- &req
@@ -186,9 +184,9 @@ func (tl *InMemory) Lock(jobID types.JobID, duration time.Duration, targets []*t
 }
 
 // Lock locks the specified targets.
-func (tl *InMemory) TryLock(jobID types.JobID, duration time.Duration, targets []*target.Target, limit uint) ([]string, error) {
-	log.Infof("Trying trylock on %d targets", len(targets))
-	req := newReq(jobID, targets)
+func (tl *InMemory) TryLock(ctx xcontext.Context, jobID types.JobID, duration time.Duration, targets []*target.Target, limit uint) ([]string, error) {
+	ctx.Logger().Infof("Trying trylock on %d targets", len(targets))
+	req := newReq(ctx, jobID, targets)
 	req.timeout = duration
 	req.allowConflicts = true
 	req.limit = limit
@@ -199,18 +197,18 @@ func (tl *InMemory) TryLock(jobID types.JobID, duration time.Duration, targets [
 }
 
 // Unlock unlocks the specified targets.
-func (tl *InMemory) Unlock(jobID types.JobID, targets []*target.Target) error {
-	log.Infof("Trying to unlock %d targets", len(targets))
-	req := newReq(jobID, targets)
+func (tl *InMemory) Unlock(ctx xcontext.Context, jobID types.JobID, targets []*target.Target) error {
+	ctx.Logger().Infof("Trying to unlock %d targets", len(targets))
+	req := newReq(ctx, jobID, targets)
 	tl.unlockRequests <- &req
 	return <-req.err
 }
 
 // RefreshLocks extends the lock duration by the internally configured timeout. If
 // the owner is different, the request is rejected.
-func (tl *InMemory) RefreshLocks(jobID types.JobID, targets []*target.Target) error {
-	log.Infof("Trying to refresh locks on %d targets by %s", len(targets), config.LockRefreshTimeout)
-	req := newReq(jobID, targets)
+func (tl *InMemory) RefreshLocks(ctx xcontext.Context, jobID types.JobID, targets []*target.Target) error {
+	ctx.Logger().Infof("Trying to refresh locks on %d targets by %s", len(targets), config.LockRefreshTimeout)
+	req := newReq(ctx, jobID, targets)
 	req.timeout = config.LockRefreshTimeout
 	req.limit = uint(len(targets))
 	// refreshing a lock is just a lock operation with the same owner and a new

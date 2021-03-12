@@ -37,7 +37,7 @@ func (ts *channels) Run(ctx xcontext.Context, ch test.TestStepChannels, params t
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *channels) ValidateParameters(params test.TestStepParameters) error {
+func (ts *channels) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	return nil
 }
 

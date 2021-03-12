@@ -12,15 +12,16 @@ import (
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // NewTestStepBundle creates a TestStepBundle from a TestStepDescriptor
-func (r *PluginRegistry) NewTestStepBundle(testStepDescriptor test.TestStepDescriptor, stepIndex uint, allowedEvents map[event.Name]bool) (*test.TestStepBundle, error) {
+func (r *PluginRegistry) NewTestStepBundle(ctx xcontext.Context, testStepDescriptor test.TestStepDescriptor, stepIndex uint, allowedEvents map[event.Name]bool) (*test.TestStepBundle, error) {
 	testStep, err := r.NewTestStep(testStepDescriptor.Name)
 	if err != nil {
 		return nil, fmt.Errorf("could not get the desired TestStep (%s): %v", testStepDescriptor.Name, err)
 	}
-	if err := testStep.ValidateParameters(testStepDescriptor.Parameters); err != nil {
+	if err := testStep.ValidateParameters(ctx, testStepDescriptor.Parameters); err != nil {
 		return nil, fmt.Errorf("could not validate parameters for test step %s: %v", testStepDescriptor.Name, err)
 	}
 	label := testStepDescriptor.Label
@@ -38,7 +39,7 @@ func (r *PluginRegistry) NewTestStepBundle(testStepDescriptor test.TestStepDescr
 
 // NewTestFetcherBundle creates a TestFetcher and associated parameters based on
 // the content of the job descriptor
-func (r *PluginRegistry) NewTestFetcherBundle(testDescriptor *test.TestDescriptor) (*test.TestFetcherBundle, error) {
+func (r *PluginRegistry) NewTestFetcherBundle(ctx xcontext.Context, testDescriptor *test.TestDescriptor) (*test.TestFetcherBundle, error) {
 	// Initialization and validation of the TestFetcher and its parameters
 	if testDescriptor == nil {
 		return nil, fmt.Errorf("test description is null")
@@ -48,7 +49,7 @@ func (r *PluginRegistry) NewTestFetcherBundle(testDescriptor *test.TestDescripto
 		return nil, fmt.Errorf("could not get the desired TestFetcher (%s): %v", testDescriptor.TestFetcherName, err)
 	}
 	// FetchParameters
-	fp, err := testFetcher.ValidateFetchParameters(testDescriptor.TestFetcherFetchParameters)
+	fp, err := testFetcher.ValidateFetchParameters(ctx, testDescriptor.TestFetcherFetchParameters)
 	if err != nil {
 		return nil, fmt.Errorf("could not validate TestFetcher fetch parameters: %v", err)
 	}

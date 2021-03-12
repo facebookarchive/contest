@@ -14,10 +14,12 @@ import (
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/xcontext"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -52,9 +54,11 @@ func newData() data {
 }
 
 func TestForEachTargetOneTarget(t *testing.T) {
+	ctx := logrusctx.NewContext(logger.LevelDebug)
+	log := ctx.Logger()
 	d := newData()
 	fn := func(ctx xcontext.Context, tgt *target.Target) error {
-		log.Printf("Handling target %+v", tgt)
+		log.Debugf("Handling target %+v", tgt)
 		return nil
 	}
 	go func() {
@@ -62,7 +66,7 @@ func TestForEachTargetOneTarget(t *testing.T) {
 		// signal end of input
 		d.inCh <- nil
 	}()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := xcontext.WithCancel(ctx)
 	defer cancel()
 	go func() {
 		for {
@@ -70,7 +74,7 @@ func TestForEachTargetOneTarget(t *testing.T) {
 			case <-ctx.Done():
 				return
 			case tgt := <-d.outCh:
-				log.Printf("Step for target %+v completed as expected", tgt)
+				log.Debugf("Step for target %+v completed as expected", tgt)
 			case err := <-d.errCh:
 				t.Errorf("Expected no error but got one: %v", err)
 			}
@@ -81,9 +85,11 @@ func TestForEachTargetOneTarget(t *testing.T) {
 }
 
 func TestForEachTargetOneTargetAllFail(t *testing.T) {
+	ctx := logrusctx.NewContext(logger.LevelDebug)
+	log := ctx.Logger()
 	d := newData()
 	fn := func(ctx xcontext.Context, t *target.Target) error {
-		log.Printf("Handling target %+v", t)
+		log.Debugf("Handling target %+v", t)
 		return fmt.Errorf("error with target %+v", t)
 	}
 	go func() {
@@ -91,7 +97,7 @@ func TestForEachTargetOneTargetAllFail(t *testing.T) {
 		// signal end of input
 		d.inCh <- nil
 	}()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := xcontext.WithCancel(ctx)
 	defer cancel()
 	go func() {
 		for {
@@ -101,7 +107,7 @@ func TestForEachTargetOneTargetAllFail(t *testing.T) {
 			case tgt := <-d.outCh:
 				t.Errorf("Step for target %+v expected to fail but completed successfully instead", tgt)
 			case err := <-d.errCh:
-				log.Printf("Step for target failed as expected: %v", err)
+				log.Debugf("Step for target failed as expected: %v", err)
 			}
 		}
 	}()
@@ -112,7 +118,7 @@ func TestForEachTargetOneTargetAllFail(t *testing.T) {
 func TestForEachTargetTenTargets(t *testing.T) {
 	d := newData()
 	fn := func(ctx xcontext.Context, tgt *target.Target) error {
-		log.Printf("Handling target %+v", tgt)
+		ctx.Logger().Debugf("Handling target %+v", tgt)
 		return nil
 	}
 	go func() {
@@ -130,7 +136,7 @@ func TestForEachTargetTenTargets(t *testing.T) {
 			case <-ctx.Done():
 				return
 			case tgt := <-d.outCh:
-				log.Printf("Step for target %+v completed as expected", tgt)
+				d.ctx.Logger().Debugf("Step for target %+v completed as expected", tgt)
 			case err := <-d.errCh:
 				t.Errorf("Expected no error but got one: %v", err)
 			}
@@ -141,10 +147,9 @@ func TestForEachTargetTenTargets(t *testing.T) {
 }
 
 func TestForEachTargetTenTargetsAllFail(t *testing.T) {
-	logging.Debug()
 	d := newData()
 	fn := func(ctx xcontext.Context, tgt *target.Target) error {
-		log.Printf("Handling target %+v", tgt)
+		d.ctx.Logger().Debugf("Handling target %+v", tgt)
 		return fmt.Errorf("error with target %+v", tgt)
 	}
 	go func() {
@@ -164,7 +169,7 @@ func TestForEachTargetTenTargetsAllFail(t *testing.T) {
 			case tgt := <-d.outCh:
 				t.Errorf("Step for target %+v expected to fail but completed successfully instead", tgt)
 			case err := <-d.errCh:
-				log.Printf("Step for target failed as expected: %v", err)
+				d.ctx.Logger().Debugf("Step for target failed as expected: %v", err)
 			}
 		}
 	}()
@@ -178,7 +183,7 @@ func TestForEachTargetTenTargetsOneFails(t *testing.T) {
 	// guaranteed to be random.
 	failingTarget := "target004"
 	fn := func(ctx xcontext.Context, tgt *target.Target) error {
-		log.Printf("Handling target %+v", tgt)
+		d.ctx.Logger().Debugf("Handling target %+v", tgt)
 		if tgt.ID == failingTarget {
 			return fmt.Errorf("error with target %+v", tgt)
 		}
@@ -202,11 +207,11 @@ func TestForEachTargetTenTargetsOneFails(t *testing.T) {
 				if tgt.ID == failingTarget {
 					t.Errorf("Step for target %+v expected to fail but completed successfully instead", tgt)
 				} else {
-					log.Printf("Step for target %+v completed as expected", tgt)
+					d.ctx.Logger().Debugf("Step for target %+v completed as expected", tgt)
 				}
 			case err := <-d.errCh:
 				if err.Target.ID == failingTarget {
-					log.Printf("Step for target failed as expected: %v", err)
+					d.ctx.Logger().Debugf("Step for target failed as expected: %v", err)
 				} else {
 					t.Errorf("Expected no error but got one: %v", err)
 				}
@@ -223,18 +228,17 @@ func TestForEachTargetTenTargetsOneFails(t *testing.T) {
 // I am using a deadline of 3s to give it some margin, knowing that if it is sequential
 // it will take ~10s.
 func TestForEachTargetTenTargetsParallelism(t *testing.T) {
-	logging.Debug()
 	sleepTime := time.Second
 	d := newData()
 	fn := func(ctx xcontext.Context, tgt *target.Target) error {
-		log.Printf("Handling target %+v", tgt)
+		d.ctx.Logger().Debugf("Handling target %+v", tgt)
 		select {
 		case <-ctx.Done():
-			log.Printf("target %+v cancelled", tgt)
+			d.ctx.Logger().Debugf("target %+v cancelled", tgt)
 		case <-ctx.WaitFor(xcontext.Paused):
-			log.Printf("target %+v paused", tgt)
+			d.ctx.Logger().Debugf("target %+v paused", tgt)
 		case <-time.After(sleepTime):
-			log.Printf("target %+v processed", tgt)
+			d.ctx.Logger().Debugf("target %+v processed", tgt)
 		}
 		return nil
 	}
@@ -261,24 +265,24 @@ func TestForEachTargetTenTargetsParallelism(t *testing.T) {
 
 		maxWaitTime := sleepTime * 3
 		deadline := time.Now().Add(maxWaitTime)
-		log.Printf("Setting deadline to now+%s", maxWaitTime)
+		d.ctx.Logger().Debugf("Setting deadline to now+%s", maxWaitTime)
 
 		for {
 			select {
 			case tgt := <-d.outCh:
 				targetsRemain--
-				log.Printf("Step for target completed successfully as expected: %v", tgt)
+				d.ctx.Logger().Debugf("Step for target completed successfully as expected: %v", tgt)
 				if targetsRemain == 0 {
-					log.Print("All tergates processed")
+					d.ctx.Logger().Debugf("All targets processed")
 					return
 				}
 			case err := <-d.errCh:
-				log.Printf("Step for target %+v expected to completed successfully but fail instead", err)
+				d.ctx.Logger().Debugf("Step for target %+v expected to completed successfully but fail instead", err)
 				targetError = err.Err
 				return
 			case <-time.After(time.Until(deadline)):
 				deadlineExceeded = true
-				log.Printf("Deadline exceeded")
+				d.ctx.Logger().Debugf("Deadline exceeded")
 				return
 			}
 		}
@@ -297,22 +301,21 @@ func TestForEachTargetTenTargetsParallelism(t *testing.T) {
 }
 
 func TestForEachTargetCancelSignalPropagation(t *testing.T) {
-	logging.Debug()
 	sleepTime := time.Second * 5
 	numTargets := 10
 	var canceledTargets int32
 	d := newData()
 
 	fn := func(ctx xcontext.Context, tgt *target.Target) error {
-		log.Printf("Handling target %+v", tgt)
+		d.ctx.Logger().Debugf("Handling target %+v", tgt)
 		select {
 		case <-ctx.Done():
-			log.Printf("target %+v caneled", tgt)
+			d.ctx.Logger().Debugf("target %+v caneled", tgt)
 			atomic.AddInt32(&canceledTargets, 1)
 		case <-ctx.WaitFor(xcontext.Paused):
-			log.Printf("target %+v paused", tgt)
+			d.ctx.Logger().Debugf("target %+v paused", tgt)
 		case <-time.After(sleepTime):
-			log.Printf("target %+v processed", tgt)
+			d.ctx.Logger().Debugf("target %+v processed", tgt)
 		}
 		return nil
 	}
@@ -336,22 +339,21 @@ func TestForEachTargetCancelSignalPropagation(t *testing.T) {
 }
 
 func TestForEachTargetCancelBeforeInputChannelClosed(t *testing.T) {
-	logging.Debug()
 	sleepTime := time.Second * 5
 	numTargets := 10
 	var canceledTargets int32
 	d := newData()
 
 	fn := func(ctx xcontext.Context, tgt *target.Target) error {
-		log.Printf("Handling target %+v", tgt)
+		d.ctx.Logger().Debugf("Handling target %+v", tgt)
 		select {
 		case <-ctx.Done():
-			log.Printf("target %+v cancelled", tgt)
+			d.ctx.Logger().Debugf("target %+v cancelled", tgt)
 			atomic.AddInt32(&canceledTargets, 1)
 		case <-ctx.WaitFor(xcontext.Paused):
-			log.Printf("target %+v paused", tgt)
+			d.ctx.Logger().Debugf("target %+v paused", tgt)
 		case <-time.After(sleepTime):
-			log.Printf("target %+v processed", tgt)
+			d.ctx.Logger().Debugf("target %+v processed", tgt)
 		}
 		return nil
 	}

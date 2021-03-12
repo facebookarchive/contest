@@ -12,12 +12,10 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/config"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
-	"github.com/sirupsen/logrus"
 )
 
 // TestRunnerTimeouts collects all the timeouts values that the test runner uses
@@ -105,34 +103,33 @@ type TestRunner struct {
 
 // targetWriter is a helper object which exposes methods to write targets into step channels
 type targetWriter struct {
-	log      *logrus.Entry
 	timeouts TestRunnerTimeouts
 }
 
-func (w *targetWriter) writeTimeout(ctx context.Context, ch chan<- *target.Target, target *target.Target, timeout time.Duration) error {
-	w.log.Debugf("writing target %+v, timeout %v", target, timeout)
+func (w *targetWriter) writeTimeout(ctx xcontext.Context, ch chan<- *target.Target, target *target.Target, timeout time.Duration) error {
+	ctx.Logger().Debugf("writing target %+v, timeout %v", target, timeout)
 	start := time.Now()
 	select {
 	case <-ctx.Done():
-		w.log.Debugf("terminate requested while writing target %+v", target)
+		ctx.Logger().Debugf("terminate requested while writing target %+v", target)
 	case ch <- target:
 	case <-time.After(timeout):
 		return fmt.Errorf("timeout (%v) while writing target %+v", timeout, target)
 	}
-	w.log.Debugf("done writing target %+v, spent %v", target, time.Since(start))
+	ctx.Logger().Debugf("done writing target %+v, spent %v", target, time.Since(start))
 	return nil
 }
 
 // writeTargetWithResult attempts to deliver a Target on the input channel of a step,
 // returning the result of the operation on the result channel wrapped in the
 // injectionCh argument
-func (w *targetWriter) writeTargetWithResult(ctx context.Context, target *target.Target, ch injectionCh) {
+func (w *targetWriter) writeTargetWithResult(ctx xcontext.Context, target *target.Target, ch injectionCh) {
 	err := w.writeTimeout(ctx, ch.stepIn, target, w.timeouts.StepInjectTimeout)
 	select {
 	case <-ctx.Done():
 	case ch.resultCh <- injectionResult{target: target, err: err}:
 	case <-time.After(w.timeouts.MessageTimeout):
-		w.log.Panicf("timeout while writing result for target %+v after %v", target, w.timeouts.MessageTimeout)
+		ctx.Logger().Panicf("timeout while writing result for target %+v after %v", target, w.timeouts.MessageTimeout)
 	}
 }
 
@@ -147,8 +144,8 @@ func (w *targetWriter) writeTargetError(ctx context.Context, ch chan<- cerrors.T
 	return nil
 }
 
-func newTargetWriter(log *logrus.Entry, timeouts TestRunnerTimeouts) *targetWriter {
-	return &targetWriter{log: log, timeouts: timeouts}
+func newTargetWriter(timeouts TestRunnerTimeouts) *targetWriter {
+	return &targetWriter{timeouts: timeouts}
 }
 
 // Run implements the main logic of the TestRunner, i.e. the instantiation and
@@ -159,37 +156,34 @@ func (tr *TestRunner) Run(ctx xcontext.Context, test *test.Test, targets []*targ
 		return fmt.Errorf("no steps to run for test")
 	}
 
-	// rootLog is propagated to all the subsystems of the pipeline
-	rootLog := logging.GetLogger("pkg/runner")
-	fields := make(map[string]interface{})
-	fields["jobid"] = jobID
-	fields["runid"] = runID
-	rootLog = logging.AddFields(rootLog, fields)
+	ctx = ctx.WithFields(xcontext.Fields{
+		"job_id": jobID,
+		"run_id": runID,
+	})
 
-	log := logging.AddField(rootLog, "phase", "run")
-	testPipeline := newPipeline(logging.AddField(rootLog, "entity", "test_pipeline"), test.TestStepsBundles, test, jobID, runID, tr.timeouts)
+	testPipeline := newPipeline(test.TestStepsBundles, test, jobID, runID, tr.timeouts)
 
-	log.Infof("setting up pipeline")
+	ctx.Logger().Infof("setting up pipeline")
 	completedTargets := make(chan *target.Target, 1)
 	inCh := testPipeline.init(ctx)
 
 	// inject targets in the step
-	terminateInjectionCtx, terminateInjection := context.WithCancel(context.Background())
-	go func(ctx context.Context, inputChannel chan<- *target.Target) {
+	terminateInjectionCtx, terminateInjection := xcontext.WithCancel(xcontext.Background())
+	go func(ctx xcontext.Context, inputChannel chan<- *target.Target) {
 		defer close(inputChannel)
-		log := logging.AddField(log, "step", "injection")
-		writer := newTargetWriter(log, tr.timeouts)
+		ctx = ctx.WithTag("step", "injection")
+		writer := newTargetWriter(tr.timeouts)
 		for _, t := range targets {
 			if err := writer.writeTimeout(ctx, inputChannel, t, tr.timeouts.MessageTimeout); err != nil {
-				log.Debugf("could not inject target %+v into first routing block: %+v", t, err)
+				ctx.Logger().Debugf("could not inject target %+v into first routing block: %+v", t, err)
 			}
 		}
-	}(terminateInjectionCtx, inCh)
+	}(terminateInjectionCtx.WithLogger(ctx.Logger()), inCh)
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Infof("running pipeline")
-		errCh <- testPipeline.run(completedTargets)
+		ctx.Logger().Infof("running pipeline")
+		errCh <- testPipeline.run(ctx, completedTargets)
 	}()
 
 	defer terminateInjection()
@@ -199,10 +193,10 @@ func (tr *TestRunner) Run(ctx xcontext.Context, test *test.Test, targets []*targ
 	for {
 		select {
 		case err := <-errCh:
-			log.Debugf("test runner terminated, returning %v", err)
+			ctx.Logger().Debugf("test runner terminated, returning %v", err)
 			return err
 		case t := <-completedTargets:
-			log.Infof("test runner completed target: %v", t)
+			ctx.Logger().Infof("test runner completed target: %v", t)
 		}
 	}
 }

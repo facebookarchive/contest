@@ -8,21 +8,17 @@ package randecho
 import (
 	"errors"
 	"fmt"
-	"github.com/facebookincubator/contest/pkg/xcontext"
 	"math/rand"
-	"strings"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Name is the name used to look this plugin up.
 var Name = "RandEcho"
-
-var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
 // Events defines the events that a TestStep is allow to emit
 var Events = []event.Name{}
@@ -43,7 +39,7 @@ func Load() (string, test.TestStepFactory, []event.Name) {
 
 // ValidateParameters validates the parameters that will be passed to the Run
 // and Resume methods of the test step.
-func (e Step) ValidateParameters(params test.TestStepParameters) error {
+func (e Step) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	if t := params.GetOne("text"); t.IsEmpty() {
 		return errors.New("Missing 'text' field in echo parameters")
 	}
@@ -71,8 +67,8 @@ func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.Te
 					Target:    target,
 					Payload:   nil,
 				}
-				_ = ev.Emit(evData)
-				log.Infof("Run: target %s succeeded: %s", target, params.GetOne("text"))
+				_ = ev.Emit(ctx, evData)
+				ctx.Logger().Infof("Run: target %s succeeded: %s", target, params.GetOne("text"))
 				ch.Out <- target
 			} else {
 				evData := testevent.Data{
@@ -80,8 +76,8 @@ func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.Te
 					Target:    target,
 					Payload:   nil,
 				}
-				_ = ev.Emit(evData)
-				log.Infof("Run: target %s failed: %s", target, params.GetOne("text"))
+				_ = ev.Emit(ctx, evData)
+				ctx.Logger().Infof("Run: target %s failed: %s", target, params.GetOne("text"))
 				ch.Err <- cerrors.TargetError{Target: target, Err: fmt.Errorf("target randomly failed")}
 			}
 		case <-ctx.WaitFor():

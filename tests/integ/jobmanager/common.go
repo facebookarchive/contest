@@ -23,11 +23,13 @@ import (
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/jobmanager"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/facebookincubator/contest/plugins/reporters/targetsuccess"
 	"github.com/facebookincubator/contest/plugins/targetlocker/inmemory"
 	"github.com/facebookincubator/contest/plugins/targetmanagers/targetlist"
@@ -52,6 +54,8 @@ const (
 	Status   CommandType = "status"
 	List     CommandType = "list"
 )
+
+var ctx = logrusctx.NewContext(logger.LevelDebug)
 
 type command struct {
 	commandType   CommandType
@@ -78,31 +82,31 @@ type TestListener struct {
 
 // Serve implements the main logic of a dummy listener which talks to the API
 // layer to trigger actions in the JobManager
-func (tl *TestListener) Serve(cancel <-chan struct{}, contestApi *api.API) error {
+func (tl *TestListener) Serve(ctx xcontext.Context, contestApi *api.API) error {
 	for {
 		select {
 		case command := <-tl.commandCh:
 			switch command.commandType {
 			case StartJob:
-				resp, err := contestApi.Start("IntegrationTest", command.jobDescriptor)
+				resp, err := contestApi.Start(ctx, "IntegrationTest", command.jobDescriptor)
 				if err != nil {
 					tl.errorCh <- err
 				}
 				tl.responseCh <- resp
 			case StopJob:
-				resp, err := contestApi.Stop("IntegrationTest", command.jobID)
+				resp, err := contestApi.Stop(ctx, "IntegrationTest", command.jobID)
 				if err != nil {
 					tl.errorCh <- err
 				}
 				tl.responseCh <- resp
 			case Status:
-				resp, err := contestApi.Status("IntegrationTest", command.jobID)
+				resp, err := contestApi.Status(ctx, "IntegrationTest", command.jobID)
 				if err != nil {
 					tl.errorCh <- err
 				}
 				tl.responseCh <- resp
 			case List:
-				resp, err := contestApi.List("IntegrationTest", command.states, command.tags)
+				resp, err := contestApi.List(ctx, "IntegrationTest", command.states, command.tags)
 				if err != nil {
 					tl.errorCh <- err
 				}
@@ -110,7 +114,7 @@ func (tl *TestListener) Serve(cancel <-chan struct{}, contestApi *api.API) error
 			default:
 				return nil
 			}
-		case <-cancel:
+		case <-ctx.Done():
 			return nil
 		}
 	}
@@ -176,7 +180,7 @@ type TestJobManagerSuite struct {
 
 func (suite *TestJobManagerSuite) startJobManager() {
 	go func() {
-		_ = suite.jm.Start(suite.sigs)
+		_ = suite.jm.Start(ctx, suite.sigs)
 		close(suite.jobManagerCh)
 	}()
 }
@@ -248,9 +252,7 @@ func (suite *TestJobManagerSuite) SetupTest() {
 	suite.jsm = jsm
 	suite.eventManager = eventManager
 
-	logging.Debug()
-
-	pr := pluginregistry.NewPluginRegistry()
+	pr := pluginregistry.NewPluginRegistry(ctx)
 	pr.RegisterTargetManager(targetlist.Name, targetlist.New)
 	pr.RegisterTestFetcher(literal.Name, literal.New)
 	pr.RegisterReporter(targetsuccess.Name, targetsuccess.New)

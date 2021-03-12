@@ -12,11 +12,12 @@ import (
 	"syscall"
 
 	"github.com/facebookincubator/contest/cmds/plugins"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 
 	"github.com/facebookincubator/contest/pkg/api"
 	"github.com/facebookincubator/contest/pkg/config"
 	"github.com/facebookincubator/contest/pkg/jobmanager"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -27,8 +28,6 @@ import (
 
 	"github.com/facebookincubator/contest/plugins/targetlocker/dblocker"
 	"github.com/facebookincubator/contest/plugins/targetlocker/inmemory"
-
-	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -37,15 +36,20 @@ var (
 	flagProcessTimeout = flag.Duration("processTimeout", api.DefaultEventTimeout, "API request processing timeout")
 	flagTargetLocker   = flag.String("targetLocker", inmemory.Name, "Target locker implementation to use")
 	flagInstanceTag    = flag.String("instanceTag", "", "A tag for this instance. Server will only operate on jobs with this tag and will add this tag to the jobs it creates.")
+	flagLogLevel       = flag.String("logLevel", "debug", "A log level, possible values: debug, info, warning, error, panic, fatal")
 )
 
 func main() {
 	flag.Parse()
-	log := logging.GetLogger("contest")
-	log.Level = logrus.DebugLevel
-	logging.Debug()
+	logLevel, err := logger.ParseLogLevel(*flagLogLevel)
+	if err != nil {
+		panic(err)
+	}
 
-	pluginRegistry := pluginregistry.NewPluginRegistry()
+	ctx := logrusctx.NewContext(logLevel)
+	log := ctx.Logger()
+
+	pluginRegistry := pluginregistry.NewPluginRegistry(ctx)
 
 	// primary storage initialization
 	if *flagDBURI != "" {
@@ -62,7 +66,7 @@ func main() {
 
 		dbVerPrim, err := s.Version()
 		if err != nil {
-			log.Warningf("Could not determine storage version: %v", err)
+			log.Warnf("Could not determine storage version: %v", err)
 		} else {
 			log.Infof("Storage version: %d", dbVerPrim)
 		}
@@ -82,7 +86,7 @@ func main() {
 
 		dbVerRepl, err := r.Version()
 		if err != nil {
-			log.Warningf("Could not determine storage version: %v", err)
+			log.Warnf("Could not determine storage version: %v", err)
 		} else {
 			log.Infof("Storage version: %d", dbVerRepl)
 		}
@@ -91,7 +95,7 @@ func main() {
 			log.Fatalf("Primary and Replica DB Versions are different: %v and %v", dbVerPrim, dbVerRepl)
 		}
 	} else {
-		log.Warningf("Using in-memory storage")
+		log.Warnf("Using in-memory storage")
 		if ms, err := memory.New(); err == nil {
 			if err := storage.SetStorage(ms); err != nil {
 				log.Fatalf("Could not set storage: %v", err)
@@ -118,10 +122,10 @@ func main() {
 		log.Fatalf("Invalid target locker name %q", *flagTargetLocker)
 	}
 
-	plugins.Init(pluginRegistry, log)
+	plugins.Init(pluginRegistry, ctx.Logger())
 
 	// spawn JobManager
-	listener := httplistener.HTTPListener{}
+	listener := httplistener.NewHTTPListener()
 
 	opts := []jobmanager.Option{
 		jobmanager.APIOption(api.OptionEventTimeout(*flagProcessTimeout)),
@@ -133,16 +137,16 @@ func main() {
 		opts = append(opts, jobmanager.OptionInstanceTag(*flagInstanceTag))
 	}
 
-	jm, err := jobmanager.New(&listener, pluginRegistry, opts...)
+	jm, err := jobmanager.New(listener, pluginRegistry, opts...)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("%v", err)
 	}
-	log.Printf("JobManager %+v", jm)
+	log.Debugf("JobManager %+v", jm)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
 
-	if err := jm.Start(sigs); err != nil {
-		log.Fatal(err)
+	if err := jm.Start(ctx, sigs); err != nil {
+		log.Fatalf("%v", err)
 	}
 }

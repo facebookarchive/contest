@@ -6,7 +6,6 @@
 package runner
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -14,17 +13,20 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/facebookincubator/contest/plugins/storage/memory"
 	"github.com/facebookincubator/contest/plugins/teststeps/example"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
+
+var ctx = logrusctx.NewContext(logger.LevelDebug)
 
 var testSteps = map[string]test.TestStepFactory{
 	example.Name: example.New,
@@ -56,9 +58,7 @@ type TestRunnerSuite struct {
 
 func (suite *TestRunnerSuite) SetupTest() {
 
-	log := logging.GetLogger("TestRunnerSuite")
-
-	pluginRegistry := pluginregistry.NewPluginRegistry()
+	pluginRegistry := pluginregistry.NewPluginRegistry(ctx)
 	// Setup the PluginRegistry by registering TestSteps
 	for name, tsfactory := range testSteps {
 		if _, ok := testStepsEvents[name]; !ok {
@@ -116,7 +116,7 @@ func (suite *TestRunnerSuite) SetupTest() {
 		StepShutdownTimeout: 5 * time.Second,
 	}
 
-	suite.router = newStepRouter(log, bundle, suite.routingChannels, ev, timeouts)
+	suite.router = newStepRouter(bundle, suite.routingChannels, ev, timeouts)
 }
 
 func (suite *TestRunnerSuite) TestRouteInRoutesAllTargets() {
@@ -133,7 +133,7 @@ func (suite *TestRunnerSuite) TestRouteInRoutesAllTargets() {
 
 	go func() {
 		// start routing
-		_, _ = suite.router.routeIn(context.Background())
+		_, _ = suite.router.routeIn(ctx)
 	}()
 
 	// inject targets
@@ -212,7 +212,7 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllSuccessfulTargets() {
 
 	go func() {
 		// start routing
-		_, _ = suite.router.routeOut(context.Background())
+		_, _ = suite.router.routeOut(ctx)
 	}()
 
 	stepResult := make(chan error)
@@ -306,7 +306,7 @@ func (suite *TestRunnerSuite) TestRouteOutRoutesAllFailedTargets() {
 
 	go func() {
 		// start routing
-		_, _ = suite.router.routeOut(context.Background())
+		_, _ = suite.router.routeOut(ctx)
 	}()
 
 	stepResult := make(chan error)

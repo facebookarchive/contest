@@ -21,14 +21,12 @@ import (
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/job"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/runner"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
-
-var log = logging.GetLogger("pkg/jobmanager")
 
 var cancellationTimeout = 60 * time.Second
 
@@ -61,7 +59,6 @@ type JobManager struct {
 	testEvManager      testevent.Fetcher
 
 	apiListener    api.Listener
-	apiCancel      chan struct{}
 	pluginRegistry *pluginregistry.PluginRegistry
 }
 
@@ -93,7 +90,6 @@ func New(l api.Listener, pr *pluginregistry.PluginRegistry, opts ...Option) (*Jo
 		jobStorageManager:  jobStorageManager,
 		frameworkEvManager: frameworkEvManager,
 		testEvManager:      testEvManager,
-		apiCancel:          make(chan struct{}),
 	}
 	jm.jobRunner = runner.NewJobRunner()
 	return &jm, nil
@@ -120,7 +116,7 @@ func (jm *JobManager) handleEvent(ev *api.Event) {
 		}
 	}
 
-	log.Printf("Sending response %+v", resp)
+	ev.Context.Logger().Debugf("Sending response %+v", resp)
 	// time to wait before printing an error if the response is not received.
 	sendEventTimeout := 3 * time.Second
 
@@ -130,37 +126,41 @@ func (jm *JobManager) handleEvent(ev *api.Event) {
 		// TODO send failure event once we have the event infra
 		// TODO determine whether the server should shut down if there
 		//      are too many errors
-		log.Panicf("timed out after %v trying to send a response event", sendEventTimeout)
+		ev.Context.Logger().Panicf("timed out after %v trying to send a response event", sendEventTimeout)
 	}
 }
 
 // Start is responsible for starting the API listener and responding to incoming
 // events. It also responds to cancellation requests coming from SIGINT/SIGTERM
 // signals, propagating the signals downwards to all jobs.
-func (jm *JobManager) Start(sigs chan os.Signal) error {
-	a, err := api.New(jm.config.apiOptions...)
+func (jm *JobManager) Start(ctx xcontext.Context, sigs chan os.Signal) error {
+	log := ctx.Logger()
+
+	a, err := api.New(ctx, jm.config.apiOptions...)
 	if err != nil {
 		return fmt.Errorf("Cannot start JobManager: %w", err)
 	}
+
+	apiCtx, apiCancel := xcontext.WithCancel(ctx)
 	errCh := make(chan error, 1)
 	go func() {
-		if lErr := jm.apiListener.Serve(jm.apiCancel, a); lErr != nil {
-			errCh <- lErr
-		}
-		errCh <- nil
+		lErr := jm.apiListener.Serve(apiCtx, a)
+		ctx.Logger().Debugf("Server shut down successfully.")
+		errCh <- lErr
 	}()
+
 loop:
 	for {
 		select {
 		// handle events from the API
 		case ev := <-a.Events:
-			log.Printf("Handling event %+v", ev)
+			ev.Context.Logger().Debugf("Handling event %+v", ev)
 			// send the response, and wait for the given timeout
 			jm.handleEvent(ev)
 		// check for errors or premature termination from the listener.
 		case err := <-errCh:
-			log.Info("JobManager: API listener failed, triggering a cancellation of all jobs")
-			jm.CancelAll()
+			log.Infof("JobManager: API listener failed, triggering a cancellation of all jobs")
+			jm.CancelAll(ctx)
 			if err != nil {
 				return fmt.Errorf("error reported by API listener: %v", err)
 			}
@@ -172,12 +172,12 @@ loop:
 			//       as responsibility of "main".
 			// We were interrupted by a signal, time to leave!
 			if sig == syscall.SIGUSR1 {
-				log.Printf("Interrupted by signal '%s': wait for jobs and exit", sig)
-				jm.stopAPI()
+				log.Debugf("Interrupted by signal '%s': wait for jobs and exit", sig)
+				apiCancel()
 			} else {
-				log.Printf("Interrupted by signal '%s': pause jobs and exit", sig)
-				jm.stopAPI()
-				jm.PauseJobs()
+				log.Debugf("Interrupted by signal '%s': pause jobs and exit", sig)
+				apiCancel()
+				jm.PauseJobs(ctx)
 			}
 			select {
 			case err := <-errCh:
@@ -216,43 +216,42 @@ func (jm *JobManager) CancelJob(jobID types.JobID) error {
 
 // CancelAll sends a cancellation request to the API listener and to every running
 // job.
-func (jm *JobManager) CancelAll() {
+func (jm *JobManager) CancelAll(ctx xcontext.Context) {
+	log := ctx.Logger()
 	// TODO This doesn't seem the right thing to do, if the listener fails we should
 	// pause, not cancel.
 
 	// Get the job from the local cache rather than the storage layer. We can
 	// only cancel jobs that we are actively handling.
-	log.Info("JobManager: cancelling all jobs")
+	log.Infof("JobManager: cancelling all jobs")
 	for jobID, job := range jm.jobs {
 		log.Debugf("JobManager: cancelling job with ID %v", jobID)
 		job.Cancel()
 	}
 }
 
-func (jm *JobManager) stopAPI() {
-	close(jm.apiCancel)
-}
-
 // PauseJobs sends a pause request to every running job.
-func (jm *JobManager) PauseJobs() {
-	log.Info("JobManager: requested pausing")
+func (jm *JobManager) PauseJobs(ctx xcontext.Context) {
+	log := ctx.Logger()
+
+	log.Infof("JobManager: requested pausing")
 	for jobID, job := range jm.jobs {
 		log.Debugf("JobManager: pausing job with ID %v", jobID)
 		job.Pause()
 	}
 }
 
-func (jm *JobManager) emitErrEvent(jobID types.JobID, eventName event.Name, err error) error {
+func (jm *JobManager) emitErrEvent(ctx xcontext.Context, jobID types.JobID, eventName event.Name, err error) error {
 	var (
 		rawPayload json.RawMessage
 		payloadPtr *json.RawMessage
 	)
 	if err != nil {
-		log.Errorf(err.Error())
+		ctx.Logger().Errorf(err.Error())
 		payload := ErrorEventPayload{Err: *xjson.NewError(err)}
 		payloadJSON, err := json.Marshal(payload)
 		if err != nil {
-			log.Warningf("Could not serialize payload for event %s: %v", eventName, err)
+			ctx.Logger().Warnf("Could not serialize payload for event %s: %v", eventName, err)
 		} else {
 			rawPayload = json.RawMessage(payloadJSON)
 			payloadPtr = &rawPayload
@@ -265,13 +264,13 @@ func (jm *JobManager) emitErrEvent(jobID types.JobID, eventName event.Name, err 
 		Payload:   payloadPtr,
 		EmitTime:  time.Now(),
 	}
-	if err := jm.frameworkEvManager.Emit(ev); err != nil {
-		log.Warningf("Could not emit event %s for job %d: %v", eventName, jobID, err)
+	if err := jm.frameworkEvManager.Emit(ctx, ev); err != nil {
+		ctx.Logger().Warnf("Could not emit event %s for job %d: %v", eventName, jobID, err)
 		return err
 	}
 	return nil
 }
 
-func (jm *JobManager) emitEvent(jobID types.JobID, eventName event.Name) error {
-	return jm.emitErrEvent(jobID, eventName, nil)
+func (jm *JobManager) emitEvent(ctx xcontext.Context, jobID types.JobID, eventName event.Name) error {
+	return jm.emitErrEvent(ctx, jobID, eventName, nil)
 }

@@ -11,9 +11,10 @@ import (
 	"sync"
 	"time"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/storage"
 
 	"github.com/facebookincubator/contest/tools/migration/rdbms/migrationlib"
@@ -21,8 +22,6 @@ import (
 	// this blank import registers the mysql driver
 	_ "github.com/go-sql-driver/mysql"
 )
-
-var log = logging.GetLogger("plugin/events/rdbms")
 
 // txbeginner defines an interface for a backend which supports beginning a transaction
 type txbeginner interface {

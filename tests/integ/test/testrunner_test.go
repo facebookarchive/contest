@@ -13,17 +13,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/runner"
-	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
-
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/plugins/storage/memory"
 	"github.com/facebookincubator/contest/plugins/teststeps/cmd"
 	"github.com/facebookincubator/contest/plugins/teststeps/echo"
@@ -34,8 +35,6 @@ import (
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/hanging"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/noreturn"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/panicstep"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -69,8 +68,6 @@ var testStepsEvents = map[string][]event.Name{
 }
 
 func TestMain(m *testing.M) {
-	logging.GetLogger("tests/integ")
-	logging.Disable()
 
 	pluginRegistry = pluginregistry.NewPluginRegistry()
 	// Setup the PluginRegistry by registering TestSteps

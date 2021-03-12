@@ -17,7 +17,6 @@
 package csvtargetmanager
 
 import (
-	"context"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -29,9 +28,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
+
 	"github.com/insomniacslk/xjson"
 )
 
@@ -39,8 +39,6 @@ import (
 var (
 	Name = "CSVFileTargetManager"
 )
-
-var log = logging.GetLogger("targetmanagers/" + strings.ToLower(Name))
 
 // AcquireParameters contains the parameters necessary to acquire targets.
 type AcquireParameters struct {
@@ -100,7 +98,7 @@ func (tf CSVFileTargetManager) ValidateReleaseParameters(params []byte) (interfa
 
 // Acquire implements contest.TargetManager.Acquire, reading one entry per line
 // from a text file. Each input record looks like this: ID,FQDN,IPv4,IPv6. Only ID is required
-func (tf *CSVFileTargetManager) Acquire(ctx context.Context, jobID types.JobID, jobTargetManagerAcquireTimeout time.Duration, parameters interface{}, tl target.Locker) ([]*target.Target, error) {
+func (tf *CSVFileTargetManager) Acquire(ctx xcontext.Context, jobID types.JobID, jobTargetManagerAcquireTimeout time.Duration, parameters interface{}, tl target.Locker) ([]*target.Target, error) {
 	acquireParameters, ok := parameters.(AcquireParameters)
 	if !ok {
 		return nil, fmt.Errorf("Acquire expects %T object, got %T", acquireParameters, parameters)
@@ -171,16 +169,16 @@ func (tf *CSVFileTargetManager) Acquire(ctx context.Context, jobID types.JobID, 
 			len(hosts),
 		)
 	}
-	log.Printf("Found %d targets in %s", len(hosts), acquireParameters.FileURI.Path)
+	ctx.Logger().Debugf("Found %d targets in %s", len(hosts), acquireParameters.FileURI.Path)
 	if acquireParameters.Shuffle {
-		log.Info("Shuffling targets")
+		ctx.Logger().Infof("Shuffling targets")
 		rand.Shuffle(len(hosts), func(i, j int) {
 			hosts[i], hosts[j] = hosts[j], hosts[i]
 		})
 	}
 
 	// feed all devices into new API call `TryLock`, with desired limit
-	lockedString, err := tl.TryLock(jobID, jobTargetManagerAcquireTimeout, hosts, uint(acquireParameters.MaxNumberDevices))
+	lockedString, err := tl.TryLock(ctx, jobID, jobTargetManagerAcquireTimeout, hosts, uint(acquireParameters.MaxNumberDevices))
 	if err != nil {
 		return nil, fmt.Errorf("failed to lock targets: %w", err)
 	}
@@ -195,7 +193,7 @@ func (tf *CSVFileTargetManager) Acquire(ctx context.Context, jobID types.JobID, 
 	} else {
 		// not enough, unlock what we got and fail
 		if len(locked) > 0 {
-			err = tl.Unlock(jobID, locked)
+			err = tl.Unlock(ctx, jobID, locked)
 			if err != nil {
 				return nil, fmt.Errorf("can't unlock targets")
 			}
@@ -208,7 +206,7 @@ func (tf *CSVFileTargetManager) Acquire(ctx context.Context, jobID types.JobID, 
 }
 
 // Release releases the acquired resources.
-func (tf *CSVFileTargetManager) Release(ctx context.Context, jobID types.JobID, params interface{}) error {
+func (tf *CSVFileTargetManager) Release(ctx xcontext.Context, jobID types.JobID, params interface{}) error {
 	return nil
 }
 

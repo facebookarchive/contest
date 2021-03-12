@@ -8,20 +8,16 @@ package example
 import (
 	"fmt"
 	"math/rand"
-	"strings"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Name is the name used to look this plugin up.
 var Name = "Example"
-
-var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
 // events that we may emit during the plugin's lifecycle. This is used in Events below.
 // Note that you don't normally need to emit start/finish/cancellation events as
@@ -58,11 +54,11 @@ func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, _ test.TestS
 			if target == nil {
 				return nil
 			}
-			log.Infof("Executing on target %s", target)
+			ctx.Logger().Infof("Executing on target %s", target)
 			// NOTE: you may want more robust error handling here, possibly just
 			//       logging the error, or a retry mechanism. Returning an error
 			//       here means failing the entire job.
-			if err := ev.Emit(testevent.Data{EventName: StartedEvent, Target: target, Payload: nil}); err != nil {
+			if err := ev.Emit(ctx, testevent.Data{EventName: StartedEvent, Target: target, Payload: nil}); err != nil {
 				return fmt.Errorf("failed to emit start event: %v", err)
 			}
 			if r == 1 {
@@ -70,7 +66,7 @@ func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, _ test.TestS
 				case <-ctx.WaitFor():
 					return nil
 				case ch.Err <- cerrors.TargetError{Target: target, Err: fmt.Errorf("target failed")}:
-					if err := ev.Emit(testevent.Data{EventName: FinishedEvent, Target: target, Payload: nil}); err != nil {
+					if err := ev.Emit(ctx, testevent.Data{EventName: FinishedEvent, Target: target, Payload: nil}); err != nil {
 						return fmt.Errorf("failed to emit finished event: %v", err)
 					}
 				}
@@ -79,7 +75,7 @@ func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, _ test.TestS
 				case <-ctx.WaitFor():
 					return nil
 				case ch.Out <- target:
-					if err := ev.Emit(testevent.Data{EventName: FailedEvent, Target: target, Payload: nil}); err != nil {
+					if err := ev.Emit(ctx, testevent.Data{EventName: FailedEvent, Target: target, Payload: nil}); err != nil {
 						return fmt.Errorf("failed to emit failed event: %v", err)
 					}
 				}
@@ -91,7 +87,7 @@ func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, _ test.TestS
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *Step) ValidateParameters(_ test.TestStepParameters) error {
+func (ts *Step) ValidateParameters(_ xcontext.Context, _ test.TestStepParameters) error {
 	return nil
 }
 

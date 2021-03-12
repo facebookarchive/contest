@@ -11,6 +11,7 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 const (
@@ -19,7 +20,7 @@ const (
 )
 
 // StoreJobRequest stores a new job request in the database
-func (r *RDBMS) StoreJobRequest(request *job.Request) (types.JobID, error) {
+func (r *RDBMS) StoreJobRequest(_ xcontext.Context, request *job.Request) (types.JobID, error) {
 
 	var jobID types.JobID
 
@@ -62,20 +63,20 @@ func (r *RDBMS) StoreJobRequest(request *job.Request) (types.JobID, error) {
 }
 
 // GetJobRequest retrieves a JobRequest from the database
-func (r *RDBMS) GetJobRequest(jobID types.JobID) (*job.Request, error) {
+func (r *RDBMS) GetJobRequest(ctx xcontext.Context, jobID types.JobID) (*job.Request, error) {
 
 	r.lockTx()
 	defer r.unlockTx()
 
 	selectStatement := "select job_id, name, requestor, server_id, request_time, descriptor,  extended_descriptor from jobs where job_id = ?"
-	log.Debugf("Executing query: %s", selectStatement)
+	ctx.Logger().Debugf("Executing query: %s", selectStatement)
 	rows, err := r.db.Query(selectStatement, jobID)
 	if err != nil {
 		return nil, fmt.Errorf("could not get job request with id %v: %v", jobID, err)
 	}
 	defer func() {
 		if err := rows.Close(); err != nil {
-			log.Warningf("could not close rows for job request: %v", err)
+			ctx.Logger().Warnf("could not close rows for job request: %v", err)
 		}
 	}()
 

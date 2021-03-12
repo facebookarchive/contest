@@ -43,7 +43,7 @@ func (ts *noop) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *noop) ValidateParameters(params test.TestStepParameters) error {
+func (ts *noop) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	return nil
 }
 
