@@ -104,17 +104,15 @@ type Context interface {
 	// See also WithTag.
 	WithFields(Fields) Context
 
-	// WaitFor works similar to context.Context.Done(), but returns a channel
-	// which is closed only when the context is closed with any of
-	// specified errors.
+	// Until works similar to Done(), but it is possible to specify specific
+	// signal to wait for.
 	//
-	// If errs is empty, then ways for any signal (both: any cancel signals
-	// and any notification signals).
-	WaitFor(errs ...error) <-chan struct{}
+	// If err is nil, then waits for any event.
+	Until(err error) <-chan struct{}
 
-	// StdCtxWaitFor is the same as WaitFor, but returns a standard context
+	// StdCtxUntil is the same as Until, but returns a standard context
 	// instead of a channel.
-	StdCtxWaitFor(errs ...error) context.Context
+	StdCtxUntil(err error) context.Context
 
 	// IsSignaledWith returns true if the context received a cancel
 	// or a notification signal equals to any of passed ones.
@@ -469,9 +467,9 @@ func LoggerFrom(stdCtx context.Context) Logger {
 	return ctx.Logger()
 }
 
-// StdCtxWaitFor is the same as WaitFor, but returns a standard context
+// StdCtxWaitFor is the same as Until, but returns a standard context
 // instead of a channel.
-func (ctx *ctxValue) StdCtxWaitFor(errs ...error) context.Context {
+func (ctx *ctxValue) StdCtxUntil(err error) context.Context {
 	child := ctx.clone()
 	if child.eventHandler == nil {
 		return child
@@ -481,15 +479,15 @@ func (ctx *ctxValue) StdCtxWaitFor(errs ...error) context.Context {
 	h := child.addEventHandler()
 
 	garbageCollected := make(chan struct{})
-	runtime.SetFinalizer(child, func(*ctxValue) {
+	runtime.SetFinalizer(&child.cancelSignal, func(*ctxValue) {
 		close(garbageCollected)
 	})
-	fireCh := ctx.WaitFor(errs...)
+
 	go func() {
 		select {
 		case <-garbageCollected:
 			return
-		case <-fireCh:
+		case <-ctx.Until(err):
 			h.cancel(Canceled)
 		}
 	}()

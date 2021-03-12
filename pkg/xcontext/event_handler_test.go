@@ -1,6 +1,8 @@
 package xcontext
 
 import (
+	"runtime"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,7 +13,7 @@ func TestBackgroundContext(t *testing.T) {
 
 	var blocked bool
 	select {
-	case <-ctx.WaitFor():
+	case <-ctx.Until(nil):
 	default:
 		blocked = true
 	}
@@ -21,6 +23,38 @@ func TestBackgroundContext(t *testing.T) {
 	require.Nil(t, ctx.Notifications())
 }
 
+func TestWaiterGC(t *testing.T) {
+	goroutines := runtime.NumGoroutine()
+
+	ctx, cancelFunc := WithCancel(nil)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	readyToSelect := make(chan struct{})
+	startSelect := make(chan struct{})
+	go func() {
+		defer wg.Done()
+		ch := ctx.Until(nil)
+		runtime.GC()
+		select {
+		case <-ch:
+			t.Fail()
+		default:
+		}
+		close(readyToSelect)
+		<-startSelect
+		select {
+		case <-ch:
+		}
+	}()
+	<-readyToSelect
+	cancelFunc()
+	close(startSelect)
+	wg.Wait()
+
+	runtime.GC()
+	require.Equal(t, goroutines, runtime.NumGoroutine())
+}
+
 func TestContextCanceled(t *testing.T) {
 	ctx, cancelFunc := WithCancel(nil)
 	require.NotNil(t, ctx)
@@ -28,14 +62,14 @@ func TestContextCanceled(t *testing.T) {
 	cancelFunc()
 
 	<-ctx.Done()
-	<-ctx.WaitFor()
+	<-ctx.Until(nil)
 
 	require.Equal(t, Canceled, ctx.Err())
 	require.Nil(t, ctx.Notifications())
 
 	var paused bool
 	select {
-	case <-ctx.WaitFor(Paused):
+	case <-ctx.Until(Paused):
 		paused = true
 	default:
 	}
@@ -48,8 +82,8 @@ func TestContextPaused(t *testing.T) {
 
 	pauseFunc()
 
-	<-ctx.WaitFor(Paused)
-	<-ctx.WaitFor()
+	<-ctx.Until(Paused)
+	<-ctx.Until(nil)
 
 	require.Nil(t, ctx.Err())
 	require.Equal(t, []error{Paused}, ctx.Notifications())
@@ -74,9 +108,8 @@ func TestMultipleCancelPause(t *testing.T) {
 	cancelFunc()
 
 	<-ctx.Done()
-	<-ctx.WaitFor()
-	<-ctx.WaitFor(Canceled, Paused)
-	<-ctx.WaitFor(Paused)
+	<-ctx.Until(nil)
+	<-ctx.Until(Paused)
 
 	require.Equal(t, Canceled, ctx.Err())
 	require.Equal(t, []error{Paused, Paused}, ctx.Notifications())
@@ -89,7 +122,7 @@ func TestGrandGrandGrandChild(t *testing.T) {
 
 	require.False(t, ctx2.IsSignaledWith(Paused))
 	notifyFunc()
-	<-ctx2.WaitFor(Paused)
+	<-ctx2.Until(Paused)
 }
 
 func TestWithParent(t *testing.T) {
@@ -98,9 +131,9 @@ func TestWithParent(t *testing.T) {
 		childCtx := parentCtx.Clone()
 
 		pauseFunc()
-		childCtx.WaitFor(Paused)
+		<-childCtx.Until(Paused)
 		require.Equal(t, []error{Paused}, childCtx.Notifications())
-		<-childCtx.WaitFor()
+		<-childCtx.Until(nil)
 
 		require.Nil(t, childCtx.Err())
 	})
@@ -111,7 +144,7 @@ func TestWithParent(t *testing.T) {
 		parentCancelFunc()
 		<-childCtx.Done()
 		require.Equal(t, Canceled, childCtx.Err())
-		<-childCtx.WaitFor()
+		<-childCtx.Until(nil)
 
 		require.Nil(t, childCtx.Notifications())
 	})
@@ -123,8 +156,8 @@ func TestWithParent(t *testing.T) {
 
 		childCtx := parentCtx.Clone()
 		<-childCtx.Done()
-		<-childCtx.WaitFor(Paused)
-		<-childCtx.WaitFor()
+		<-childCtx.Until(Paused)
+		<-childCtx.Until(nil)
 
 		require.Equal(t, Canceled, childCtx.Err())
 		require.Equal(t, []error{Paused}, childCtx.Notifications())
@@ -143,7 +176,7 @@ func TestWithParent(t *testing.T) {
 
 				var blocked bool
 				select {
-				case <-parentCtx.WaitFor():
+				case <-parentCtx.Until(nil):
 				default:
 					blocked = true
 				}

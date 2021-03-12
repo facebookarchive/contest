@@ -221,7 +221,7 @@ func listenWithCancellation(ctx xcontext.Context, s *http.Server) error {
 	select {
 	case err := <-errCh:
 		return err
-	case <-ctx.WaitFor():
+	case <-ctx.Done():
 		ctx.Logger().Debugf("Received server shut down request")
 		return s.Close()
 	}

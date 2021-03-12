@@ -9,17 +9,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func tryLeak() {
+	ctx := Background()
+	ctx, _ = WithCancel(ctx)
+	ctx, _ = WithNotify(ctx, Paused)
+	ctx.Until(nil)
+	ctx = WithResetSignalers(ctx)
+	ctx = WithStdContext(ctx, context.Background())
+}
+
 func TestGoroutineLeak(t *testing.T) {
 	old := runtime.NumGoroutine()
 
-	{
-		ctx := Background()
-		ctx, _ = WithCancel(ctx)
-		ctx, _ = WithNotify(ctx, Paused)
-		ctx.WaitFor()
-		ctx = WithResetSignalers(ctx)
-		ctx = WithStdContext(ctx, context.Background())
-	}
+	tryLeak()
 	runtime.GC()
 	runtime.Gosched()
 	runtime.GC()

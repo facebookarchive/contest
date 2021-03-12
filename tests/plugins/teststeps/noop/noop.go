@@ -36,7 +36,7 @@ func (ts *noop) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.
 				return nil
 			}
 			ch.Out <- target
-		case <-ctx.WaitFor():
+		case <-ctx.Until(nil):
 			return nil
 		}
 	}

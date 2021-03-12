@@ -155,7 +155,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 						if err := tl.Unlock(j.StateCtx, j.ID, targets); err != nil {
 							j.StateCtx.Logger().Warnf("Failed to unlock targets (%v) for job ID %d: %v", targets, j.ID, err)
 						}
-					case <-j.StateCtx.WaitFor(xcontext.Paused):
+					case <-j.StateCtx.Until(xcontext.Paused):
 						j.StateCtx.Logger().Debugf("Received pause request, NOT releasing targets so the job can be resumed")
 						return
 					case <-done:

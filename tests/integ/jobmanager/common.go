@@ -85,8 +85,10 @@ type TestListener struct {
 func (tl *TestListener) Serve(ctx xcontext.Context, contestApi *api.API) error {
 	ctx.Logger().Debugf("Serving mock listener")
 	for {
+		ctx.Logger().Debugf("select")
 		select {
 		case command := <-tl.commandCh:
+			ctx.Logger().Debugf("received command: %#+v", command)
 			switch command.commandType {
 			case StartJob:
 				resp, err := contestApi.Start(ctx, "IntegrationTest", command.jobDescriptor)
@@ -115,7 +117,7 @@ func (tl *TestListener) Serve(ctx xcontext.Context, contestApi *api.API) error {
 			default:
 				return nil
 			}
-		case <-ctx.WaitFor():
+		case <-ctx.Done():
 			return nil
 		}
 	}

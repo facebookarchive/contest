@@ -14,8 +14,6 @@ import (
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/xcontext"
-	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
-	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/stretchr/testify/require"
 
 	"github.com/facebookincubator/contest/pkg/event"
@@ -25,6 +23,8 @@ import (
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/facebookincubator/contest/plugins/storage/memory"
 	"github.com/facebookincubator/contest/plugins/teststeps/cmd"
 	"github.com/facebookincubator/contest/plugins/teststeps/echo"
@@ -38,13 +38,13 @@ import (
 )
 
 var (
-	pluginRegistry *pluginregistry.PluginRegistry
-	targets        []*target.Target
-	successTimeout = 5 * time.Second
+	ctx = logrusctx.NewContext(logger.LevelDebug)
 )
 
 var (
-	ctx = logrusctx.NewContext(logger.LevelDebug)
+	pluginRegistry *pluginregistry.PluginRegistry
+	targets        []*target.Target
+	successTimeout = 5 * time.Second
 )
 
 var testSteps = map[string]test.TestStepFactory{
@@ -72,7 +72,6 @@ var testStepsEvents = map[string][]event.Name{
 }
 
 func TestMain(m *testing.M) {
-
 	pluginRegistry = pluginregistry.NewPluginRegistry(ctx)
 	// Setup the PluginRegistry by registering TestSteps
 	for name, tsfactory := range testSteps {
@@ -127,11 +126,10 @@ func TestSuccessfulCompletion(t *testing.T) {
 	}
 
 	errCh := make(chan error, 1)
-	stateCtx := xcontext.Background()
 
 	go func() {
 		tr := runner.NewTestRunner()
-		_, err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID, nil)
+		_, err := tr.Run(ctx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID, nil)
 		errCh <- err
 	}()
 	select {
@@ -162,7 +160,7 @@ func TestCmdPlugin(t *testing.T) {
 		test.TestStepBundle{TestStep: ts1, Parameters: params},
 	}
 
-	stateCtx, cancel := xcontext.WithCancel(nil)
+	stateCtx, cancel := xcontext.WithCancel(ctx)
 	errCh := make(chan error, 1)
 
 	go func() {

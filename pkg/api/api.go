@@ -165,7 +165,9 @@ func (a *API) SendReceiveEvent(ev *Event, timeout *time.Duration) (*EventRespons
 func (a *API) Start(ctx xcontext.Context, requestor EventRequestor, jobDescriptor string) (Response, error) {
 	resp := a.newResponse(ResponseTypeStart)
 	ev := &Event{
-		Context:  ctx.WithTag("api_method", "start"),
+		// To allow jobs to finish we do not allow passing cancel and pause
+		// signals to the job's context (therefore: xcontext.WithResetSignalers).
+		Context:  xcontext.WithResetSignalers(ctx).WithTag("api_method", "start"),
 		Type:     EventTypeStart,
 		ServerID: resp.ServerID,
 		Msg: EventStartMsg{

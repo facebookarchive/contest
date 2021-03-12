@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/insomniacslk/xjson"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
@@ -23,6 +22,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // TestRunner is the state associated with a test run.
@@ -259,7 +259,7 @@ func (tr *TestRunner) run(
 
 	// Have we been asked to pause? If yes, is it safe to do so?
 	select {
-	case <-ctx.WaitFor(xcontext.Paused):
+	case <-ctx.Until(xcontext.Paused):
 		if !resumeOk {
 			ctx.Logger().Warnf("paused but not ok to resume")
 			break
@@ -415,7 +415,9 @@ func (tr *TestRunner) awaitTargetResult(ctx xcontext.Context, tgs *targetState, 
 		// and collect all the results they produce. If that doesn't happen,
 		// step runner will close resCh on its way out and unlock us.
 	case <-ctx.Done():
+		tr.mu.Lock()
 		ctx.Logger().Debugf("%s: canceled 2", tgs)
+		tr.mu.Unlock()
 		return xcontext.Canceled
 	}
 }
@@ -430,7 +432,7 @@ loop:
 	for i := tgs.CurStep; i < len(tr.steps); {
 		// Early check for pause or cancelation.
 		select {
-		case <-ctx.WaitFor(xcontext.Paused):
+		case <-ctx.Until(xcontext.Paused):
 			ctx.Logger().Debugf("%s: paused 0", tgs)
 			break loop
 		case <-ctx.Done():
@@ -457,16 +459,17 @@ loop:
 		if err == nil {
 			err = tr.awaitTargetResult(ctx, tgs, ss)
 		}
+		tr.mu.Lock()
 		if err != nil {
 			ss.ctx.Logger().Errorf("%s", err)
 			if err != xcontext.Canceled {
-				ss.setErr(&tr.mu, err)
+				ss.setErrLocked(err)
 			} else {
 				ss.ctx.Logger().Debugf("%s: canceled 1", tgs)
 			}
+			tr.mu.Unlock()
 			break
 		}
-		tr.mu.Lock()
 		if tgs.Res != nil {
 			tr.mu.Unlock()
 			break
@@ -478,8 +481,8 @@ loop:
 		}
 		tr.mu.Unlock()
 	}
-	ctx.Logger().Debugf("%s: target handler finished", tgs)
 	tr.mu.Lock()
+	ctx.Logger().Debugf("%s: target handler finished", tgs)
 	tgs.resCh = nil
 	tr.cond.Signal()
 	tr.mu.Unlock()

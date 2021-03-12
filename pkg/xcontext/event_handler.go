@@ -128,10 +128,6 @@ type eventHandler struct {
 	// structure).
 	locker sync.Mutex
 
-	// waitersCount is amount of active waiters. If it is zero, then there's
-	// no need to reset channels on an incoming event.
-	waitersCount uint64
-
 	// firstCancel is the first cancel signal ever received for the whole.
 	// context tree.
 	//
@@ -149,7 +145,7 @@ type eventHandler struct {
 	receivedNotifications []error
 
 	// notifySignal same as cancelSignal, but for notification signals.
-	notifySignal chan struct{}
+	notifySignal map[error]chan struct{}
 
 	// deadline is when the context will be closed by exceeding a timeout.
 	//
@@ -164,8 +160,7 @@ func (ctx *ctxValue) resetEventHandler() {
 func (ctx *ctxValue) addEventHandler() *eventHandler {
 	parent := ctx.eventHandler
 	h := &eventHandler{
-		cancelSignal: make(chan struct{}),
-		notifySignal: make(chan struct{}),
+		notifySignal: make(map[error]chan struct{}),
 		children:     map[*eventHandler]struct{}{},
 	}
 	ctx.eventHandler = h
@@ -270,10 +265,23 @@ func (h *eventHandler) cancel(errs ...error) {
 		h.firstCancel = h.receivedCancels[0]
 	}
 
-	if h.waitersCount != 0 {
+	if h.cancelSignal != nil {
 		cancelSignal := h.cancelSignal
-		h.cancelSignal = make(chan struct{})
+		h.cancelSignal = nil
 		close(cancelSignal)
+	}
+
+	for _, err := range errs {
+		if h.notifySignal[err] == nil {
+			continue
+		}
+		close(h.notifySignal[err])
+		h.notifySignal[err] = nil
+	}
+
+	if h.notifySignal[nil] != nil {
+		close(h.notifySignal[nil])
+		h.notifySignal[nil] = nil
 	}
 
 	for child := range h.children {
@@ -287,10 +295,17 @@ func (h *eventHandler) notify(errs ...error) {
 
 	h.receivedNotifications = append(h.receivedNotifications, errs...)
 
-	if h.waitersCount != 0 {
-		notifySignal := h.notifySignal
-		h.notifySignal = make(chan struct{})
-		close(notifySignal)
+	for _, err := range errs {
+		if h.notifySignal[err] == nil {
+			continue
+		}
+		close(h.notifySignal[err])
+		h.notifySignal[err] = nil
+	}
+
+	if h.notifySignal[nil] != nil {
+		close(h.notifySignal[nil])
+		h.notifySignal[nil] = nil
 	}
 
 	for child := range h.children {
@@ -313,7 +328,10 @@ func (h *eventHandler) Notifications() []error {
 	return h.receivedNotifications
 }
 
-var closedChan = make(chan struct{})
+var (
+	openChan   = make(chan struct{})
+	closedChan = make(chan struct{})
+)
 
 func init() {
 	close(closedChan)
@@ -332,30 +350,21 @@ func (h *eventHandler) Done() <-chan struct{} {
 		return closedChan
 	}
 
-	var r <-chan struct{}
-	r = h.cancelSignal
-
-	h.waitersCount++
-	runtime.SetFinalizer(&r, func(*<-chan struct{}) {
-		h.locker.Lock()
-		h.waitersCount--
-		h.locker.Unlock()
-	})
-
-	return r
+	if h.cancelSignal == nil {
+		h.cancelSignal = make(chan struct{})
+	}
+	return h.cancelSignal
 }
 
-// WaitFor works similar to context.Context.Done(), but returns a channel
-// which is closed only when the context is closed with any of
-// specified errors.
+// Until works similar to Done(), but it is possible to specify specific
+// signal to wait for.
 //
-// If errs is empty, then ways for any signal (both: any cancel signals
-// and any notification signals).
-func (h *eventHandler) WaitFor(errs ...error) <-chan struct{} {
+// If err is nil, then waits for any event.
+func (h *eventHandler) Until(err error) <-chan struct{} {
 	if h == nil {
-		return nil
+		return openChan
 	}
-	return h.newWaiter(errs...)
+	return h.newWaiter(err)
 }
 
 // Deadline implements context.Context.Deadline
@@ -374,49 +383,15 @@ func (h *eventHandler) Deadline() (deadline time.Time, ok bool) {
 	return *h.deadline, true
 }
 
-func (h *eventHandler) newWaiter(errs ...error) <-chan struct{} {
+func (h *eventHandler) newWaiter(err error) <-chan struct{} {
 	h.locker.Lock() // is unlocked in the go func() below
-	h.waitersCount++
-	cancelSignal := h.cancelSignal
-	notifySignal := h.notifySignal
-	result := h.isSignaledWith(errs...)
-	if result {
-		h.waitersCount--
-		h.locker.Unlock()
+	defer h.locker.Unlock()
+	if (err == nil && h.isSignaledWith()) || (err != nil && h.isSignaledWith(err)) {
 		return closedChan
 	}
-	h.locker.Unlock()
 
-	garbageCollected := make(chan struct{})
-	fire := make(chan struct{})
-	var r <-chan struct{}
-	r = fire
-
-	runtime.SetFinalizer(&r, func(*<-chan struct{}) {
-		close(garbageCollected)
-		h.locker.Lock()
-		h.waitersCount--
-		h.locker.Unlock()
-	})
-
-	go func() {
-		for {
-			select {
-			case <-garbageCollected:
-				return
-			case <-cancelSignal:
-			case <-notifySignal:
-			}
-			h.locker.Lock()
-			cancelSignal = h.cancelSignal
-			notifySignal = h.notifySignal
-			result := h.isSignaledWith(errs...)
-			h.locker.Unlock()
-			if result {
-				close(fire)
-				return
-			}
-		}
-	}()
-	return r
+	if h.notifySignal[err] == nil {
+		h.notifySignal[err] = make(chan struct{})
+	}
+	return h.notifySignal[err]
 }

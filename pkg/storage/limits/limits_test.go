@@ -68,7 +68,7 @@ func TestJobName(t *testing.T) {
 	jd := job.Descriptor{TestDescriptors: []*test.TestDescriptor{{}}, JobName: strings.Repeat("A", limits.MaxJobNameLen+1)}
 	jsonJd, err := json.Marshal(&jd)
 	require.NoError(t, err)
-	_, err = jobmanager.NewJobFromJSONDescriptor(xcontext.Background(), &pluginregistry.PluginRegistry{}, string(jsonJd))
+	_, err = jobmanager.NewJobFromJSONDescriptor(ctx, &pluginregistry.PluginRegistry{}, string(jsonJd))
 	assertLenError(t, "Job name", err)
 }
 
@@ -80,7 +80,7 @@ func TestReporterName(t *testing.T) {
 	}
 	jsonJd, err := json.Marshal(&jd)
 	require.NoError(t, err)
-	_, err = jobmanager.NewJobFromJSONDescriptor(xcontext.Background(), &pluginregistry.PluginRegistry{}, string(jsonJd))
+	_, err = jobmanager.NewJobFromJSONDescriptor(ctx, &pluginregistry.PluginRegistry{}, string(jsonJd))
 	assertLenError(t, "Reporter name", err)
 }
 func TestTestName(t *testing.T) {

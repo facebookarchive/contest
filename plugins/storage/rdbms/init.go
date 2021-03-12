@@ -11,11 +11,10 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/storage"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/facebookincubator/contest/tools/migration/rdbms/migrationlib"
 

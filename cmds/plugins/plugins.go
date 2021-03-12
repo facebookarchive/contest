@@ -6,6 +6,8 @@
 package plugins
 
 import (
+	"sync"
+
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/userfunctions/donothing"
 	"github.com/facebookincubator/contest/pkg/userfunctions/ocp"
@@ -56,6 +58,8 @@ var userFunctions = []map[string]interface{}{
 	donothing.Load(),
 }
 
+var testInitOnce sync.Once
+
 // Init initializes the plugin registry
 func Init(pluginRegistry *pluginregistry.PluginRegistry, log xcontext.Logger) {
 
@@ -89,12 +93,13 @@ func Init(pluginRegistry *pluginregistry.PluginRegistry, log xcontext.Logger) {
 	}
 
 	// user-defined function registration
-	for _, userFunction := range userFunctions {
-		for name, fn := range userFunction {
-			if err := test.RegisterFunction(name, fn); err != nil {
-				log.Fatalf("%v", err)
+	testInitOnce.Do(func() {
+		for _, userFunction := range userFunctions {
+			for name, fn := range userFunction {
+				if err := test.RegisterFunction(name, fn); err != nil {
+					log.Fatalf("%v", err)
+				}
 			}
 		}
-	}
-
+	})
 }
