@@ -14,9 +14,9 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/logging"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/plugins/teststeps"
 )
 
@@ -65,8 +65,8 @@ func (ts *Step) shouldFail(t *target.Target) bool {
 }
 
 // Run executes the example step.
-func (ts *Step) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
-	f := func(ctx statectx.Context, target *target.Target) error {
+func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+	f := func(ctx xcontext.Context, target *target.Target) error {
 		log.Infof("Executing on target %s", target)
 		// NOTE: you may want more robust error handling here, possibly just
 		//       logging the error, or a retry mechanism. Returning an error
@@ -103,7 +103,7 @@ func (ts *Step) ValidateParameters(params test.TestStepParameters) error {
 
 // Resume tries to resume a previously interrupted test step. ExampleTestStep
 // cannot resume.
-func (ts *Step) Resume(ctx statectx.Context, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *Step) Resume(ctx xcontext.Context, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

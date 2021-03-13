@@ -19,7 +19,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/runner"
-	"github.com/facebookincubator/contest/pkg/statectx"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
@@ -124,7 +124,7 @@ func TestSuccessfulCompletion(t *testing.T) {
 	}
 
 	errCh := make(chan error, 1)
-	stateCtx, _, _ := statectx.New()
+	stateCtx, _, _ := xcontext.New()
 
 	go func() {
 		tr := runner.NewTestRunner()
@@ -159,7 +159,7 @@ func TestCmdPlugin(t *testing.T) {
 		test.TestStepBundle{TestStep: ts1, Parameters: params},
 	}
 
-	stateCtx, _, cancel := statectx.New()
+	stateCtx, _, cancel := xcontext.New()
 	errCh := make(chan error, 1)
 
 	go func() {
