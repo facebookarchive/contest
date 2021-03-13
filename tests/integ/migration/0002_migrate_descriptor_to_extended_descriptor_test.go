@@ -19,9 +19,10 @@ import (
 
 	"github.com/facebookincubator/contest/db/rdbms/migration"
 	"github.com/facebookincubator/contest/pkg/job"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/facebookincubator/contest/tests/integ/common"
 
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -79,10 +80,9 @@ func (suite *TestDescriptorMigrationSuite) TearDownTest() {
 // TestFetchJobs tests that jobs are fetched correctly from the db
 func (suite *TestDescriptorMigrationSuite) TestUpMigratesToExtendedDescriptor() {
 
-	log := logrus.New()
-	fields := logrus.Fields{"test": "TestDescriptorMigrationSuite"}
+	ctx := logrusctx.NewContext(logger.LevelDebug).WithTag("test", "TestDescriptorMigrationSuite")
 
-	extendedDescriptorMigration := migration.NewDescriptorMigration(log.WithFields(fields))
+	extendedDescriptorMigration := migration.NewDescriptorMigration(ctx)
 	err := extendedDescriptorMigration.Up(suite.tx)
 	require.NoError(suite.T(), err)
 

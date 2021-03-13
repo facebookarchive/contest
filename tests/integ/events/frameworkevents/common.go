@@ -16,11 +16,17 @@ import (
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/facebookincubator/contest/tests/integ/common"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+)
+
+var (
+	ctx = logrusctx.NewContext(logger.LevelDebug)
 )
 
 func mustBuildQuery(t require.TestingT, queryFields ...frameworkevent.QueryField) *frameworkevent.Query {
@@ -37,11 +43,11 @@ func populateFrameworkEvents(backend storage.Storage, emitTime time.Time) error 
 	eventFirst := frameworkevent.Event{JobID: 1, EventName: "AFrameworkEvent", Payload: payload, EmitTime: emitTime}
 	eventSecond := frameworkevent.Event{JobID: 1, EventName: "BFrameworkEvent", Payload: payload, EmitTime: emitTime}
 
-	err := backend.StoreFrameworkEvent(eventFirst)
+	err := backend.StoreFrameworkEvent(ctx, eventFirst)
 	if err != nil {
 		return err
 	}
-	return backend.StoreFrameworkEvent(eventSecond)
+	return backend.StoreFrameworkEvent(ctx, eventSecond)
 }
 
 func assertFrameworkEvents(t *testing.T, ev []frameworkevent.Event, emitTime time.Time) {
@@ -98,7 +104,7 @@ func (suite *FrameworkEventsSuite) TestRetrieveSingleFrameworkEvent() {
 	require.NoError(suite.T(), err)
 
 	eventQuery := mustBuildQuery(suite.T(), frameworkevent.QueryEventName("AFrameworkEvent"))
-	results, err := suite.txStorage.GetFrameworkEvent(eventQuery)
+	results, err := suite.txStorage.GetFrameworkEvent(ctx, eventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 1, len(results))
@@ -108,7 +114,7 @@ func (suite *FrameworkEventsSuite) TestRetrieveSingleFrameworkEvent() {
 func (suite *FrameworkEventsSuite) TestRetrieveMultipleFrameworkEvents() {
 
 	eventQuery := mustBuildQuery(suite.T(), frameworkevent.QueryJobID(1))
-	results, err := suite.txStorage.GetFrameworkEvent(eventQuery)
+	results, err := suite.txStorage.GetFrameworkEvent(ctx, eventQuery)
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 0, len(results))
 
@@ -117,7 +123,7 @@ func (suite *FrameworkEventsSuite) TestRetrieveMultipleFrameworkEvents() {
 	require.NoError(suite.T(), err)
 
 	eventQuery = mustBuildQuery(suite.T(), frameworkevent.QueryJobID(1))
-	results, err = suite.txStorage.GetFrameworkEvent(eventQuery)
+	results, err = suite.txStorage.GetFrameworkEvent(ctx, eventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 2, len(results))
@@ -136,14 +142,14 @@ func (suite *FrameworkEventsSuite) TestRetrieveSingleFrameworkEventByEmitTime() 
 	require.NoError(suite.T(), err)
 
 	eventQuery := mustBuildQuery(suite.T(), frameworkevent.QueryEmittedStartTime(emitTime))
-	results, err := suite.txStorage.GetFrameworkEvent(eventQuery)
+	results, err := suite.txStorage.GetFrameworkEvent(ctx, eventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 2, len(results))
 	assertFrameworkEvents(suite.T(), results, emitTime)
 
 	eventQuery = mustBuildQuery(suite.T(), frameworkevent.QueryEmittedStartTime(emitTime.Add(-delta)))
-	results, err = suite.txStorage.GetFrameworkEvent(eventQuery)
+	results, err = suite.txStorage.GetFrameworkEvent(ctx, eventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 4, len(results))

@@ -17,10 +17,16 @@ import (
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/facebookincubator/contest/tests/integ/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+)
+
+var (
+	ctx = logrusctx.NewContext(logger.LevelDebug)
 )
 
 func mustBuildQuery(t require.TestingT, queryFields ...testevent.QueryField) *testevent.Query {
@@ -45,11 +51,11 @@ func populateTestEvents(backend storage.Storage, emitTime time.Time) error {
 	eventFirst := testevent.Event{Header: &hdrFirst, Data: &dataFirst, EmitTime: emitTime}
 	eventSecond := testevent.Event{Header: &hdrSecond, Data: &dataSecond, EmitTime: emitTime}
 
-	err := backend.StoreTestEvent(eventFirst)
+	err := backend.StoreTestEvent(ctx, eventFirst)
 	if err != nil {
 		return err
 	}
-	return backend.StoreTestEvent(eventSecond)
+	return backend.StoreTestEvent(ctx, eventSecond)
 }
 
 func assertTestEvents(t *testing.T, ev []testevent.Event, emitTime time.Time) {
@@ -104,7 +110,7 @@ func (suite *TestEventsSuite) TestRetrieveSingleTestEvent() {
 	require.NoError(suite.T(), err)
 
 	testEventQuery := mustBuildQuery(suite.T(), testevent.QueryTestName("ATestName"))
-	results, err := suite.txStorage.GetTestEvents(testEventQuery)
+	results, err := suite.txStorage.GetTestEvents(ctx, testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 1, len(results))
@@ -119,7 +125,7 @@ func (suite *TestEventsSuite) TestRetrieveMultipleTestEvents() {
 	require.NoError(suite.T(), err)
 
 	testEventQuery := mustBuildQuery(suite.T(), testevent.QueryTestStepLabel("TestStepLabel"))
-	results, err := suite.txStorage.GetTestEvents(testEventQuery)
+	results, err := suite.txStorage.GetTestEvents(ctx, testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 2, len(results))
@@ -138,14 +144,14 @@ func (suite *TestEventsSuite) TestRetrievesSingleTestEventByEmitTime() {
 	require.NoError(suite.T(), err)
 
 	testEventQuery := mustBuildQuery(suite.T(), testevent.QueryEmittedStartTime(emitTime))
-	results, err := suite.txStorage.GetTestEvents(testEventQuery)
+	results, err := suite.txStorage.GetTestEvents(ctx, testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 2, len(results))
 	assertTestEvents(suite.T(), results, emitTime)
 
 	testEventQuery = mustBuildQuery(suite.T(), testevent.QueryEmittedStartTime(emitTime.Add(-delta)))
-	results, err = suite.txStorage.GetTestEvents(testEventQuery)
+	results, err = suite.txStorage.GetTestEvents(ctx, testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 4, len(results))
@@ -162,7 +168,7 @@ func (suite *TestEventsSuite) TestRetrievesMultipleTestEventsByName() {
 
 	eventNames := []event.Name{event.Name("AEventName"), event.Name("BEventName")}
 	testEventQuery := mustBuildQuery(suite.T(), testevent.QueryEventNames(eventNames))
-	results, err := suite.txStorage.GetTestEvents(testEventQuery)
+	results, err := suite.txStorage.GetTestEvents(ctx, testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 2, len(results))
@@ -176,7 +182,7 @@ func (suite *TestEventsSuite) TestRetrieveSingleTestEventsByName() {
 	require.NoError(suite.T(), err)
 
 	testEventQuery := mustBuildQuery(suite.T(), testevent.QueryEventName(event.Name("AEventName")))
-	results, err := suite.txStorage.GetTestEvents(testEventQuery)
+	results, err := suite.txStorage.GetTestEvents(ctx, testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 1, len(results))
@@ -193,7 +199,7 @@ func (suite *TestEventsSuite) TestRetrieveSingleTestEventsByNameAndJobID() {
 		testevent.QueryEventName(event.Name("AEventName")),
 		testevent.QueryJobID(1),
 	)
-	results, err := suite.txStorage.GetTestEvents(testEventQuery)
+	results, err := suite.txStorage.GetTestEvents(ctx, testEventQuery)
 
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 1, len(results))

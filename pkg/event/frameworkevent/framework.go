@@ -13,6 +13,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/internal/querytools"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Event represents an event emitted by the framework
@@ -95,13 +96,13 @@ func (value queryFieldEmittedEndTime) queryFieldPointer(query *Query) interface{
 
 // Emitter defines the interface that emitter objects for framework vents must implement
 type Emitter interface {
-	Emit(event Event) error
+	Emit(ctx xcontext.Context, event Event) error
 }
 
 // Fetcher defines the interface that fetcher objects for framework events must implement
 type Fetcher interface {
-	Fetch(fields ...QueryField) ([]Event, error)
-	FetchAsync(fields ...QueryField) ([]Event, error)
+	Fetch(ctx xcontext.Context, fields ...QueryField) ([]Event, error)
+	FetchAsync(ctx xcontext.Context, fields ...QueryField) ([]Event, error)
 }
 
 // EmitterFetcher defines the interface that objects supporting emitting and retrieving framework events must implement

@@ -144,6 +144,10 @@ func LeakCheckingTestMain(m *testing.M, funcWhitelist ...string) {
 	ret := m.Run()
 	if ret == 0 {
 		time.Sleep(20 * time.Millisecond) // Give stragglers some time to exit.
+		runtime.Gosched()
+		runtime.GC()
+		runtime.Gosched()
+		runtime.GC()
 		if err := CheckLeakedGoRoutines(funcWhitelist...); err != nil {
 			fmt.Fprintf(os.Stderr, "%s", err)
 			ret = 1

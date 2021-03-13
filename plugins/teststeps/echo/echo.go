@@ -7,20 +7,16 @@ package echo
 
 import (
 	"errors"
-	"strings"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Name is the name used to look this plugin up.
 var Name = "Echo"
-
-var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
 // Events defines the events that a TestStep is allow to emit
 var Events = []event.Name{}
@@ -41,7 +37,7 @@ func Load() (string, test.TestStepFactory, []event.Name) {
 
 // ValidateParameters validates the parameters that will be passed to the Run
 // and Resume methods of the test step.
-func (e Step) ValidateParameters(params test.TestStepParameters) error {
+func (e Step) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	if t := params.GetOne("text"); t.IsEmpty() {
 		return errors.New("Missing 'text' field in echo parameters")
 	}
@@ -62,7 +58,7 @@ func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.Te
 				// no more targets incoming
 				return nil
 			}
-			log.Infof("Running on target %s with text '%s'", target, params.GetOne("text"))
+			ctx.Logger().Infof("Running on target %s with text '%s'", target, params.GetOne("text"))
 			ch.Out <- target
 		case <-ctx.Done():
 			return nil

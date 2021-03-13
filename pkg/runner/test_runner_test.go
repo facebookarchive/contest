@@ -17,13 +17,14 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/facebookincubator/contest/plugins/storage/memory"
 	"github.com/facebookincubator/contest/tests/common"
 	"github.com/facebookincubator/contest/tests/common/goroutine_leak_check"
@@ -46,9 +47,12 @@ var (
 	pluginRegistry *pluginregistry.PluginRegistry
 )
 
+var (
+	ctx = logrusctx.NewContext(logger.LevelDebug)
+)
+
 func TestMain(m *testing.M) {
 	flag.Parse()
-	logging.Debug()
 	if ms, err := memory.New(); err == nil {
 		evs = ms
 		if err := storage.SetStorage(ms); err != nil {
@@ -57,7 +61,7 @@ func TestMain(m *testing.M) {
 	} else {
 		panic(fmt.Sprintf("could not initialize in-memory storage layer: %v", err))
 	}
-	pluginRegistry = pluginregistry.NewPluginRegistry()
+	pluginRegistry = pluginregistry.NewPluginRegistry(ctx)
 	for _, e := range []struct {
 		name    string
 		factory test.TestStepFactory
@@ -79,6 +83,9 @@ func TestMain(m *testing.M) {
 		// We expect these to leak.
 		"github.com/facebookincubator/contest/tests/plugins/teststeps/hanging.(*hanging).Run",
 		"github.com/facebookincubator/contest/tests/plugins/teststeps/noreturn.(*noreturnStep).Run",
+
+		// No leak in contexts checked with itsown unit-tests
+		"github.com/facebookincubator/contest/pkg/xcontext.(*ctxValue).cloneWithStdContext.func2",
 	)
 }
 
@@ -97,11 +104,11 @@ func tgt(id string) *target.Target {
 }
 
 func getStepEvents(stepLabel string) string {
-	return common.GetTestEventsAsString(evs, testName, nil, &stepLabel)
+	return common.GetTestEventsAsString(ctx, evs, testName, nil, &stepLabel)
 }
 
 func getTargetEvents(targetID string) string {
-	return common.GetTestEventsAsString(evs, testName, &targetID, nil)
+	return common.GetTestEventsAsString(ctx, evs, testName, &targetID, nil)
 }
 
 func newStep(label, name string, params *test.TestStepParameters) test.TestStepBundle {
@@ -112,7 +119,7 @@ func newStep(label, name string, params *test.TestStepParameters) test.TestStepB
 	if params != nil {
 		td.Parameters = *params
 	}
-	sb, err := pluginRegistry.NewTestStepBundle(td, nil)
+	sb, err := pluginRegistry.NewTestStepBundle(ctx, td, nil)
 	if err != nil {
 		panic(fmt.Sprintf("failed to create test step bundle: %v", err))
 	}
@@ -133,7 +140,7 @@ type runRes struct {
 }
 
 func runWithTimeout(t *testing.T, tr *TestRunner, ctx xcontext.Context, resumeState []byte, runID types.RunID, timeout time.Duration, targets []*target.Target, bundles []test.TestStepBundle) ([]byte, error) {
-	newCtx, _, cancel := xcontext.WithParent(ctx)
+	newCtx, cancel := xcontext.WithCancel(ctx)
 	test := &test.Test{
 		Name:             testName,
 		TestStepsBundles: bundles,
@@ -298,7 +305,7 @@ func Test3StepsNotReachedStepNotRun(t *testing.T) {
 func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 	resetEventStorage()
 	tr := NewTestRunnerWithTimeouts(100*time.Millisecond, 200*time.Millisecond)
-	ctx, _, cancel := xcontext.New()
+	ctx, cancel := xcontext.WithCancel(ctx)
 	defer cancel()
 	_, err := runWithTimeout(t, tr, ctx, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1")},
@@ -314,7 +321,7 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
 	resetEventStorage()
 	tr := NewTestRunnerWithTimeouts(100*time.Millisecond, 200*time.Millisecond)
-	ctx, _, cancel := xcontext.New()
+	ctx, cancel := xcontext.WithCancel(ctx)
 	defer cancel()
 	_, err := runWithTimeout(t, tr, ctx, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1")},
@@ -462,9 +469,9 @@ func TestRandomizedMultiStep(t *testing.T) {
 {[1 1 SimpleTest Step 1][Target{ID: "%s"} TestFinishedEvent]}
 {[1 1 SimpleTest Step 1][Target{ID: "%s"} TargetOut]}
 `, tgt.ID, tgt.ID, tgt.ID, tgt.ID),
-			common.GetTestEventsAsString(evs, testName, &tgt.ID, &s1n))
+			common.GetTestEventsAsString(ctx, evs, testName, &tgt.ID, &s1n))
 		s3n := "Step 3"
-		if strings.Contains(common.GetTestEventsAsString(evs, testName, &tgt.ID, &s3n), "TestFinishedEvent") {
+		if strings.Contains(common.GetTestEventsAsString(ctx, evs, testName, &tgt.ID, &s3n), "TestFinishedEvent") {
 			numFinished++
 		}
 	}
@@ -476,7 +483,6 @@ func TestRandomizedMultiStep(t *testing.T) {
 // In this case we drain input, wait for all targets to emerge and exit gracefully.
 func TestPauseResumeSimple(t *testing.T) {
 	resetEventStorage()
-	log := logging.GetLogger("TestPauseResumeSimple")
 	var err error
 	var resumeState []byte
 	targets := []*target.Target{tgt("T1"), tgt("T2"), tgt("T3")}
@@ -488,23 +494,24 @@ func TestPauseResumeSimple(t *testing.T) {
 	}
 	{
 		tr1 := newTestRunner()
-		ctx1, pause, cancel := xcontext.New()
+		ctx1, pause := xcontext.WithNotify(ctx, xcontext.Paused)
+		ctx1, cancel := xcontext.WithCancel(ctx1)
 		defer cancel()
 		go func() {
 			time.Sleep(100 * time.Millisecond)
-			log.Infof("TestPauseResumeNaive: pausing")
+			ctx.Logger().Infof("TestPauseResumeNaive: pausing")
 			pause()
 		}()
 		resumeState, err = runWithTimeout(t, tr1, ctx1, nil, 1, 2*time.Second, targets, steps)
 		require.Error(t, err)
-		require.IsType(t, xcontext.ErrPaused, err)
+		require.IsType(t, xcontext.Paused, err)
 		require.NotNil(t, resumeState)
 	}
-	log.Debugf("Resume state: %s", string(resumeState))
+	ctx.Logger().Debugf("Resume state: %s", string(resumeState))
 	// Make sure that resume state is validated.
 	{
 		tr := newTestRunner()
-		ctx, _, cancel := xcontext.New()
+		ctx, cancel := xcontext.WithCancel(ctx)
 		defer cancel()
 		resumeState2, err := runWithTimeout(
 			t, tr, ctx, []byte("FOO"), 2, 2*time.Second, targets, steps)
@@ -514,7 +521,7 @@ func TestPauseResumeSimple(t *testing.T) {
 	}
 	{
 		tr := newTestRunner()
-		ctx, _, cancel := xcontext.New()
+		ctx, cancel := xcontext.WithCancel(ctx)
 		defer cancel()
 		resumeState2 := strings.Replace(string(resumeState), `"v"`, `"Xv"`, 1)
 		_, err := runWithTimeout(
@@ -524,7 +531,7 @@ func TestPauseResumeSimple(t *testing.T) {
 	}
 	{
 		tr := newTestRunner()
-		ctx, _, cancel := xcontext.New()
+		ctx, cancel := xcontext.WithCancel(ctx)
 		defer cancel()
 		resumeState2 := strings.Replace(string(resumeState), `"job_id":1`, `"job_id":2`, 1)
 		_, err := runWithTimeout(
@@ -535,7 +542,7 @@ func TestPauseResumeSimple(t *testing.T) {
 	// Finally, resume and finish the job.
 	{
 		tr2 := newTestRunner()
-		ctx2, _, cancel := xcontext.New()
+		ctx2, cancel := xcontext.WithCancel(ctx)
 		defer cancel()
 		_, err := runWithTimeout(t, tr2, ctx2, resumeState, 5, 2*time.Second,
 			// Pass exactly the same targets and pipeline to resume properly.

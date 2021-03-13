@@ -28,24 +28,21 @@
 package targetlist
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Name defined the name of the plugin
 var (
 	Name = "TargetList"
 )
-
-var log = logging.GetLogger("targetmanagers/" + strings.ToLower(Name))
 
 // AcquireParameters contains the parameters necessary to acquire targets.
 type AcquireParameters struct {
@@ -85,24 +82,24 @@ func (t TargetList) ValidateReleaseParameters(params []byte) (interface{}, error
 }
 
 // Acquire implements contest.TargetManager.Acquire
-func (t *TargetList) Acquire(ctx context.Context, jobID types.JobID, jobTargetManagerAcquireTimeout time.Duration, parameters interface{}, tl target.Locker) ([]*target.Target, error) {
+func (t *TargetList) Acquire(ctx xcontext.Context, jobID types.JobID, jobTargetManagerAcquireTimeout time.Duration, parameters interface{}, tl target.Locker) ([]*target.Target, error) {
 	acquireParameters, ok := parameters.(AcquireParameters)
 	if !ok {
 		return nil, fmt.Errorf("Acquire expects %T object, got %T", acquireParameters, parameters)
 	}
 
-	if err := tl.Lock(jobID, jobTargetManagerAcquireTimeout, acquireParameters.Targets); err != nil {
-		log.Warningf("Failed to lock %d targets: %v", len(acquireParameters.Targets), err)
+	if err := tl.Lock(ctx, jobID, jobTargetManagerAcquireTimeout, acquireParameters.Targets); err != nil {
+		ctx.Logger().Warnf("Failed to lock %d targets: %v", len(acquireParameters.Targets), err)
 		return nil, err
 	}
 	t.targets = acquireParameters.Targets
-	log.Infof("Acquired %d targets", len(t.targets))
+	ctx.Logger().Infof("Acquired %d targets", len(t.targets))
 	return acquireParameters.Targets, nil
 }
 
 // Release releases the acquired resources.
-func (t *TargetList) Release(ctx context.Context, jobID types.JobID, params interface{}) error {
-	log.Infof("Released %d targets", len(t.targets))
+func (t *TargetList) Release(ctx xcontext.Context, jobID types.JobID, params interface{}) error {
+	ctx.Logger().Infof("Released %d targets", len(t.targets))
 	return nil
 }
 

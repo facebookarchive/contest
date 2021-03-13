@@ -14,6 +14,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/storage/limits"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // newReportingBundles returns the bundles for the run report and the final report
@@ -55,7 +56,7 @@ func newReportingBundles(registry *pluginregistry.PluginRegistry, jobDescriptor 
 	return runReporterBundles, finalReporterBundles, nil
 }
 
-func newBundlesFromSteps(descriptors []*test.TestStepDescriptor, registry *pluginregistry.PluginRegistry) ([]test.TestStepBundle, error) {
+func newBundlesFromSteps(ctx xcontext.Context, descriptors []*test.TestStepDescriptor, registry *pluginregistry.PluginRegistry) ([]test.TestStepBundle, error) {
 
 	// look up test step plugins in the plugin registry
 	var stepBundles []test.TestStepBundle
@@ -71,7 +72,7 @@ func newBundlesFromSteps(descriptors []*test.TestStepDescriptor, registry *plugi
 		if err != nil {
 			return nil, err
 		}
-		tsb, err := registry.NewTestStepBundle(*descriptor, tse)
+		tsb, err := registry.NewTestStepBundle(ctx, *descriptor, tse)
 		if err != nil {
 			return nil, fmt.Errorf("NewStepBundle for test step '%s' with index %d failed: %w", descriptor.Name, idx, err)
 		}
@@ -86,9 +87,9 @@ func newBundlesFromSteps(descriptors []*test.TestStepDescriptor, registry *plugi
 }
 
 // newStepBundles creates bundles for the test
-func newStepBundles(descriptors test.TestStepsDescriptors, registry *pluginregistry.PluginRegistry) ([]test.TestStepBundle, error) {
+func newStepBundles(ctx xcontext.Context, descriptors test.TestStepsDescriptors, registry *pluginregistry.PluginRegistry) ([]test.TestStepBundle, error) {
 
-	testStepBundles, err := newBundlesFromSteps(descriptors.TestSteps, registry)
+	testStepBundles, err := newBundlesFromSteps(ctx, descriptors.TestSteps, registry)
 	if err != nil {
 		return nil, fmt.Errorf("could not create test steps bundle: %w", err)
 	}

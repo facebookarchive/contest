@@ -9,13 +9,10 @@ import (
 	"sync"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 )
-
-var log = logging.GetLogger("plugins/teststeps")
 
 // PerTargetFunc is a function type that is called on each target by the
 // ForEachTarget function below.
@@ -32,18 +29,18 @@ type PerTargetFunc func(ctx xcontext.Context, target *target.Target) error
 func ForEachTarget(pluginName string, ctx xcontext.Context, ch test.TestStepChannels, f PerTargetFunc) error {
 	reportTarget := func(t *target.Target, err error) {
 		if err != nil {
-			log.Errorf("%s: ForEachTarget: failed to apply test step function on target %s: %v", pluginName, t, err)
+			ctx.Logger().Errorf("%s: ForEachTarget: failed to apply test step function on target %s: %v", pluginName, t, err)
 			select {
 			case ch.Err <- cerrors.TargetError{Target: t, Err: err}:
 			case <-ctx.Done():
-				log.Debugf("%s: ForEachTarget: received cancellation signal while reporting error", pluginName)
+				ctx.Logger().Debugf("%s: ForEachTarget: received cancellation signal while reporting error", pluginName)
 			}
 		} else {
-			log.Debugf("%s: ForEachTarget: target %s completed successfully", pluginName, t)
+			ctx.Logger().Debugf("%s: ForEachTarget: target %s completed successfully", pluginName, t)
 			select {
 			case ch.Out <- t:
 			case <-ctx.Done():
-				log.Debugf("%s: ForEachTarget: received pause signal while reporting success", pluginName)
+				ctx.Logger().Debugf("%s: ForEachTarget: received pause signal while reporting success", pluginName)
 			}
 		}
 	}
@@ -54,10 +51,10 @@ func ForEachTarget(pluginName string, ctx xcontext.Context, ch test.TestStepChan
 			select {
 			case tgt := <-ch.In:
 				if tgt == nil {
-					log.Debugf("%s: ForEachTarget: all targets have been received", pluginName)
+					ctx.Logger().Debugf("%s: ForEachTarget: all targets have been received", pluginName)
 					return
 				}
-				log.Debugf("%s: ForEachTarget: received target %s", pluginName, tgt)
+				ctx.Logger().Debugf("%s: ForEachTarget: received target %s", pluginName, tgt)
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
@@ -66,7 +63,7 @@ func ForEachTarget(pluginName string, ctx xcontext.Context, ch test.TestStepChan
 					reportTarget(tgt, err)
 				}()
 			case <-ctx.Done():
-				log.Debugf("%s: ForEachTarget: incoming loop canceled", pluginName)
+				ctx.Logger().Debugf("%s: ForEachTarget: incoming loop canceled", pluginName)
 				return
 			}
 		}

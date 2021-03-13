@@ -15,12 +15,11 @@ import (
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/tools/migration/rdbms/migrate"
 
 	"github.com/facebookincubator/contest/cmds/plugins"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
-
-	"github.com/sirupsen/logrus"
 )
 
 const shardSize = uint64(5000)
@@ -81,7 +80,7 @@ type Request struct {
 // so that all the test information can be re-fetched by reading extended_descriptor field in
 // jobs table, without any dependency after submission time on the test fetcher.
 type DescriptorMigration struct {
-	log *logrus.Entry
+	Context xcontext.Context
 }
 
 type dbConn interface {
@@ -99,7 +98,8 @@ func ms(d time.Duration) float64 {
 }
 
 // fetchJobs fetches job requests based on limit and offset
-func (m *DescriptorMigration) fetchJobs(db dbConn, limit, offset uint64, log *logrus.Entry) ([]Request, error) {
+func (m *DescriptorMigration) fetchJobs(db dbConn, limit, offset uint64) ([]Request, error) {
+	log := m.Context.Logger()
 
 	log.Debugf("fetching shard limit: %d, offset: %d", limit, offset)
 	selectStatement := "select job_id, name, requestor, server_id, request_time, descriptor, teststeps from jobs limit ? offset ?"
@@ -158,7 +158,8 @@ func (m *DescriptorMigration) fetchJobs(db dbConn, limit, offset uint64, log *lo
 	return jobs, nil
 }
 
-func (m *DescriptorMigration) migrateJobs(db dbConn, requests []Request, registry *pluginregistry.PluginRegistry, log *logrus.Entry) error {
+func (m *DescriptorMigration) migrateJobs(db dbConn, requests []Request, registry *pluginregistry.PluginRegistry) error {
+	log := m.Context.Logger()
 
 	log.Debugf("migrating %d jobs", len(requests))
 	start := time.Now()
@@ -228,12 +229,12 @@ func (m *DescriptorMigration) migrateJobs(db dbConn, requests []Request, registr
 			// TestFetcher accordingly and retrieve the name of the test
 			td := jobDesc.TestDescriptors[index]
 
-			tfb, err := registry.NewTestFetcherBundle(td)
+			tfb, err := registry.NewTestFetcherBundle(m.Context, td)
 			if err != nil {
 				return fmt.Errorf("could not instantiate test fetcher for jobID %d based on descriptor %+v: %w", request.JobID, td, err)
 			}
 
-			name, stepDescFetched, err := tfb.TestFetcher.Fetch(tfb.FetchParameters)
+			name, stepDescFetched, err := tfb.TestFetcher.Fetch(m.Context, tfb.FetchParameters)
 			if err != nil {
 				return fmt.Errorf("could not retrieve test description from fetcher for jobID %d: %w", request.JobID, err)
 			}
@@ -243,16 +244,16 @@ func (m *DescriptorMigration) migrateJobs(db dbConn, requests []Request, registr
 			/// might have changed.We go ahead anyway assuming assume the test name is still relevant.
 			stepDescFetchedJSON, err := json.Marshal(stepDescFetched)
 			if err != nil {
-				log.Warningf("steps description (`%v`) fetched by test fetcher for job %d cannot be serialized: %v", stepDescFetched, request.JobID, err)
+				log.Warnf("steps description (`%v`) fetched by test fetcher for job %d cannot be serialized: %v", stepDescFetched, request.JobID, err)
 			}
 
 			stepDescDBJSON, err := json.Marshal(stepDesc)
 			if err != nil {
-				log.Warningf("steps description (`%v`) fetched from db for job %d cannot be serialized: %v", stepDesc, request.JobID, err)
+				log.Warnf("steps description (`%v`) fetched from db for job %d cannot be serialized: %v", stepDesc, request.JobID, err)
 			}
 
 			if string(stepDescDBJSON) != string(stepDescFetchedJSON) {
-				log.Warningf("steps retrieved by test fetcher and from database do not match (`%v` != `%v`), test description might have changed", string(stepDescDBJSON), string(stepDescFetchedJSON))
+				log.Warnf("steps retrieved by test fetcher and from database do not match (`%v` != `%v`), test description might have changed", string(stepDescDBJSON), string(stepDescFetchedJSON))
 			}
 
 			newStepsDesc.TestName = name
@@ -343,7 +344,8 @@ func (m *DescriptorMigration) up(db dbConn) error {
 	// (see https://github.com/lib/pq/issues/81)
 
 	count := uint64(0)
-	m.log.Debugf("counting the number of jobs to migrate")
+	ctx := m.Context
+	ctx.Logger().Debugf("counting the number of jobs to migrate")
 	start := time.Now()
 	rows, err := db.Query("select count(*) from jobs")
 	if err != nil {
@@ -360,34 +362,36 @@ func (m *DescriptorMigration) up(db dbConn) error {
 		return fmt.Errorf("could not fetch number of records to migrate: %w", err)
 	}
 	if err := rows.Close(); err != nil {
-		m.log.Warningf("could not close rows after count(*) query")
+		ctx.Logger().Warnf("could not close rows after count(*) query")
 	}
 
 	// Create a new plugin registry. This is necessary because some information that need to be
 	// associated with the extended_descriptor is not available in the db and can only be looked
 	// up via the TestFetcher.
-	registry := pluginregistry.NewPluginRegistry()
-	plugins.Init(registry, m.log)
+	registry := pluginregistry.NewPluginRegistry(ctx)
+	plugins.Init(registry, ctx.Logger())
 
 	elapsed := time.Since(start)
-	m.log.Debugf("total number of jobs to migrate: %d, fetched in %.3f ms", count, ms(elapsed))
+	ctx.Logger().Debugf("total number of jobs to migrate: %d, fetched in %.3f ms", count, ms(elapsed))
 	for offset := uint64(0); offset < count; offset += shardSize {
-		jobs, err := m.fetchJobs(db, shardSize, offset, m.log)
+		jobs, err := m.fetchJobs(db, shardSize, offset)
 		if err != nil {
 			return fmt.Errorf("could not fetch events in range offset %d limit %d: %w", offset, shardSize, err)
 		}
-		err = m.migrateJobs(db, jobs, registry, m.log)
+		err = m.migrateJobs(db, jobs, registry)
 		if err != nil {
 			return fmt.Errorf("could not migrate events in range offset %d limit %d: %w", offset, shardSize, err)
 		}
-		m.log.Infof("migrated %d/%d", offset, count)
+		ctx.Logger().Infof("migrated %d/%d", offset, count)
 	}
 	return nil
 }
 
 // NewDescriptorMigration is the factory for DescriptorMigration
-func NewDescriptorMigration(log *logrus.Entry) migrate.Migrate {
-	return &DescriptorMigration{log: log}
+func NewDescriptorMigration(ctx xcontext.Context) migrate.Migrate {
+	return &DescriptorMigration{
+		Context: ctx,
+	}
 }
 
 // register NewDescriptorMigration at initialization time

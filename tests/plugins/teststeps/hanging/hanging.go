@@ -35,7 +35,7 @@ func (ts *hanging) Run(ctx xcontext.Context, ch test.TestStepChannels, params te
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *hanging) ValidateParameters(params test.TestStepParameters) error {
+func (ts *hanging) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	return nil
 }
 

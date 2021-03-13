@@ -13,17 +13,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/stretchr/testify/require"
 
 	"github.com/facebookincubator/contest/pkg/event"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/runner"
-	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/facebookincubator/contest/plugins/storage/memory"
 	"github.com/facebookincubator/contest/plugins/teststeps/cmd"
 	"github.com/facebookincubator/contest/plugins/teststeps/echo"
@@ -34,6 +35,10 @@ import (
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/hanging"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/noreturn"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/panicstep"
+)
+
+var (
+	ctx = logrusctx.NewContext(logger.LevelDebug)
 )
 
 var (
@@ -67,10 +72,7 @@ var testStepsEvents = map[string][]event.Name{
 }
 
 func TestMain(m *testing.M) {
-	logging.GetLogger("tests/integ")
-	logging.Disable()
-
-	pluginRegistry = pluginregistry.NewPluginRegistry()
+	pluginRegistry = pluginregistry.NewPluginRegistry(ctx)
 	// Setup the PluginRegistry by registering TestSteps
 	for name, tsfactory := range testSteps {
 		if _, ok := testStepsEvents[name]; !ok {
@@ -124,11 +126,10 @@ func TestSuccessfulCompletion(t *testing.T) {
 	}
 
 	errCh := make(chan error, 1)
-	stateCtx, _, _ := xcontext.New()
 
 	go func() {
 		tr := runner.NewTestRunner()
-		_, err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID, nil)
+		_, err := tr.Run(ctx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID, nil)
 		errCh <- err
 	}()
 	select {
@@ -159,7 +160,7 @@ func TestCmdPlugin(t *testing.T) {
 		test.TestStepBundle{TestStep: ts1, Parameters: params},
 	}
 
-	stateCtx, _, cancel := xcontext.New()
+	stateCtx, cancel := xcontext.WithCancel(ctx)
 	errCh := make(chan error, 1)
 
 	go func() {

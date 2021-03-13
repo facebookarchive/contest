@@ -12,9 +12,10 @@ import (
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
-func (r *RDBMS) ListJobs(query *storage.JobQuery) ([]types.JobID, error) {
+func (r *RDBMS) ListJobs(_ xcontext.Context, query *storage.JobQuery) ([]types.JobID, error) {
 	res := []types.JobID{}
 
 	// Quoting SQL strings is hard. https://github.com/golang/go/issues/18478

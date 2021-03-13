@@ -33,7 +33,7 @@ func (ts *panicStep) Run(ctx xcontext.Context, ch test.TestStepChannels, params 
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *panicStep) ValidateParameters(params test.TestStepParameters) error {
+func (ts *panicStep) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	return nil
 }
 

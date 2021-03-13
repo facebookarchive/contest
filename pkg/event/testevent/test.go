@@ -14,6 +14,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event/internal/querytools"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Header models the header of a test event, which consists in metadata that defines the
@@ -139,12 +140,12 @@ func (value queryFieldRunID) queryFieldPointer(query *Query) interface{} { retur
 
 // Emitter defines the interface that emitter objects must implement
 type Emitter interface {
-	Emit(event Data) error
+	Emit(ctx xcontext.Context, event Data) error
 }
 
 // Fetcher defines the interface that fetcher objects must implement
 type Fetcher interface {
-	Fetch(fields ...QueryField) ([]Event, error)
+	Fetch(ctx xcontext.Context, fields ...QueryField) ([]Event, error)
 }
 
 // EmitterFetcher defines the interface that objects supporting emitting and fetching events must implement

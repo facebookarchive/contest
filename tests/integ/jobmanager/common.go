@@ -23,11 +23,13 @@ import (
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/jobmanager"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/facebookincubator/contest/plugins/reporters/targetsuccess"
 	"github.com/facebookincubator/contest/plugins/targetlocker/inmemory"
 	"github.com/facebookincubator/contest/plugins/targetmanagers/targetlist"
@@ -52,6 +54,8 @@ const (
 	Status   CommandType = "status"
 	List     CommandType = "list"
 )
+
+var ctx = logrusctx.NewContext(logger.LevelDebug)
 
 type command struct {
 	commandType   CommandType
@@ -78,31 +82,34 @@ type TestListener struct {
 
 // Serve implements the main logic of a dummy listener which talks to the API
 // layer to trigger actions in the JobManager
-func (tl *TestListener) Serve(cancel <-chan struct{}, contestApi *api.API) error {
+func (tl *TestListener) Serve(ctx xcontext.Context, contestApi *api.API) error {
+	ctx.Logger().Debugf("Serving mock listener")
 	for {
+		ctx.Logger().Debugf("select")
 		select {
 		case command := <-tl.commandCh:
+			ctx.Logger().Debugf("received command: %#+v", command)
 			switch command.commandType {
 			case StartJob:
-				resp, err := contestApi.Start("IntegrationTest", command.jobDescriptor)
+				resp, err := contestApi.Start(ctx, "IntegrationTest", command.jobDescriptor)
 				if err != nil {
 					tl.errorCh <- err
 				}
 				tl.responseCh <- resp
 			case StopJob:
-				resp, err := contestApi.Stop("IntegrationTest", command.jobID)
+				resp, err := contestApi.Stop(ctx, "IntegrationTest", command.jobID)
 				if err != nil {
 					tl.errorCh <- err
 				}
 				tl.responseCh <- resp
 			case Status:
-				resp, err := contestApi.Status("IntegrationTest", command.jobID)
+				resp, err := contestApi.Status(ctx, "IntegrationTest", command.jobID)
 				if err != nil {
 					tl.errorCh <- err
 				}
 				tl.responseCh <- resp
 			case List:
-				resp, err := contestApi.List("IntegrationTest", command.states, command.tags)
+				resp, err := contestApi.List(ctx, "IntegrationTest", command.states, command.tags)
 				if err != nil {
 					tl.errorCh <- err
 				}
@@ -110,7 +117,7 @@ func (tl *TestListener) Serve(cancel <-chan struct{}, contestApi *api.API) error
 			default:
 				return nil
 			}
-		case <-cancel:
+		case <-ctx.Done():
 			return nil
 		}
 	}
@@ -126,7 +133,7 @@ func pollForEvent(eventManager frameworkevent.EmitterFetcher, ev event.Name, job
 				frameworkevent.QueryJobID(jobID),
 				frameworkevent.QueryEventName(ev),
 			}
-			ev, err := eventManager.Fetch(queryFields...)
+			ev, err := eventManager.Fetch(ctx, queryFields...)
 			if err != nil {
 				return nil, err
 			}
@@ -176,7 +183,7 @@ type TestJobManagerSuite struct {
 
 func (suite *TestJobManagerSuite) startJobManager() {
 	go func() {
-		_ = suite.jm.Start(suite.sigs)
+		_ = suite.jm.Start(ctx, suite.sigs)
 		close(suite.jobManagerCh)
 	}()
 }
@@ -248,9 +255,7 @@ func (suite *TestJobManagerSuite) SetupTest() {
 	suite.jsm = jsm
 	suite.eventManager = eventManager
 
-	logging.Debug()
-
-	pr := pluginregistry.NewPluginRegistry()
+	pr := pluginregistry.NewPluginRegistry(ctx)
 	pr.RegisterTargetManager(targetlist.Name, targetlist.New)
 	pr.RegisterTestFetcher(literal.Name, literal.New)
 	pr.RegisterReporter(targetsuccess.Name, targetsuccess.New)
@@ -344,7 +349,7 @@ func (suite *TestJobManagerSuite) testExit(
 	}
 
 	// JobManager will emit a paused or cancelled event when the job completes
-	ev, err = suite.eventManager.Fetch(
+	ev, err = suite.eventManager.Fetch(ctx,
 		frameworkevent.QueryJobID(jobID),
 		frameworkevent.QueryEventName(expectedEvent),
 	)
@@ -366,10 +371,10 @@ func (suite *TestJobManagerSuite) TestJobManagerJobStartSingle() {
 	jobID, err := suite.startJob(jobDescriptorNoop)
 	require.NoError(suite.T(), err)
 
-	_, err = suite.jsm.GetJobRequest(types.JobID(jobID))
+	_, err = suite.jsm.GetJobRequest(ctx, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 
-	r, err := suite.jsm.GetJobRequest(types.JobID(jobID + 1))
+	r, err := suite.jsm.GetJobRequest(ctx, types.JobID(jobID + 1))
 	require.Error(suite.T(), err)
 	require.NotEqual(suite.T(), nil, r)
 
@@ -396,14 +401,14 @@ func (suite *TestJobManagerSuite) TestJobManagerJobReport() {
 	require.Equal(suite.T(), 1, len(ev))
 
 	// A Report must be persisted for the Job
-	jobReport, err := suite.jsm.GetJobReport(types.JobID(jobID))
+	jobReport, err := suite.jsm.GetJobReport(ctx, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(jobReport.RunReports))
 	require.Equal(suite.T(), 0, len(jobReport.FinalReports))
 
 	// Any other Job should not have a Job report, but fetching the
 	// report should not error out
-	jobReport, err = suite.jsm.GetJobReport(types.JobID(2))
+	jobReport, err = suite.jsm.GetJobReport(ctx, types.JobID(2))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), &job.JobReport{JobID: 2}, jobReport)
 }
@@ -451,7 +456,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobNotSuccessful() {
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
-	jobReport, err := suite.jsm.GetJobReport(types.JobID(jobID))
+	jobReport, err := suite.jsm.GetJobReport(ctx, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(jobReport.RunReports))
 	require.Equal(suite.T(), 0, len(jobReport.FinalReports))
@@ -469,7 +474,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobFailure() {
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
-	jobReport, err := suite.jsm.GetJobReport(types.JobID(jobID))
+	jobReport, err := suite.jsm.GetJobReport(ctx, types.JobID(jobID))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(jobReport.RunReports))
 	require.Equal(suite.T(), 0, len(jobReport.FinalReports))
@@ -487,7 +492,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCrash() {
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 	require.Contains(suite.T(), string(*ev[0].Payload), "TestStep crashed")
-	jobReport, err := suite.jsm.GetJobReport(types.JobID(jobID))
+	jobReport, err := suite.jsm.GetJobReport(ctx, types.JobID(jobID))
 
 	require.NoError(suite.T(), err)
 	// no reports are expected if the job crashes
@@ -603,7 +608,7 @@ func (suite *TestJobManagerSuite) TestJobManagerDifferentInstances() {
 		jobID, err = suite.startJob(jobDescriptorNoop)
 		require.NoError(suite.T(), err)
 
-		_, err = suite.jsm.GetJobRequest(types.JobID(jobID))
+		_, err = suite.jsm.GetJobRequest(ctx, types.JobID(jobID))
 		require.NoError(suite.T(), err)
 
 		ev, err := pollForEvent(suite.eventManager, job.EventJobCompleted, jobID, 1*time.Second)

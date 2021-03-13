@@ -47,30 +47,30 @@ func (ts *badTargets) Run(ctx xcontext.Context, ch test.TestStepChannels, params
 				select {
 				case ch.Out <- &tgt2:
 				case <-ctx.Done():
-					return xcontext.ErrCanceled
+					return xcontext.Canceled
 				}
 			case "TDup":
 				select {
 				case ch.Out <- tgt:
 				case <-ctx.Done():
-					return xcontext.ErrCanceled
+					return xcontext.Canceled
 				}
 				select {
 				case ch.Out <- tgt:
 				case <-ctx.Done():
-					return xcontext.ErrCanceled
+					return xcontext.Canceled
 				}
 			case "TExtra":
 				tgt2 := &target.Target{ID: "TExtra2"}
 				select {
 				case ch.Out <- tgt:
 				case <-ctx.Done():
-					return xcontext.ErrCanceled
+					return xcontext.Canceled
 				}
 				select {
 				case ch.Out <- tgt2:
 				case <-ctx.Done():
-					return xcontext.ErrCanceled
+					return xcontext.Canceled
 				}
 			case "T1":
 				// Mangle the returned target name.
@@ -78,19 +78,19 @@ func (ts *badTargets) Run(ctx xcontext.Context, ch test.TestStepChannels, params
 				select {
 				case ch.Out <- tgt2:
 				case <-ctx.Done():
-					return xcontext.ErrCanceled
+					return xcontext.Canceled
 				}
 			default:
 				return fmt.Errorf("Unexpected target name: %q", tgt.ID)
 			}
 		case <-ctx.Done():
-			return xcontext.ErrCanceled
+			return xcontext.Canceled
 		}
 	}
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *badTargets) ValidateParameters(params test.TestStepParameters) error {
+func (ts *badTargets) ValidateParameters(ctx xcontext.Context, params test.TestStepParameters) error {
 	return nil
 }
 

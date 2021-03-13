@@ -14,6 +14,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/storage/limits"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // CurrentAPIVersion is the current version of the API that the clients must be
@@ -161,9 +162,12 @@ func (a *API) SendReceiveEvent(ev *Event, timeout *time.Duration) (*EventRespons
 // operations via the API, e.g. getting the job status or stopping it.
 // This method should return an error if the job description is malformed or
 // invalid, and if the API version is incompatible.
-func (a *API) Start(requestor EventRequestor, jobDescriptor string) (Response, error) {
+func (a *API) Start(ctx xcontext.Context, requestor EventRequestor, jobDescriptor string) (Response, error) {
 	resp := a.newResponse(ResponseTypeStart)
 	ev := &Event{
+		// To allow jobs to finish we do not allow passing cancel and pause
+		// signals to the job's context (therefore: xcontext.WithResetSignalers).
+		Context:  xcontext.WithResetSignalers(ctx).WithTag("api_method", "start"),
 		Type:     EventTypeStart,
 		ServerID: resp.ServerID,
 		Msg: EventStartMsg{
@@ -184,9 +188,10 @@ func (a *API) Start(requestor EventRequestor, jobDescriptor string) (Response, e
 }
 
 // Stop requests a job cancellation by the given job ID.
-func (a *API) Stop(requestor EventRequestor, jobID types.JobID) (Response, error) {
+func (a *API) Stop(ctx xcontext.Context, requestor EventRequestor, jobID types.JobID) (Response, error) {
 	resp := a.newResponse(ResponseTypeStop)
 	ev := &Event{
+		Context:  ctx.WithTag("api_method", "stop"),
 		Type:     EventTypeStop,
 		ServerID: resp.ServerID,
 		Msg: EventStopMsg{
@@ -206,9 +211,10 @@ func (a *API) Stop(requestor EventRequestor, jobID types.JobID) (Response, error
 
 // Status polls the status of a job by its ID, and returns a contest.Status
 //object
-func (a *API) Status(requestor EventRequestor, jobID types.JobID) (Response, error) {
+func (a *API) Status(ctx xcontext.Context, requestor EventRequestor, jobID types.JobID) (Response, error) {
 	resp := a.newResponse(ResponseTypeStatus)
 	ev := &Event{
+		Context:  ctx.WithTag("api_method", "status"),
 		Type:     EventTypeStatus,
 		ServerID: resp.ServerID,
 		Msg: EventStatusMsg{
@@ -230,9 +236,10 @@ func (a *API) Status(requestor EventRequestor, jobID types.JobID) (Response, err
 
 // Retry will retry a job identified by its ID, using the same job
 // description. If the job is still running, an error is returned.
-func (a *API) Retry(requestor EventRequestor, jobID types.JobID) (Response, error) {
+func (a *API) Retry(ctx xcontext.Context, requestor EventRequestor, jobID types.JobID) (Response, error) {
 	resp := a.newResponse(ResponseTypeRetry)
 	ev := &Event{
+		Context:  ctx.WithTag("api_method", "retry"),
 		Type:     EventTypeRetry,
 		ServerID: resp.ServerID,
 		Msg: EventRetryMsg{
@@ -256,9 +263,10 @@ func (a *API) Retry(requestor EventRequestor, jobID types.JobID) (Response, erro
 }
 
 // List will list jobs matching the specified criteria.
-func (a *API) List(requestor EventRequestor, states []job.State, tags []string) (Response, error) {
+func (a *API) List(ctx xcontext.Context, requestor EventRequestor, states []job.State, tags []string) (Response, error) {
 	resp := a.newResponse(ResponseTypeList)
 	ev := &Event{
+		Context:  ctx.WithTag("api_method", "list"),
 		Type:     EventTypeList,
 		ServerID: resp.ServerID,
 		Msg: EventListMsg{

@@ -115,5 +115,5 @@ type TestStep interface {
 	Resume(ctx xcontext.Context, ch TestStepChannels, params TestStepParameters, ev testevent.EmitterFetcher) error
 	// ValidateParameters checks that the parameters are correct before passing
 	// them to Run.
-	ValidateParameters(params TestStepParameters) error
+	ValidateParameters(ctx xcontext.Context, params TestStepParameters) error
 }
