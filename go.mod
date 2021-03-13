@@ -6,6 +6,7 @@ require (
 	github.com/chappjc/logrus-prefix v0.0.0-20180227015900-3a1d64819adb
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-sql-driver/mysql v1.5.0
+	github.com/google/uuid v1.2.0
 	github.com/insomniacslk/termhook v0.0.0-20190716141402-454368e885ec
 	github.com/insomniacslk/xjson v0.0.0-20210106140854-1589ccfd1a1a
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
