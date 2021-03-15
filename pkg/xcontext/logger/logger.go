@@ -14,6 +14,9 @@ import (
 // This is the complete logger with all the required methods/features.
 type Logger = internal.Logger
 
+// MinimalLogger is the interfaces of a logger without contextual methods.
+type MinimalLogger = internal.MinimalLogger
+
 // ConvertLogger converts arbitrary logger to Logger. If it was unable to
 // then it returns a nil.
 //

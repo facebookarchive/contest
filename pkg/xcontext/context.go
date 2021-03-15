@@ -47,6 +47,7 @@ type Logger = logger.Logger
 // * TraceID to track across multiple processes.
 type Context interface {
 	context.Context
+	logger.MinimalLogger
 
 	// Clone just returns a copy of the Context safe to be modified.
 	Clone() Context
