@@ -358,10 +358,6 @@ func TestStepYieldsResultForNonexistentTarget(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.IsType(t, &cerrors.ErrTestStepReturnedUnexpectedResult{}, err)
-	require.Equal(t, `
-{[1 1 SimpleTest Step 1][Target{ID: "TExtra"} TargetIn]}
-{[1 1 SimpleTest Step 1][Target{ID: "TExtra"} TargetOut]}
-`, getTargetEvents("TExtra"))
 	require.Equal(t, "\n\n", getTargetEvents("TExtra2"))
 	require.Equal(t, `
 {[1 1 SimpleTest Step 1][(*Target)(nil) TestError &"\"test step Step 1 returned unexpected result for TExtra2\""]}
