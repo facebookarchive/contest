@@ -195,7 +195,10 @@ func (tr *TestRunner) run(
 			}
 		}
 		tgs.tgt = tgt
-		tgs.resCh = make(chan error)
+		// Buffer of 1 is needed so that the step reader does not block when submitting result back
+		// to the target handler. Target handler may not yet be ready to receive the result,
+		// i.e. reporting TargetIn event which may involve network I/O.
+		tgs.resCh = make(chan error, 1)
 		tr.targets[tgt.ID] = tgs
 		tr.mu.Unlock()
 		tr.targetsWg.Add(1)
