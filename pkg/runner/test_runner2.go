@@ -43,8 +43,7 @@ import (
 //  * We then wait for all the step runners and readers to shut down.
 //  * Once all the activity has died down, resulting state is examined and an error is returned, if any.
 type TestRunner struct {
-	stepInjectTimeout time.Duration // Time to wait for steps to accept each target
-	shutdownTimeout   time.Duration // Time to wait for steps runners to finish a the end of the run
+	shutdownTimeout time.Duration // Time to wait for steps runners to finish a the end of the run
 
 	steps     []*stepState            // The pipeline, in order of execution
 	targets   map[string]*targetState // Target state lookup map
@@ -375,12 +374,6 @@ func (tr *TestRunner) injectTarget(ctx statectx.Context, tgs *targetState, ss *s
 			return fmt.Errorf("failed to report target injection: %w", err)
 		}
 		tr.cond.Signal()
-	case <-time.After(tr.stepInjectTimeout):
-		ss.log.Errorf("timed out while injecting a target")
-		if err := ss.ev.Emit(testevent.Data{EventName: target.EventTargetInErr, Target: tgs.tgt}); err != nil {
-			ss.log.Errorf("failed to emit event: %s", err)
-		}
-		return &cerrors.ErrTestTargetInjectionTimedOut{StepName: ss.sb.TestStepLabel}
 	case <-ctx.Done():
 		return statectx.ErrCanceled
 	}
@@ -796,17 +789,16 @@ tgtLoop:
 	return runErr
 }
 
-func NewTestRunnerWithTimeouts(stepInjectTimeout, shutdownTimeout time.Duration) *TestRunner {
+func NewTestRunnerWithTimeouts(shutdownTimeout time.Duration) *TestRunner {
 	tr := &TestRunner{
-		stepInjectTimeout: stepInjectTimeout,
-		shutdownTimeout:   shutdownTimeout,
+		shutdownTimeout: shutdownTimeout,
 	}
 	tr.cond = sync.NewCond(&tr.mu)
 	return tr
 }
 
 func NewTestRunner() *TestRunner {
-	return NewTestRunnerWithTimeouts(config.StepInjectTimeout, config.TestRunnerShutdownTimeout)
+	return NewTestRunnerWithTimeouts(config.TestRunnerShutdownTimeout)
 }
 
 func (tph targetStepPhase) String() string {

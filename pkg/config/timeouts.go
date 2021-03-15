@@ -15,10 +15,6 @@ var TargetManagerAcquireTimeout = 5 * time.Minute
 // for the execution of Release function from the chosen TargetManager
 var TargetManagerReleaseTimeout = 5 * time.Minute
 
-// StepInjectTimeout represents the maximum time that TestRunner will wait for
-// the first TestStep of the pipeline to accept a Target
-var StepInjectTimeout = 30 * time.Second
-
 // TestRunnerMsgTimeout represents the maximum time that any component of the
 // TestRunner will wait for the delivery of a message to any other subsystem
 // of the TestRunner
