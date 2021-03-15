@@ -76,7 +76,7 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 		tracerSpan := j.StateCtx.Tracer().StartSpan("")
 		runReports, finalReports, err := jm.jobRunner.Run(j)
 		duration := tracerSpan.Finish()
-		j.StateCtx.Logger().Debugf("job terminated")
+		j.StateCtx.Debugf("job terminated")
 
 		// If the Job was cancelled/paused, the error returned by JobRunner indicates whether
 		// the cancellation/pausing has been successful or failed
@@ -84,7 +84,7 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 		case j.IsCancelled():
 			if err != nil {
 				errCancellation := fmt.Errorf("Job %+v failed cancellation: %v", j, err)
-				j.StateCtx.Logger().Errorf("%v", errCancellation)
+				j.StateCtx.Errorf("%v", errCancellation)
 				_ = jm.emitErrEvent(j.StateCtx, jobID, job.EventJobCancellationFailed, errCancellation)
 			} else {
 				_ = jm.emitEvent(j.StateCtx, jobID, job.EventJobCancelled)
@@ -93,7 +93,7 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 		case j.IsPaused():
 			if err != nil {
 				errPausing := fmt.Errorf("Job %+v failed pausing: %v", j, err)
-				j.StateCtx.Logger().Errorf("%v", errPausing)
+				j.StateCtx.Errorf("%v", errPausing)
 				_ = jm.emitErrEvent(j.StateCtx, jobID, job.EventJobPauseFailed, errPausing)
 			} else {
 				_ = jm.emitEvent(j.StateCtx, jobID, job.EventJobPaused)
@@ -110,13 +110,13 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 			FinalReports: finalReports,
 		}
 		if storageErr := jm.jobStorageManager.StoreJobReport(j.StateCtx, &jobReport); storageErr != nil {
-			j.StateCtx.Logger().Warnf("Could not emit job report: %v", storageErr)
+			j.StateCtx.Warnf("Could not emit job report: %v", storageErr)
 		}
 		// at this point it is safe to emit the job status event. Note: this is
 		// checking `err` from the `jm.jobRunner.Run()` call above.
 		if err != nil {
 			errMsg := fmt.Sprintf("Job %+v failed after %s : %v", j, duration, err)
-			j.StateCtx.Logger().Errorf(errMsg)
+			j.StateCtx.Errorf(errMsg)
 			_ = jm.emitErrEvent(j.StateCtx, jobID, job.EventJobFailed, err)
 		} else {
 			// If the JobManager doesn't return any error, the outcome of the Job
@@ -127,19 +127,19 @@ func (jm *JobManager) start(ev *api.Event) *api.EventResponse {
 			var eventToEmit event.Name
 			switch {
 			case j.IsCancelled():
-				j.StateCtx.Logger().Infof("Job %+v completed cancellation", j)
+				j.StateCtx.Infof("Job %+v completed cancellation", j)
 				eventToEmit = job.EventJobCancelled
 			case j.IsPaused():
-				j.StateCtx.Logger().Infof("Job %+v completed pausing", j)
+				j.StateCtx.Infof("Job %+v completed pausing", j)
 				eventToEmit = job.EventJobPaused
 			default:
-				j.StateCtx.Logger().Infof("Job %+v completed after %s", j, duration)
+				j.StateCtx.Infof("Job %+v completed after %s", j, duration)
 				eventToEmit = job.EventJobCompleted
 			}
-			j.StateCtx.Logger().Debugf("emitting: %v", eventToEmit)
+			j.StateCtx.Debugf("emitting: %v", eventToEmit)
 			err = jm.emitEvent(j.StateCtx, jobID, eventToEmit)
 			if err != nil {
-				j.StateCtx.Logger().Warnf("event emission failed: %v", err)
+				j.StateCtx.Warnf("event emission failed: %v", err)
 			}
 		}
 	}()

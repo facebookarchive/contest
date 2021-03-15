@@ -499,7 +499,7 @@ func TestPauseResumeSimple(t *testing.T) {
 		defer cancel()
 		go func() {
 			time.Sleep(100 * time.Millisecond)
-			ctx.Logger().Infof("TestPauseResumeNaive: pausing")
+			ctx.Infof("TestPauseResumeNaive: pausing")
 			pause()
 		}()
 		resumeState, err = runWithTimeout(t, tr1, ctx1, nil, 1, 2*time.Second, targets, steps)
@@ -507,7 +507,7 @@ func TestPauseResumeSimple(t *testing.T) {
 		require.IsType(t, xcontext.Paused, err)
 		require.NotNil(t, resumeState)
 	}
-	ctx.Logger().Debugf("Resume state: %s", string(resumeState))
+	ctx.Debugf("Resume state: %s", string(resumeState))
 	// Make sure that resume state is validated.
 	{
 		tr := newTestRunner()

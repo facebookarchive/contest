@@ -231,7 +231,7 @@ func (d *DBLocker) handleUnlock(ctx xcontext.Context, jobID int64, targets []str
 		}
 	}
 	if len(conflicts) > 0 {
-		ctx.Logger().Warnf("unable to unlock targets %v for owner %d due to different lock owners: %+v", targets, jobID, conflicts)
+		ctx.Warnf("unable to unlock targets %v for owner %d due to different lock owners: %+v", targets, jobID, conflicts)
 	}
 	if len(invalidate) > 0 {
 		// invalidate non-conflicting locks
@@ -267,7 +267,7 @@ func (d *DBLocker) Lock(ctx xcontext.Context, jobID types.JobID, duration time.D
 	if err := validateTargets(targets); err != nil {
 		return fmt.Errorf("invalid lock request: %w", err)
 	}
-	ctx.Logger().Debugf("Requested to lock %d targets for job ID %d: %v", len(targets), jobID, targets)
+	ctx.Debugf("Requested to lock %d targets for job ID %d: %v", len(targets), jobID, targets)
 	if len(targets) == 0 {
 		return nil
 	}
@@ -284,7 +284,7 @@ func (d *DBLocker) TryLock(ctx xcontext.Context, jobID types.JobID, duration tim
 	if err := validateTargets(targets); err != nil {
 		return nil, fmt.Errorf("invalid tryLock request: %w", err)
 	}
-	ctx.Logger().Debugf("Requested to tryLock up to %d of %d targets for job ID %d: %v", limit, len(targets), jobID, targets)
+	ctx.Debugf("Requested to tryLock up to %d of %d targets for job ID %d: %v", limit, len(targets), jobID, targets)
 	if len(targets) == 0 || limit == 0 {
 		return nil, nil
 	}
@@ -300,7 +300,7 @@ func (d *DBLocker) Unlock(ctx xcontext.Context, jobID types.JobID, targets []*ta
 	if err := validateTargets(targets); err != nil {
 		return fmt.Errorf("invalid unlock request: %w", err)
 	}
-	ctx.Logger().Debugf("Requested to unlock %d targets for job ID %d: %v", len(targets), jobID, targets)
+	ctx.Debugf("Requested to unlock %d targets for job ID %d: %v", len(targets), jobID, targets)
 	if len(targets) == 0 {
 		return nil
 	}
@@ -317,7 +317,7 @@ func (d *DBLocker) RefreshLocks(ctx xcontext.Context, jobID types.JobID, targets
 	if err := validateTargets(targets); err != nil {
 		return fmt.Errorf("invalid refresh request: %w", err)
 	}
-	ctx.Logger().Debugf("Requested to refresh %d targets for job ID %d: %v", len(targets), jobID, targets)
+	ctx.Debugf("Requested to refresh %d targets for job ID %d: %v", len(targets), jobID, targets)
 	if len(targets) == 0 {
 		return nil
 	}
@@ -329,7 +329,7 @@ func (d *DBLocker) RefreshLocks(ctx xcontext.Context, jobID types.JobID, targets
 // This is primarily for testing, and should not be used by used in prod, this
 // is why it is not exposed by target.Locker
 func (d *DBLocker) ResetAllLocks(ctx xcontext.Context) error {
-	ctx.Logger().Warnf("DELETING ALL LOCKS")
+	ctx.Warnf("DELETING ALL LOCKS")
 	_, err := d.db.Exec("TRUNCATE TABLE locks;")
 	return err
 }

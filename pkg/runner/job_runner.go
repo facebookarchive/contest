@@ -58,9 +58,9 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 	var run uint
 
 	if j.Runs == 0 {
-		j.StateCtx.Logger().Infof("Running job '%s' (id %v) indefinitely", j.Name, j.ID)
+		j.StateCtx.Infof("Running job '%s' (id %v) indefinitely", j.Name, j.ID)
 	} else {
-		j.StateCtx.Logger().Infof("Running job '%s' %d times", j.Name, j.Runs)
+		j.StateCtx.Infof("Running job '%s' %d times", j.Name, j.Runs)
 	}
 	tl := target.GetLocker()
 	ev := storage.NewTestEventFetcher()
@@ -82,15 +82,15 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 		payload := RunStartedPayload{RunID: types.RunID(run + 1)}
 		err := jr.emitEvent(j.StateCtx, j.ID, EventRunStarted, payload)
 		if err != nil {
-			j.StateCtx.Logger().Warnf("Could not emit event run (run %d) start for job %d: %v", run+1, j.ID, err)
+			j.StateCtx.Warnf("Could not emit event run (run %d) start for job %d: %v", run+1, j.ID, err)
 		}
 
 		for idx, t := range j.Tests {
 			if j.IsCancelled() {
-				j.StateCtx.Logger().Debugf("Cancellation requested, skipping test #%d of run #%d", idx, run+1)
+				j.StateCtx.Debugf("Cancellation requested, skipping test #%d of run #%d", idx, run+1)
 				break
 			}
-			j.StateCtx.Logger().Infof("Run #%d: fetching targets for test '%s'", run+1, t.Name)
+			j.StateCtx.Infof("Run #%d: fetching targets for test '%s'", run+1, t.Name)
 			bundle := t.TargetManagerBundle
 			var (
 				targets   []*target.Target
@@ -127,7 +127,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				targets = <-targetsCh
 				if err != nil {
 					err = fmt.Errorf("run #%d: cannot fetch targets for test '%s': %v", run+1, t.Name, err)
-					j.StateCtx.Logger().Errorf(err.Error())
+					j.StateCtx.Errorf(err.Error())
 					return nil, nil, err
 				}
 				// Associate the targets with the job for later retrievel
@@ -138,7 +138,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			case <-time.After(j.TargetManagerAcquireTimeout):
 				return nil, nil, fmt.Errorf("target manager acquire timed out after %s", j.TargetManagerAcquireTimeout)
 			case <-j.StateCtx.Done():
-				j.StateCtx.Logger().Infof("cancellation requested for job ID %v", j.ID)
+				j.StateCtx.Infof("cancellation requested for job ID %v", j.ID)
 				return nil, nil, nil
 			}
 
@@ -153,21 +153,21 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 					select {
 					case <-j.StateCtx.Done():
 						if err := tl.Unlock(j.StateCtx, j.ID, targets); err != nil {
-							j.StateCtx.Logger().Warnf("Failed to unlock targets (%v) for job ID %d: %v", targets, j.ID, err)
+							j.StateCtx.Warnf("Failed to unlock targets (%v) for job ID %d: %v", targets, j.ID, err)
 						}
 					case <-j.StateCtx.Until(xcontext.Paused):
-						j.StateCtx.Logger().Debugf("Received pause request, NOT releasing targets so the job can be resumed")
+						j.StateCtx.Debugf("Received pause request, NOT releasing targets so the job can be resumed")
 						return
 					case <-done:
 						if err := tl.Unlock(j.StateCtx, j.ID, targets); err != nil {
-							j.StateCtx.Logger().Warnf("Failed to unlock %d target(s) (%v): %v", len(targets), targets, err)
+							j.StateCtx.Warnf("Failed to unlock %d target(s) (%v): %v", len(targets), targets, err)
 						}
-						j.StateCtx.Logger().Infof("Unlocked %d target(s) for job ID %d", len(targets), j.ID)
+						j.StateCtx.Infof("Unlocked %d target(s) for job ID %d", len(targets), j.ID)
 						return
 					case <-time.After(refreshInterval):
 						// refresh the locks before the timeout expires
 						if err := tl.RefreshLocks(j.StateCtx, j.ID, targets); err != nil {
-							j.StateCtx.Logger().Warnf("Failed to refresh %d locks for job ID %d: %v", len(targets), j.ID, err)
+							j.StateCtx.Warnf("Failed to refresh %d locks for job ID %d: %v", len(targets), j.ID, err)
 						}
 					}
 				}
@@ -179,11 +179,11 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			testEventEmitter := storage.NewTestEventEmitter(header)
 
 			if runErr = jr.emitAcquiredTargets(j.StateCtx, testEventEmitter, targets); runErr == nil {
-				j.StateCtx.Logger().Infof("Run #%d: running test #%d for job '%s' (job ID: %d) on %d targets", run+1, idx, j.Name, j.ID, len(targets))
+				j.StateCtx.Infof("Run #%d: running test #%d for job '%s' (job ID: %d) on %d targets", run+1, idx, j.Name, j.ID, len(targets))
 				testRunner := NewTestRunner()
 				resumeState, err := testRunner.Run(j.StateCtx, t, targets, j.ID, types.RunID(run+1), nil)
 				if err == xcontext.Paused {
-					j.StateCtx.Logger().Debugf("Runner paused, state: %s", string(resumeState))
+					j.StateCtx.Debugf("Runner paused, state: %s", string(resumeState))
 					// TODO(rojer): Persist the state.
 				} else {
 					runErr = err
@@ -205,13 +205,13 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 			case err := <-errCh:
 				if err != nil {
 					errRelease := fmt.Sprintf("Failed to release targets: %v", err)
-					j.StateCtx.Logger().Errorf(errRelease)
+					j.StateCtx.Errorf(errRelease)
 					return nil, nil, fmt.Errorf(errRelease)
 				}
 			case <-time.After(j.TargetManagerReleaseTimeout):
 				return nil, nil, fmt.Errorf("target manager release timed out after %s", j.TargetManagerReleaseTimeout)
 			case <-j.StateCtx.Done():
-				j.StateCtx.Logger().Infof("cancellation requested for job ID %v", j.ID)
+				j.StateCtx.Infof("cancellation requested for job ID %v", j.ID)
 				return nil, nil, nil
 			}
 			// return the Run error only after releasing the targets, and only
@@ -230,17 +230,17 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 		for _, bundle := range j.RunReporterBundles {
 			runStatus, err := jr.BuildRunStatus(runCoordinates, j)
 			if err != nil {
-				j.StateCtx.Logger().Warnf("could not build run status for job %d: %v. Run report will not execute", j.ID, err)
+				j.StateCtx.Warnf("could not build run status for job %d: %v. Run report will not execute", j.ID, err)
 				continue
 			}
 			success, data, err := bundle.Reporter.RunReport(j.StateCtx, bundle.Parameters, runStatus, ev)
 			if err != nil {
-				j.StateCtx.Logger().Warnf("Run reporter failed while calculating run results, proceeding anyway: %v", err)
+				j.StateCtx.Warnf("Run reporter failed while calculating run results, proceeding anyway: %v", err)
 			} else {
 				if success {
-					j.StateCtx.Logger().Debugf("Run #%d of job %d considered successful according to %s", run+1, j.ID, bundle.Reporter.Name())
+					j.StateCtx.Debugf("Run #%d of job %d considered successful according to %s", run+1, j.ID, bundle.Reporter.Name())
 				} else {
-					j.StateCtx.Logger().Errorf("Run #%d of job %d considered failed according to %s", run+1, j.ID, bundle.Reporter.Name())
+					j.StateCtx.Errorf("Run #%d of job %d considered failed according to %s", run+1, j.ID, bundle.Reporter.Name())
 				}
 			}
 
@@ -255,12 +255,12 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 		allRunReports = append(allRunReports, runReports)
 
 		if j.IsCancelled() {
-			j.StateCtx.Logger().Debugf("Cancellation requested, skipping run #%d", run+1)
+			j.StateCtx.Debugf("Cancellation requested, skipping run #%d", run+1)
 			break
 		}
 		// don't sleep on the last run
 		if j.Runs == 0 || (j.Runs > 1 && run < j.Runs-1) {
-			j.StateCtx.Logger().Infof("Sleeping %s before the next run...", j.RunInterval)
+			j.StateCtx.Infof("Sleeping %s before the next run...", j.RunInterval)
 			time.Sleep(j.RunInterval)
 		}
 		run++
@@ -277,18 +277,18 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 		// execution early and we did not perform all runs
 		runStatuses, err := jr.BuildRunStatuses(j)
 		if err != nil {
-			j.StateCtx.Logger().Warnf("could not calculate run statuses: %v. Run report will not execute", err)
+			j.StateCtx.Warnf("could not calculate run statuses: %v. Run report will not execute", err)
 			continue
 		}
 
 		success, data, err := bundle.Reporter.FinalReport(j.StateCtx, bundle.Parameters, runStatuses, ev)
 		if err != nil {
-			j.StateCtx.Logger().Warnf("Final reporter failed while calculating test results, proceeding anyway: %v", err)
+			j.StateCtx.Warnf("Final reporter failed while calculating test results, proceeding anyway: %v", err)
 		} else {
 			if success {
-				j.StateCtx.Logger().Debugf("Job %d (%d runs out of %d desired) considered successful", j.ID, run, j.Runs)
+				j.StateCtx.Debugf("Job %d (%d runs out of %d desired) considered successful", j.ID, run, j.Runs)
 			} else {
-				j.StateCtx.Logger().Errorf("Job %d (%d runs out of %d desired) considered failed", j.ID, run, j.Runs)
+				j.StateCtx.Errorf("Job %d (%d runs out of %d desired) considered failed", j.ID, run, j.Runs)
 			}
 		}
 		r := job.Report{Success: success, ReporterName: bundle.Reporter.Name(), ReportTime: time.Now(), Data: data}
@@ -304,7 +304,7 @@ func (jr *JobRunner) emitAcquiredTargets(ctx xcontext.Context, emitter testevent
 	for _, t := range targets {
 		data := testevent.Data{EventName: target.EventTargetAcquired, Target: t}
 		if err := emitter.Emit(ctx, data); err != nil {
-			ctx.Logger().Warnf("could not emit event %s: %v", target.EventTargetAcquired, err)
+			ctx.Warnf("could not emit event %s: %v", target.EventTargetAcquired, err)
 			return err
 		}
 	}
@@ -336,14 +336,14 @@ func (jr *JobRunner) GetCurrentRun(ctx xcontext.Context, jobID types.JobID) (typ
 func (jr *JobRunner) emitEvent(ctx xcontext.Context, jobID types.JobID, eventName event.Name, payload interface{}) error {
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		ctx.Logger().Warnf("could not encode payload for event %s: %v", eventName, err)
+		ctx.Warnf("could not encode payload for event %s: %v", eventName, err)
 		return err
 	}
 
 	rawPayload := json.RawMessage(payloadJSON)
 	ev := frameworkevent.Event{JobID: jobID, EventName: eventName, Payload: &rawPayload, EmitTime: time.Now()}
 	if err := jr.frameworkEventManager.Emit(ctx, ev); err != nil {
-		ctx.Logger().Warnf("could not emit event %s: %v", eventName, err)
+		ctx.Warnf("could not emit event %s: %v", eventName, err)
 		return err
 	}
 	return nil

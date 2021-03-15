@@ -83,12 +83,12 @@ type TestListener struct {
 // Serve implements the main logic of a dummy listener which talks to the API
 // layer to trigger actions in the JobManager
 func (tl *TestListener) Serve(ctx xcontext.Context, contestApi *api.API) error {
-	ctx.Logger().Debugf("Serving mock listener")
+	ctx.Debugf("Serving mock listener")
 	for {
-		ctx.Logger().Debugf("select")
+		ctx.Debugf("select")
 		select {
 		case command := <-tl.commandCh:
-			ctx.Logger().Debugf("received command: %#+v", command)
+			ctx.Debugf("received command: %#+v", command)
 			switch command.commandType {
 			case StartJob:
 				resp, err := contestApi.Start(ctx, "IntegrationTest", command.jobDescriptor)

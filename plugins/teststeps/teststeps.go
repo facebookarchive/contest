@@ -29,18 +29,18 @@ type PerTargetFunc func(ctx xcontext.Context, target *target.Target) error
 func ForEachTarget(pluginName string, ctx xcontext.Context, ch test.TestStepChannels, f PerTargetFunc) error {
 	reportTarget := func(t *target.Target, err error) {
 		if err != nil {
-			ctx.Logger().Errorf("%s: ForEachTarget: failed to apply test step function on target %s: %v", pluginName, t, err)
+			ctx.Errorf("%s: ForEachTarget: failed to apply test step function on target %s: %v", pluginName, t, err)
 			select {
 			case ch.Err <- cerrors.TargetError{Target: t, Err: err}:
 			case <-ctx.Done():
-				ctx.Logger().Debugf("%s: ForEachTarget: received cancellation signal while reporting error", pluginName)
+				ctx.Debugf("%s: ForEachTarget: received cancellation signal while reporting error", pluginName)
 			}
 		} else {
-			ctx.Logger().Debugf("%s: ForEachTarget: target %s completed successfully", pluginName, t)
+			ctx.Debugf("%s: ForEachTarget: target %s completed successfully", pluginName, t)
 			select {
 			case ch.Out <- t:
 			case <-ctx.Done():
-				ctx.Logger().Debugf("%s: ForEachTarget: received pause signal while reporting success", pluginName)
+				ctx.Debugf("%s: ForEachTarget: received pause signal while reporting success", pluginName)
 			}
 		}
 	}
@@ -51,10 +51,10 @@ func ForEachTarget(pluginName string, ctx xcontext.Context, ch test.TestStepChan
 			select {
 			case tgt := <-ch.In:
 				if tgt == nil {
-					ctx.Logger().Debugf("%s: ForEachTarget: all targets have been received", pluginName)
+					ctx.Debugf("%s: ForEachTarget: all targets have been received", pluginName)
 					return
 				}
-				ctx.Logger().Debugf("%s: ForEachTarget: received target %s", pluginName, tgt)
+				ctx.Debugf("%s: ForEachTarget: received target %s", pluginName, tgt)
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
@@ -63,7 +63,7 @@ func ForEachTarget(pluginName string, ctx xcontext.Context, ch test.TestStepChan
 					reportTarget(tgt, err)
 				}()
 			case <-ctx.Done():
-				ctx.Logger().Debugf("%s: ForEachTarget: incoming loop canceled", pluginName)
+				ctx.Debugf("%s: ForEachTarget: incoming loop canceled", pluginName)
 				return
 			}
 		}

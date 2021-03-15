@@ -68,7 +68,7 @@ func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.Te
 					Payload:   nil,
 				}
 				_ = ev.Emit(ctx, evData)
-				ctx.Logger().Infof("Run: target %s succeeded: %s", target, params.GetOne("text"))
+				ctx.Infof("Run: target %s succeeded: %s", target, params.GetOne("text"))
 				ch.Out <- target
 			} else {
 				evData := testevent.Data{
@@ -77,7 +77,7 @@ func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.Te
 					Payload:   nil,
 				}
 				_ = ev.Emit(ctx, evData)
-				ctx.Logger().Infof("Run: target %s failed: %s", target, params.GetOne("text"))
+				ctx.Infof("Run: target %s failed: %s", target, params.GetOne("text"))
 				ch.Err <- cerrors.TargetError{Target: target, Err: fmt.Errorf("target randomly failed")}
 			}
 		case <-ctx.Done():

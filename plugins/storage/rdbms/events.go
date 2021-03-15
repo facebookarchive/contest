@@ -244,7 +244,7 @@ func (r *RDBMS) GetTestEvents(ctx xcontext.Context, eventQuery *testevent.Query)
 	}
 
 	results := []testevent.Event{}
-	ctx.Logger().Debugf("Executing query: %s, fields: %v", query, fields)
+	ctx.Debugf("Executing query: %s, fields: %v", query, fields)
 	rows, err := r.db.Query(query, fields...)
 	if err != nil {
 		return nil, err
@@ -259,7 +259,7 @@ func (r *RDBMS) GetTestEvents(ctx xcontext.Context, eventQuery *testevent.Query)
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			ctx.Logger().Warnf("could not close rows for test events: %v", err)
+			ctx.Warnf("could not close rows for test events: %v", err)
 		}
 	}()
 	for rows.Next() {
@@ -393,7 +393,7 @@ func (r *RDBMS) GetFrameworkEvent(ctx xcontext.Context, eventQuery *frameworkeve
 		return nil, fmt.Errorf("could not execute select query for test events: %v", err)
 	}
 	results := []frameworkevent.Event{}
-	ctx.Logger().Debugf("Executing query: %s, fields: %v", query, fields)
+	ctx.Debugf("Executing query: %s, fields: %v", query, fields)
 	rows, err := r.db.Query(query, fields...)
 	if err != nil {
 		return nil, err
@@ -401,7 +401,7 @@ func (r *RDBMS) GetFrameworkEvent(ctx xcontext.Context, eventQuery *frameworkeve
 
 	defer func() {
 		if err := rows.Close(); err != nil {
-			ctx.Logger().Warnf("could not close rows for framework events: %v", err)
+			ctx.Warnf("could not close rows for framework events: %v", err)
 		}
 	}()
 

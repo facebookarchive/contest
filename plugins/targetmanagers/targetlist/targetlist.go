@@ -89,17 +89,17 @@ func (t *TargetList) Acquire(ctx xcontext.Context, jobID types.JobID, jobTargetM
 	}
 
 	if err := tl.Lock(ctx, jobID, jobTargetManagerAcquireTimeout, acquireParameters.Targets); err != nil {
-		ctx.Logger().Warnf("Failed to lock %d targets: %v", len(acquireParameters.Targets), err)
+		ctx.Warnf("Failed to lock %d targets: %v", len(acquireParameters.Targets), err)
 		return nil, err
 	}
 	t.targets = acquireParameters.Targets
-	ctx.Logger().Infof("Acquired %d targets", len(t.targets))
+	ctx.Infof("Acquired %d targets", len(t.targets))
 	return acquireParameters.Targets, nil
 }
 
 // Release releases the acquired resources.
 func (t *TargetList) Release(ctx xcontext.Context, jobID types.JobID, params interface{}) error {
-	ctx.Logger().Infof("Released %d targets", len(t.targets))
+	ctx.Infof("Released %d targets", len(t.targets))
 	return nil
 }
 

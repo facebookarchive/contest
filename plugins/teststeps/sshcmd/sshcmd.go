@@ -196,7 +196,7 @@ func (ts *SSHCmd) Run(ctx xcontext.Context, ch test.TestStepChannels, params tes
 		}
 		defer func() {
 			if err := client.Close(); err != nil {
-				ctx.Logger().Warnf("Failed to close SSH connection to %s: %v", addr, err)
+				ctx.Warnf("Failed to close SSH connection to %s: %v", addr, err)
 			}
 		}()
 		session, err := client.NewSession()
@@ -205,7 +205,7 @@ func (ts *SSHCmd) Run(ctx xcontext.Context, ch test.TestStepChannels, params tes
 		}
 		defer func() {
 			if err := session.Close(); err != nil && err != io.EOF {
-				ctx.Logger().Warnf("Failed to close SSH session to %s: %v", addr, err)
+				ctx.Warnf("Failed to close SSH session to %s: %v", addr, err)
 			}
 		}()
 		// run the remote command and catch stdout/stderr
@@ -234,7 +234,7 @@ func (ts *SSHCmd) Run(ctx xcontext.Context, ch test.TestStepChannels, params tes
 				if err == nil {
 					// Execute expectations
 					if expect == "" {
-						ctx.Logger().Warnf("no expectations specified")
+						ctx.Warnf("no expectations specified")
 					} else {
 						matches := re.FindAll(stdout.Bytes(), -1)
 						if len(matches) > 0 {
@@ -244,7 +244,7 @@ func (ts *SSHCmd) Run(ctx xcontext.Context, ch test.TestStepChannels, params tes
 						}
 					}
 				} else {
-					ctx.Logger().Warnf("Stderr of command '%s' is '%s'", cmd, stderr.Bytes())
+					ctx.Warnf("Stderr of command '%s' is '%s'", cmd, stderr.Bytes())
 				}
 				return err
 			case <-ctx.Done():
@@ -324,7 +324,7 @@ func (ts *SSHCmd) validateAndPopulate(params test.TestStepParameters) error {
 
 // ValidateParameters validates the parameters associated to the TestStep
 func (ts *SSHCmd) ValidateParameters(ctx xcontext.Context, params test.TestStepParameters) error {
-	ctx.Logger().Debugf("Params %+v", params)
+	ctx.Debugf("Params %+v", params)
 	return ts.validateAndPopulate(params)
 }
 

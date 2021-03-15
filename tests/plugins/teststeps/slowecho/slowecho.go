@@ -82,14 +82,14 @@ func (e *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.T
 		return err
 	}
 	f := func(ctx xcontext.Context, t *target.Target) error {
-		ctx.Logger().Infof("Waiting %v for target %s", sleep, t.ID)
+		ctx.Infof("Waiting %v for target %s", sleep, t.ID)
 		select {
 		case <-time.After(sleep):
 		case <-ctx.Done():
-			ctx.Logger().Infof("Returning because cancellation is requested")
+			ctx.Infof("Returning because cancellation is requested")
 			return xcontext.Canceled
 		}
-		ctx.Logger().Infof("target %s: %s", t, params.GetOne("text"))
+		ctx.Infof("target %s: %s", t, params.GetOne("text"))
 		return nil
 	}
 	return teststeps.ForEachTarget(Name, ctx, ch, f)

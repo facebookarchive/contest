@@ -442,7 +442,7 @@ func (ctx *ctxValue) Recover() interface{} {
 		b := make([]byte, 65536)
 		n := runtime.Stack(b, false)
 		b = b[:n]
-		ctx.Logger().Errorf("received panic: %v\n%s\n", r, b)
+		ctx.Errorf("received panic: %v\n%s\n", r, b)
 	}
 	return r
 }

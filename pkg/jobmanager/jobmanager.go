@@ -116,7 +116,7 @@ func (jm *JobManager) handleEvent(ev *api.Event) {
 		}
 	}
 
-	ev.Context.Logger().Debugf("Sending response %+v", resp)
+	ev.Context.Debugf("Sending response %+v", resp)
 	// time to wait before printing an error if the response is not received.
 	sendEventTimeout := 3 * time.Second
 
@@ -147,7 +147,7 @@ func (jm *JobManager) Start(ctx xcontext.Context, sigs chan os.Signal) error {
 	errCh := make(chan error, 1)
 	go func() {
 		lErr := jm.apiListener.Serve(apiCtx, a)
-		ctx.Logger().Debugf("Server shut down successfully.")
+		ctx.Debugf("Server shut down successfully.")
 		errCh <- lErr
 	}()
 
@@ -156,7 +156,7 @@ loop:
 		select {
 		// handle events from the API
 		case ev := <-a.Events:
-			ev.Context.Logger().Debugf("Handling event %+v", ev)
+			ev.Context.Debugf("Handling event %+v", ev)
 			// send the response, and wait for the given timeout
 			jm.handleEvent(ev)
 		// check for errors or premature termination from the listener.
@@ -249,11 +249,11 @@ func (jm *JobManager) emitErrEvent(ctx xcontext.Context, jobID types.JobID, even
 		payloadPtr *json.RawMessage
 	)
 	if err != nil {
-		ctx.Logger().Errorf(err.Error())
+		ctx.Errorf(err.Error())
 		payload := ErrorEventPayload{Err: *xjson.NewError(err)}
 		payloadJSON, err := json.Marshal(payload)
 		if err != nil {
-			ctx.Logger().Warnf("Could not serialize payload for event %s: %v", eventName, err)
+			ctx.Warnf("Could not serialize payload for event %s: %v", eventName, err)
 		} else {
 			rawPayload = json.RawMessage(payloadJSON)
 			payloadPtr = &rawPayload
@@ -267,7 +267,7 @@ func (jm *JobManager) emitErrEvent(ctx xcontext.Context, jobID types.JobID, even
 		EmitTime:  time.Now(),
 	}
 	if err := jm.frameworkEvManager.Emit(ctx, ev); err != nil {
-		ctx.Logger().Warnf("Could not emit event %s for job %d: %v", eventName, jobID, err)
+		ctx.Warnf("Could not emit event %s for job %d: %v", eventName, jobID, err)
 		return err
 	}
 	return nil

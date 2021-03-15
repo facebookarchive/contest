@@ -179,7 +179,7 @@ func TestInMemoryUnlockValidJobIDAndTwoTargets(t *testing.T) {
 func TestInMemoryUnlockUnlockTwice(t *testing.T) {
 	tl := New()
 	err := tl.Unlock(ctx, jobID, oneTarget)
-	ctx.Logger().Debugf("%v", err)
+	ctx.Debugf("%v", err)
 	assert.Error(t, err)
 	assert.Error(t, tl.Unlock(ctx, jobID, oneTarget))
 }

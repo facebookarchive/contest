@@ -345,7 +345,7 @@ func (m *DescriptorMigration) up(db dbConn) error {
 
 	count := uint64(0)
 	ctx := m.Context
-	ctx.Logger().Debugf("counting the number of jobs to migrate")
+	ctx.Debugf("counting the number of jobs to migrate")
 	start := time.Now()
 	rows, err := db.Query("select count(*) from jobs")
 	if err != nil {
@@ -362,7 +362,7 @@ func (m *DescriptorMigration) up(db dbConn) error {
 		return fmt.Errorf("could not fetch number of records to migrate: %w", err)
 	}
 	if err := rows.Close(); err != nil {
-		ctx.Logger().Warnf("could not close rows after count(*) query")
+		ctx.Warnf("could not close rows after count(*) query")
 	}
 
 	// Create a new plugin registry. This is necessary because some information that need to be
@@ -372,7 +372,7 @@ func (m *DescriptorMigration) up(db dbConn) error {
 	plugins.Init(registry, ctx.Logger())
 
 	elapsed := time.Since(start)
-	ctx.Logger().Debugf("total number of jobs to migrate: %d, fetched in %.3f ms", count, ms(elapsed))
+	ctx.Debugf("total number of jobs to migrate: %d, fetched in %.3f ms", count, ms(elapsed))
 	for offset := uint64(0); offset < count; offset += shardSize {
 		jobs, err := m.fetchJobs(db, shardSize, offset)
 		if err != nil {
@@ -382,7 +382,7 @@ func (m *DescriptorMigration) up(db dbConn) error {
 		if err != nil {
 			return fmt.Errorf("could not migrate events in range offset %d limit %d: %w", offset, shardSize, err)
 		}
-		ctx.Logger().Infof("migrated %d/%d", offset, count)
+		ctx.Infof("migrated %d/%d", offset, count)
 	}
 	return nil
 }

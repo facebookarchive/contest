@@ -118,7 +118,7 @@ func TestForEachTargetOneTargetAllFail(t *testing.T) {
 func TestForEachTargetTenTargets(t *testing.T) {
 	d := newData()
 	fn := func(ctx xcontext.Context, tgt *target.Target) error {
-		ctx.Logger().Debugf("Handling target %+v", tgt)
+		ctx.Debugf("Handling target %+v", tgt)
 		return nil
 	}
 	go func() {
@@ -136,7 +136,7 @@ func TestForEachTargetTenTargets(t *testing.T) {
 			case <-ctx.Done():
 				return
 			case tgt := <-d.outCh:
-				d.ctx.Logger().Debugf("Step for target %+v completed as expected", tgt)
+				d.ctx.Debugf("Step for target %+v completed as expected", tgt)
 			case err := <-d.errCh:
 				t.Errorf("Expected no error but got one: %v", err)
 			}
@@ -149,7 +149,7 @@ func TestForEachTargetTenTargets(t *testing.T) {
 func TestForEachTargetTenTargetsAllFail(t *testing.T) {
 	d := newData()
 	fn := func(ctx xcontext.Context, tgt *target.Target) error {
-		d.ctx.Logger().Debugf("Handling target %+v", tgt)
+		d.ctx.Debugf("Handling target %+v", tgt)
 		return fmt.Errorf("error with target %+v", tgt)
 	}
 	go func() {
@@ -169,7 +169,7 @@ func TestForEachTargetTenTargetsAllFail(t *testing.T) {
 			case tgt := <-d.outCh:
 				t.Errorf("Step for target %+v expected to fail but completed successfully instead", tgt)
 			case err := <-d.errCh:
-				d.ctx.Logger().Debugf("Step for target failed as expected: %v", err)
+				d.ctx.Debugf("Step for target failed as expected: %v", err)
 			}
 		}
 	}()
@@ -183,7 +183,7 @@ func TestForEachTargetTenTargetsOneFails(t *testing.T) {
 	// guaranteed to be random.
 	failingTarget := "target004"
 	fn := func(ctx xcontext.Context, tgt *target.Target) error {
-		d.ctx.Logger().Debugf("Handling target %+v", tgt)
+		d.ctx.Debugf("Handling target %+v", tgt)
 		if tgt.ID == failingTarget {
 			return fmt.Errorf("error with target %+v", tgt)
 		}
@@ -207,11 +207,11 @@ func TestForEachTargetTenTargetsOneFails(t *testing.T) {
 				if tgt.ID == failingTarget {
 					t.Errorf("Step for target %+v expected to fail but completed successfully instead", tgt)
 				} else {
-					d.ctx.Logger().Debugf("Step for target %+v completed as expected", tgt)
+					d.ctx.Debugf("Step for target %+v completed as expected", tgt)
 				}
 			case err := <-d.errCh:
 				if err.Target.ID == failingTarget {
-					d.ctx.Logger().Debugf("Step for target failed as expected: %v", err)
+					d.ctx.Debugf("Step for target failed as expected: %v", err)
 				} else {
 					t.Errorf("Expected no error but got one: %v", err)
 				}
@@ -231,14 +231,14 @@ func TestForEachTargetTenTargetsParallelism(t *testing.T) {
 	sleepTime := time.Second
 	d := newData()
 	fn := func(ctx xcontext.Context, tgt *target.Target) error {
-		d.ctx.Logger().Debugf("Handling target %+v", tgt)
+		d.ctx.Debugf("Handling target %+v", tgt)
 		select {
 		case <-ctx.Done():
-			d.ctx.Logger().Debugf("target %+v cancelled", tgt)
+			d.ctx.Debugf("target %+v cancelled", tgt)
 		case <-ctx.Until(xcontext.Paused):
-			d.ctx.Logger().Debugf("target %+v paused", tgt)
+			d.ctx.Debugf("target %+v paused", tgt)
 		case <-time.After(sleepTime):
-			d.ctx.Logger().Debugf("target %+v processed", tgt)
+			d.ctx.Debugf("target %+v processed", tgt)
 		}
 		return nil
 	}
@@ -265,24 +265,24 @@ func TestForEachTargetTenTargetsParallelism(t *testing.T) {
 
 		maxWaitTime := sleepTime * 3
 		deadline := time.Now().Add(maxWaitTime)
-		d.ctx.Logger().Debugf("Setting deadline to now+%s", maxWaitTime)
+		d.ctx.Debugf("Setting deadline to now+%s", maxWaitTime)
 
 		for {
 			select {
 			case tgt := <-d.outCh:
 				targetsRemain--
-				d.ctx.Logger().Debugf("Step for target completed successfully as expected: %v", tgt)
+				d.ctx.Debugf("Step for target completed successfully as expected: %v", tgt)
 				if targetsRemain == 0 {
-					d.ctx.Logger().Debugf("All targets processed")
+					d.ctx.Debugf("All targets processed")
 					return
 				}
 			case err := <-d.errCh:
-				d.ctx.Logger().Debugf("Step for target %+v expected to completed successfully but fail instead", err)
+				d.ctx.Debugf("Step for target %+v expected to completed successfully but fail instead", err)
 				targetError = err.Err
 				return
 			case <-time.After(time.Until(deadline)):
 				deadlineExceeded = true
-				d.ctx.Logger().Debugf("Deadline exceeded")
+				d.ctx.Debugf("Deadline exceeded")
 				return
 			}
 		}
@@ -307,15 +307,15 @@ func TestForEachTargetCancelSignalPropagation(t *testing.T) {
 	d := newData()
 
 	fn := func(ctx xcontext.Context, tgt *target.Target) error {
-		d.ctx.Logger().Debugf("Handling target %+v", tgt)
+		d.ctx.Debugf("Handling target %+v", tgt)
 		select {
 		case <-ctx.Done():
-			d.ctx.Logger().Debugf("target %+v caneled", tgt)
+			d.ctx.Debugf("target %+v caneled", tgt)
 			atomic.AddInt32(&canceledTargets, 1)
 		case <-ctx.Until(xcontext.Paused):
-			d.ctx.Logger().Debugf("target %+v paused", tgt)
+			d.ctx.Debugf("target %+v paused", tgt)
 		case <-time.After(sleepTime):
-			d.ctx.Logger().Debugf("target %+v processed", tgt)
+			d.ctx.Debugf("target %+v processed", tgt)
 		}
 		return nil
 	}
@@ -345,15 +345,15 @@ func TestForEachTargetCancelBeforeInputChannelClosed(t *testing.T) {
 	d := newData()
 
 	fn := func(ctx xcontext.Context, tgt *target.Target) error {
-		d.ctx.Logger().Debugf("Handling target %+v", tgt)
+		d.ctx.Debugf("Handling target %+v", tgt)
 		select {
 		case <-ctx.Done():
-			d.ctx.Logger().Debugf("target %+v cancelled", tgt)
+			d.ctx.Debugf("target %+v cancelled", tgt)
 			atomic.AddInt32(&canceledTargets, 1)
 		case <-ctx.Until(xcontext.Paused):
-			d.ctx.Logger().Debugf("target %+v paused", tgt)
+			d.ctx.Debugf("target %+v paused", tgt)
 		case <-time.After(sleepTime):
-			d.ctx.Logger().Debugf("target %+v processed", tgt)
+			d.ctx.Debugf("target %+v processed", tgt)
 		}
 		return nil
 	}

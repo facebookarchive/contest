@@ -98,7 +98,7 @@ func (jr *JobRunner) buildTestStepStatus(ctx xcontext.Context, coordinates job.T
 			// we don't want target routing events in step events, but we want
 			// them in target events below
 			if _, skip := targetRoutingEvents[event.Data.EventName]; skip {
-				ctx.Logger().Warnf("Found routing event '%s' with no target associated, this could indicate a bug", event.Data.EventName)
+				ctx.Warnf("Found routing event '%s' with no target associated, this could indicate a bug", event.Data.EventName)
 				continue
 			}
 			// this goes into TestStepStatus.Events

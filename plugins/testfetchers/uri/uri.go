@@ -88,7 +88,7 @@ func (tf *URI) Fetch(ctx xcontext.Context, params interface{}) (string, []*test.
 	if !ok {
 		return "", nil, fmt.Errorf("Fetch expects uri.FetchParameters object")
 	}
-	ctx.Logger().Debugf("Fetching tests with params %+v", fetchParams)
+	ctx.Debugf("Fetching tests with params %+v", fetchParams)
 	scheme := strings.ToLower(strings.ToLower(fetchParams.URI.Scheme))
 	var (
 		buf []byte

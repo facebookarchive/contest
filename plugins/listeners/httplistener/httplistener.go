@@ -85,7 +85,7 @@ type apiHandler struct {
 func (h *apiHandler) reply(w http.ResponseWriter, status int, msg string) {
 	w.WriteHeader(status)
 	if _, err := fmt.Fprint(w, msg); err != nil {
-		h.ctx.Logger().Debugf("Cannot write to client socket: %v", err)
+		h.ctx.Debugf("Cannot write to client socket: %v", err)
 	}
 }
 
@@ -216,13 +216,13 @@ func listenWithCancellation(ctx xcontext.Context, s *http.Server) error {
 	go func() {
 		errCh <- s.ListenAndServe()
 	}()
-	ctx.Logger().Infof("Started HTTP API listener on %s", s.Addr)
+	ctx.Infof("Started HTTP API listener on %s", s.Addr)
 	// wait for cancellation or for completion
 	select {
 	case err := <-errCh:
 		return err
 	case <-ctx.Done():
-		ctx.Logger().Debugf("Received server shut down request")
+		ctx.Debugf("Received server shut down request")
 		return s.Close()
 	}
 }
@@ -239,7 +239,7 @@ func (h *HTTPListener) Serve(ctx xcontext.Context, a *api.API) error {
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
-	ctx.Logger().Debugf("Serving a listener")
+	ctx.Debugf("Serving a listener")
 	if err := listenWithCancellation(ctx, &s); err != nil {
 		return fmt.Errorf("HTTP listener failed: %v", err)
 	}

@@ -169,9 +169,9 @@ func (tf *CSVFileTargetManager) Acquire(ctx xcontext.Context, jobID types.JobID,
 			len(hosts),
 		)
 	}
-	ctx.Logger().Debugf("Found %d targets in %s", len(hosts), acquireParameters.FileURI.Path)
+	ctx.Debugf("Found %d targets in %s", len(hosts), acquireParameters.FileURI.Path)
 	if acquireParameters.Shuffle {
-		ctx.Logger().Infof("Shuffling targets")
+		ctx.Infof("Shuffling targets")
 		rand.Shuffle(len(hosts), func(i, j int) {
 			hosts[i], hosts[j] = hosts[j], hosts[i]
 		})

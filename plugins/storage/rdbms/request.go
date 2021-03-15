@@ -69,14 +69,14 @@ func (r *RDBMS) GetJobRequest(ctx xcontext.Context, jobID types.JobID) (*job.Req
 	defer r.unlockTx()
 
 	selectStatement := "select job_id, name, requestor, server_id, request_time, descriptor,  extended_descriptor from jobs where job_id = ?"
-	ctx.Logger().Debugf("Executing query: %s", selectStatement)
+	ctx.Debugf("Executing query: %s", selectStatement)
 	rows, err := r.db.Query(selectStatement, jobID)
 	if err != nil {
 		return nil, fmt.Errorf("could not get job request with id %v: %v", jobID, err)
 	}
 	defer func() {
 		if err := rows.Close(); err != nil {
-			ctx.Logger().Warnf("could not close rows for job request: %v", err)
+			ctx.Warnf("could not close rows for job request: %v", err)
 		}
 	}()
 

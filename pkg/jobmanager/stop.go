@@ -24,7 +24,7 @@ func (jm *JobManager) stop(ev *api.Event) *api.EventResponse {
 	// TargetManagerReleaseTimeout for Release to return.
 	err := jm.CancelJob(jobID)
 	if err != nil {
-		ctx.Logger().Errorf("Cannot stop job: %v", err)
+		ctx.Errorf("Cannot stop job: %v", err)
 		return &api.EventResponse{Err: fmt.Errorf("could not stop job: %v", err)}
 	}
 	_ = jm.emitEvent(ctx, jobID, job.EventJobCancelling)

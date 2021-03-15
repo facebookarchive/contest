@@ -66,14 +66,14 @@ func (r *RDBMS) GetJobReport(ctx xcontext.Context, jobID types.JobID) (*job.JobR
 	// get run reports. Don't change the order by asc, because
 	// the code below assumes sorted results by ascending run number.
 	selectStatement := "select success, report_time, reporter_name, run_id, data from run_reports where job_id = ? order by run_id asc"
-	ctx.Logger().Debugf("Executing query: %s", selectStatement)
+	ctx.Debugf("Executing query: %s", selectStatement)
 	rows, err := r.db.Query(selectStatement, jobID)
 	if err != nil {
 		return nil, fmt.Errorf("could not get run report for job %v: %v", jobID, err)
 	}
 	defer func() {
 		if err := rows.Close(); err != nil {
-			ctx.Logger().Warnf("failed to close rows from query statement: %v", err)
+			ctx.Warnf("failed to close rows from query statement: %v", err)
 		}
 	}()
 	var lastRunID, currentRunID uint
@@ -127,14 +127,14 @@ func (r *RDBMS) GetJobReport(ctx xcontext.Context, jobID types.JobID) (*job.JobR
 
 	// get final reports
 	selectStatement = "select success, report_time, reporter_name, data from final_reports where job_id = ?"
-	ctx.Logger().Debugf("Executing query: %s", selectStatement)
+	ctx.Debugf("Executing query: %s", selectStatement)
 	rows2, err := r.db.Query(selectStatement, jobID)
 	if err != nil {
 		return nil, fmt.Errorf("could not get final report for job %v: %v", jobID, err)
 	}
 	defer func() {
 		if err := rows2.Close(); err != nil {
-			ctx.Logger().Warnf("failed to close rows2 from query statement: %v", err)
+			ctx.Warnf("failed to close rows2 from query statement: %v", err)
 		}
 	}()
 	for rows2.Next() {

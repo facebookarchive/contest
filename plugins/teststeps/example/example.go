@@ -63,7 +63,7 @@ func (ts *Step) shouldFail(t *target.Target) bool {
 // Run executes the example step.
 func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	f := func(ctx xcontext.Context, target *target.Target) error {
-		ctx.Logger().Infof("Executing on target %s", target)
+		ctx.Infof("Executing on target %s", target)
 		// NOTE: you may want more robust error handling here, possibly just
 		//       logging the error, or a retry mechanism. Returning an error
 		//       here means failing the entire job.
