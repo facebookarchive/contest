@@ -11,12 +11,26 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/facebookincubator/contest/pkg/xcontext/buildinfo"
 	"github.com/facebookincubator/contest/pkg/xcontext/internal/fields"
 	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/facebookincubator/contest/pkg/xcontext/metrics"
+	"github.com/google/uuid"
+)
+
+var (
+	// DefaultLogTraceID defines if traceID should be logged by default.
+	//
+	// If it is disabled, then logging of traceID for a specific
+	// context could be enforced this way:
+	//     ctx = ctx.WithField("traceID", ctx.TraceID())
+	DefaultLogTraceID = false
+
+	// DefaultLogHostname defines if hostname should be logged by default.
+	DefaultLogHostname = false
+
+	// DefaultLogUsername defines if hostname should be logged by default.
+	DefaultLogUsername = false
 )
 
 // Fields is a multiple of fields which are attached to logger/tracer messages.
@@ -251,10 +265,10 @@ func NewContext(
 		if buildinfo.Revision != "" {
 			tags["revision"] = buildinfo.Revision
 		}
-		if hostname != "" {
+		if DefaultLogHostname && hostname != "" {
 			tags["hostname"] = hostname
 		}
-		if curUser != nil {
+		if DefaultLogUsername && curUser != nil {
 			tags["username"] = curUser.Name
 		}
 	}
@@ -265,7 +279,9 @@ func NewContext(
 	if fields == nil {
 		fields = Fields{}
 	}
-	fields["traceID"] = traceID
+	if DefaultLogTraceID {
+		fields["traceID"] = traceID
+	}
 	ctx.pendingFields.AddMultiple(fields)
 
 	return ctx
@@ -355,7 +371,10 @@ func (ctx *ctxValue) Logger() Logger {
 	if loggerInstance == nil {
 		return nil
 	}
-	ctx.mutationSyncer.Do(ctx.considerPending)
+	ctx.mutationSyncer.Do(func() {
+		ctx.considerPending()
+		loggerInstance = ctx.loadLoggerInstance()
+	})
 	return loggerInstance
 }
 
@@ -373,7 +392,10 @@ func (ctx *ctxValue) Metrics() Metrics {
 	if metricsInstance == nil {
 		return nil
 	}
-	ctx.mutationSyncer.Do(ctx.considerPending)
+	ctx.mutationSyncer.Do(func() {
+		ctx.considerPending()
+		metricsInstance = ctx.loadMetricsInstance()
+	})
 	return metricsInstance
 }
 
@@ -391,7 +413,10 @@ func (ctx *ctxValue) Tracer() Tracer {
 	if tracerInstance == nil {
 		return dummyTracerInstance
 	}
-	ctx.mutationSyncer.Do(ctx.considerPending)
+	ctx.mutationSyncer.Do(func() {
+		ctx.considerPending()
+		tracerInstance = ctx.loadTracerInstance()
+	})
 	return tracerInstance
 }
 

@@ -7,8 +7,10 @@ package zapctx
 
 import (
 	"context"
+	"time"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/pkg/xcontext/bundles"
@@ -37,6 +39,10 @@ func NewContext(logLevel logger.Level, opts ...bundles.Option) xcontext.Context 
 	case bundles.LogFormatJSON:
 		loggerCfg.Encoding = "json"
 	}
+	if cfg.TimestampFormat != "" {
+		loggerCfg.EncoderConfig.EncodeTime = timeEncoder(cfg.TimestampFormat)
+	}
+	// TODO: cfg.VerboseCaller is currently ignored, fix it.
 	var zapOpts []zap.Option
 	stdCtx := context.Background()
 	loggerRaw, err := loggerCfg.Build(zapOpts...)
@@ -49,4 +55,19 @@ func NewContext(logLevel logger.Level, opts ...bundles.Option) xcontext.Context 
 		loggerInstance, metrics.NewSimpleMetrics(), cfg.Tracer,
 		nil, nil)
 	return ctx
+}
+
+func timeEncoder(layout string) func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+	return func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+		type appendTimeEncoder interface {
+			AppendTimeLayout(time.Time, string)
+		}
+
+		if enc, ok := enc.(appendTimeEncoder); ok {
+			enc.AppendTimeLayout(t, layout)
+			return
+		}
+
+		enc.AppendString(t.Format(layout))
+	}
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/api"
 	"github.com/facebookincubator/contest/pkg/config"
 	"github.com/facebookincubator/contest/pkg/jobmanager"
+	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -43,7 +44,7 @@ func main() {
 		panic(err)
 	}
 
-	ctx := logrusctx.NewContext(logLevel)
+	ctx := logrusctx.NewContext(logLevel, logging.DefaultOptions()...)
 	log := ctx.Logger()
 
 	pluginRegistry := pluginregistry.NewPluginRegistry(ctx)

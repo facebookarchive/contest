@@ -58,10 +58,19 @@ func (opt OptionTracer) apply(cfg *Config) {
 	cfg.Tracer = opt.Tracer
 }
 
+// OptionTimestampFormat defines the format of timestamps while logging.
+type OptionTimestampFormat string
+
+func (opt OptionTimestampFormat) apply(cfg *Config) {
+	cfg.TimestampFormat = string(opt)
+}
+
 // Config is a configuration state resulted from Option-s.
 type Config struct {
 	LoggerReportCaller bool
 	TracerReportCaller bool
+	TimestampFormat    string
+	VerboseCaller      bool
 	Tracer             xcontext.Tracer
 	Format             LogFormat
 }
