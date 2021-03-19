@@ -144,10 +144,18 @@ func LeakCheckingTestMain(m *testing.M, funcWhitelist ...string) {
 	ret := m.Run()
 	if ret == 0 {
 		time.Sleep(20 * time.Millisecond) // Give stragglers some time to exit.
-		runtime.Gosched()
+
+		// We need to explicitly call GC to call full GC procedures for real.
+		// Otherwise for example there is high probability of not calling
+		// Finalizers (which are used in xcontext, for example).
+		//
+		// And we do it twice for better reliability (I already had
+		// experience where calling `GC` one was not enough).
 		runtime.GC()
 		runtime.Gosched()
 		runtime.GC()
+		runtime.Gosched()
+
 		if err := CheckLeakedGoRoutines(funcWhitelist...); err != nil {
 			fmt.Fprintf(os.Stderr, "%s", err)
 			ret = 1
