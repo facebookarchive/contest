@@ -15,9 +15,9 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/plugins/teststeps"
 )
 
@@ -65,11 +65,11 @@ func (ts *Step) shouldFail(t *target.Target, params test.TestStepParameters) boo
 }
 
 // Run executes the example step.
-func (ts *Step) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
-	f := func(ctx statectx.Context, target *target.Target) error {
+func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+	f := func(ctx xcontext.Context, target *target.Target) error {
 		// Sleep to ensure TargetIn fires first. This simplifies test assertions.
 		time.Sleep(20 * time.Millisecond)
-		if err := ev.Emit(testevent.Data{EventName: StartedEvent, Target: target, Payload: nil}); err != nil {
+		if err := ev.Emit(ctx, testevent.Data{EventName: StartedEvent, Target: target, Payload: nil}); err != nil {
 			return fmt.Errorf("failed to emit start event: %v", err)
 		}
 		delay := ts.delayTargets[target.ID]
@@ -79,32 +79,32 @@ func (ts *Step) Run(ctx statectx.Context, ch test.TestStepChannels, params test.
 		select {
 		case <-time.After(delay):
 		case <-ctx.Done():
-			return statectx.ErrCanceled
+			return xcontext.Canceled
 		}
 		if ts.shouldFail(target, params) {
-			if err := ev.Emit(testevent.Data{EventName: FailedEvent, Target: target, Payload: nil}); err != nil {
+			if err := ev.Emit(ctx, testevent.Data{EventName: FailedEvent, Target: target, Payload: nil}); err != nil {
 				return fmt.Errorf("failed to emit finished event: %v", err)
 			}
 			return fmt.Errorf("target failed")
 		} else {
-			if err := ev.Emit(testevent.Data{EventName: FinishedEvent, Target: target, Payload: nil}); err != nil {
+			if err := ev.Emit(ctx, testevent.Data{EventName: FinishedEvent, Target: target, Payload: nil}); err != nil {
 				return fmt.Errorf("failed to emit failed event: %v", err)
 			}
 		}
 		return nil
 	}
-	if err := ev.Emit(testevent.Data{EventName: StepRunningEvent}); err != nil {
+	if err := ev.Emit(ctx, testevent.Data{EventName: StepRunningEvent}); err != nil {
 		return fmt.Errorf("failed to emit failed event: %v", err)
 	}
 	res := teststeps.ForEachTarget(Name, ctx, ch, f)
-	if err := ev.Emit(testevent.Data{EventName: StepFinishedEvent}); err != nil {
+	if err := ev.Emit(ctx, testevent.Data{EventName: StepFinishedEvent}); err != nil {
 		return fmt.Errorf("failed to emit failed event: %v", err)
 	}
 	return res
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *Step) ValidateParameters(params test.TestStepParameters) error {
+func (ts *Step) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	targetsToFail := params.GetOne(FailTargetsParam).String()
 	if len(targetsToFail) > 0 {
 		for _, t := range strings.Split(targetsToFail, ",") {
@@ -137,7 +137,7 @@ func (ts *Step) ValidateParameters(params test.TestStepParameters) error {
 
 // Resume tries to resume a previously interrupted test step. TestTestStep
 // cannot resume.
-func (ts *Step) Resume(ctx statectx.Context, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *Step) Resume(ctx xcontext.Context, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

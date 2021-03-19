@@ -11,8 +11,8 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Name is the name used to look this plugin up.
@@ -30,18 +30,18 @@ func (ts *crash) Name() string {
 }
 
 // Run executes a step which does never return.
-func (ts *crash) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *crash) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	return fmt.Errorf("TestStep crashed")
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *crash) ValidateParameters(params test.TestStepParameters) error {
+func (ts *crash) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	return nil
 }
 
 // Resume tries to resume a previously interrupted test step. ExampleTestStep
 // cannot resume.
-func (ts *crash) Resume(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *crash) Resume(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

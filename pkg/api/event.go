@@ -8,6 +8,7 @@ package api
 import (
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // EventType identifies an API event type.
@@ -48,6 +49,7 @@ const (
 // Event represents an event that the API can generate. This is used by the API
 // listener to enable event handling.
 type Event struct {
+	Context  xcontext.Context
 	Type     EventType
 	ServerID string
 	Err      error

@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"time"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/facebookincubator/contest/pkg/api"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
@@ -17,6 +19,8 @@ import (
 )
 
 func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
+	ctx := ev.Context
+
 	msg := ev.Msg.(api.EventStatusMsg)
 	jobID := msg.JobID
 	evResp := api.EventResponse{
@@ -26,13 +30,13 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 	}
 
 	// Look up job request.
-	req, err := jm.jobStorageManager.GetJobRequestAsync(jobID)
+	req, err := jm.jobStorageManager.GetJobRequestAsync(ctx, jobID)
 	if err != nil {
 		evResp.Err = fmt.Errorf("failed to fetch request for job ID %d: %w", jobID, err)
 		return &evResp
 	}
 
-	currentJob, err := NewJobFromExtendedDescriptor(jm.pluginRegistry, req.ExtendedDescriptor)
+	currentJob, err := NewJobFromExtendedDescriptor(ctx, jm.pluginRegistry, req.ExtendedDescriptor)
 	if err != nil {
 		evResp.Err = fmt.Errorf("failed to build job object from job request: %w", err)
 		return &evResp
@@ -55,7 +59,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 	}
 
 	// Fetch all the events associated to changes of state of the Job
-	jobEvents, err := jm.frameworkEvManager.FetchAsync(
+	jobEvents, err := jm.frameworkEvManager.FetchAsync(ctx,
 		frameworkevent.QueryJobID(jobID),
 		frameworkevent.QueryEventNames(job.JobStateEvents),
 	)
@@ -108,7 +112,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 		}
 	}
 
-	report, err := jm.jobStorageManager.GetJobReportAsync(jobID)
+	report, err := jm.jobStorageManager.GetJobReportAsync(ctx, jobID)
 	if err != nil {
 		evResp.Err = fmt.Errorf("could not fetch job report: %v", err)
 		return &evResp
@@ -124,7 +128,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 	}
 
 	// Fetch the ID of the last run that was started
-	runID, err := jm.jobRunner.GetCurrentRun(jobID)
+	runID, err := jm.jobRunner.GetCurrentRun(ev.Context, jobID)
 	if err != nil {
 		evResp.Err = fmt.Errorf("could not determine the current run id being executed: %v", err)
 		return &evResp

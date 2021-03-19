@@ -15,18 +15,15 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/logging"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/plugins/teststeps"
 	"github.com/insomniacslk/termhook"
 )
 
 // Name is the name used to look this plugin up.
 var Name = "TerminalExpect"
-
-var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
 // Events defines the events that a TestStep is allow to emit
 var Events = []event.Name{}
@@ -46,7 +43,7 @@ func (ts TerminalExpect) Name() string {
 }
 
 // match implements termhook.LineHandler
-func match(match string) termhook.LineHandler {
+func match(match string, log xcontext.Logger) termhook.LineHandler {
 	return func(w io.Writer, line []byte) (bool, error) {
 		if strings.Contains(string(line), match) {
 			log.Infof("%s: found pattern '%s'", Name, match)
@@ -57,17 +54,19 @@ func match(match string) termhook.LineHandler {
 }
 
 // Run executes the terminal step.
-func (ts *TerminalExpect) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *TerminalExpect) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+	log := ctx.Logger()
+
 	if err := ts.validateAndPopulate(params); err != nil {
 		return err
 	}
-	hook, err := termhook.NewHook(ts.Port, ts.Speed, match(ts.Match))
+	hook, err := termhook.NewHook(ts.Port, ts.Speed, match(ts.Match, log))
 	if err != nil {
 		return err
 	}
 	hook.ReadOnly = true
 	// f implements plugins.PerTargetFunc
-	f := func(ctx statectx.Context, target *target.Target) error {
+	f := func(ctx xcontext.Context, target *target.Target) error {
 		errCh := make(chan error, 1)
 		go func() {
 			errCh <- hook.Run()
@@ -84,7 +83,7 @@ func (ts *TerminalExpect) Run(ctx statectx.Context, ch test.TestStepChannels, pa
 			return nil
 		}
 	}
-	log.Printf("%s: waiting for string '%s' with timeout %s", Name, ts.Match, ts.Timeout)
+	log.Debugf("%s: waiting for string '%s' with timeout %s", Name, ts.Match, ts.Timeout)
 	return teststeps.ForEachTarget(Name, ctx, ch, f)
 }
 
@@ -118,13 +117,13 @@ func (ts *TerminalExpect) validateAndPopulate(params test.TestStepParameters) er
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *TerminalExpect) ValidateParameters(params test.TestStepParameters) error {
+func (ts *TerminalExpect) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	return ts.validateAndPopulate(params)
 }
 
 // Resume tries to resume a previously interrupted test step. TerminalExpect cannot
 // resume.
-func (ts *TerminalExpect) Resume(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *TerminalExpect) Resume(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

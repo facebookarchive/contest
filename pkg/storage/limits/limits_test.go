@@ -20,6 +20,9 @@ import (
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/storage/limits"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/facebookincubator/contest/plugins/reporters/noop"
 	"github.com/facebookincubator/contest/plugins/targetmanagers/targetlist"
 	"github.com/facebookincubator/contest/plugins/testfetchers/literal"
@@ -30,6 +33,10 @@ import (
 
 // This tests are bad, because they touche so may things which are not related to storage limitations and
 // depend on order of checks in validation code, but this is the price of having them all in one package
+
+var (
+	ctx = logrusctx.NewContext(logger.LevelDebug)
+)
 
 func TestServerID(t *testing.T) {
 	_, err := api.New(api.OptionServerID(strings.Repeat("A", limits.MaxServerIDLen+1)))
@@ -45,7 +52,8 @@ func TestRequestorName(t *testing.T) {
 	apiInst := api.API{}
 	timeout := time.Second
 	err := apiInst.SendEvent(&api.Event{
-		Msg: eventMsg{requestor: api.EventRequestor(strings.Repeat("A", limits.MaxRequestorNameLen+1))},
+		Context: xcontext.Background(),
+		Msg:     eventMsg{requestor: api.EventRequestor(strings.Repeat("A", limits.MaxRequestorNameLen+1))},
 	}, &timeout)
 	assertLenError(t, "Requestor name", err)
 }
@@ -60,7 +68,7 @@ func TestJobName(t *testing.T) {
 	jd := job.Descriptor{TestDescriptors: []*test.TestDescriptor{{}}, JobName: strings.Repeat("A", limits.MaxJobNameLen+1)}
 	jsonJd, err := json.Marshal(&jd)
 	require.NoError(t, err)
-	_, err = jobmanager.NewJobFromJSONDescriptor(&pluginregistry.PluginRegistry{}, string(jsonJd))
+	_, err = jobmanager.NewJobFromJSONDescriptor(ctx, &pluginregistry.PluginRegistry{}, string(jsonJd))
 	assertLenError(t, "Job name", err)
 }
 
@@ -72,11 +80,11 @@ func TestReporterName(t *testing.T) {
 	}
 	jsonJd, err := json.Marshal(&jd)
 	require.NoError(t, err)
-	_, err = jobmanager.NewJobFromJSONDescriptor(&pluginregistry.PluginRegistry{}, string(jsonJd))
+	_, err = jobmanager.NewJobFromJSONDescriptor(ctx, &pluginregistry.PluginRegistry{}, string(jsonJd))
 	assertLenError(t, "Reporter name", err)
 }
 func TestTestName(t *testing.T) {
-	pluginRegistry := pluginregistry.NewPluginRegistry()
+	pluginRegistry := pluginregistry.NewPluginRegistry(ctx)
 	err := pluginRegistry.RegisterTargetManager(targetlist.Load())
 	require.NoError(t, err)
 	err = pluginRegistry.RegisterTestFetcher(literal.Load())
@@ -100,12 +108,12 @@ func TestTestName(t *testing.T) {
 	}
 	jsonJd, err := json.Marshal(&jd)
 	require.NoError(t, err)
-	_, err = jobmanager.NewJobFromJSONDescriptor(pluginRegistry, string(jsonJd))
+	_, err = jobmanager.NewJobFromJSONDescriptor(ctx, pluginRegistry, string(jsonJd))
 	assertLenError(t, "Test name", err)
 }
 
 func TestTestStepLabel(t *testing.T) {
-	pluginRegistry := pluginregistry.NewPluginRegistry()
+	pluginRegistry := pluginregistry.NewPluginRegistry(ctx)
 	err := pluginRegistry.RegisterTargetManager(targetlist.Load())
 	require.NoError(t, err)
 	err = pluginRegistry.RegisterTestFetcher(literal.Load())
@@ -132,7 +140,7 @@ func TestTestStepLabel(t *testing.T) {
 	}
 	jsonJd, err := json.Marshal(&jd)
 	require.NoError(t, err)
-	_, err = jobmanager.NewJobFromJSONDescriptor(pluginRegistry, string(jsonJd))
+	_, err = jobmanager.NewJobFromJSONDescriptor(ctx, pluginRegistry, string(jsonJd))
 	assertLenError(t, "Test step label", err)
 }
 

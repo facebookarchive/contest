@@ -8,23 +8,19 @@ package slowecho
 import (
 	"errors"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/logging"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/plugins/teststeps"
 )
 
 // Name is the name used to look this plugin up.
 var Name = "SlowEcho"
-
-var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
 // Events defines the events that a TestStep is allow to emit
 var Events = []event.Name{}
@@ -63,7 +59,7 @@ func sleepTime(secStr string) (time.Duration, error) {
 
 // ValidateParameters validates the parameters that will be passed to the Run
 // and Resume methods of the test step.
-func (e *Step) ValidateParameters(params test.TestStepParameters) error {
+func (e *Step) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	if t := params.GetOne("text"); t.IsEmpty() {
 		return errors.New("missing 'text' field in slowecho parameters")
 	}
@@ -80,20 +76,20 @@ func (e *Step) ValidateParameters(params test.TestStepParameters) error {
 }
 
 // Run executes the step
-func (e *Step) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (e *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	sleep, err := sleepTime(params.GetOne("sleep").String())
 	if err != nil {
 		return err
 	}
-	f := func(ctx statectx.Context, t *target.Target) error {
-		log.Infof("Waiting %v for target %s", sleep, t.ID)
+	f := func(ctx xcontext.Context, t *target.Target) error {
+		ctx.Infof("Waiting %v for target %s", sleep, t.ID)
 		select {
 		case <-time.After(sleep):
 		case <-ctx.Done():
-			log.Infof("Returning because cancellation is requested")
-			return statectx.ErrCanceled
+			ctx.Infof("Returning because cancellation is requested")
+			return xcontext.Canceled
 		}
-		log.Infof("target %s: %s", t, params.GetOne("text"))
+		ctx.Infof("target %s: %s", t, params.GetOne("text"))
 		return nil
 	}
 	return teststeps.ForEachTarget(Name, ctx, ch, f)
@@ -106,6 +102,6 @@ func (e Step) CanResume() bool {
 
 // Resume tries to resume a previously interrupted test step. EchoStep cannot
 // resume.
-func (e Step) Resume(ctx statectx.Context, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (e Step) Resume(ctx xcontext.Context, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }

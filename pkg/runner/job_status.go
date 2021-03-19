@@ -16,6 +16,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // targetRoutingEvents gather all event names which track the flow of targets
@@ -76,12 +77,12 @@ func (jr *JobRunner) buildTargetStatuses(coordinates job.TestStepCoordinates, ta
 }
 
 // buildTestStepStatus builds the status object of a test step belonging to a test
-func (jr *JobRunner) buildTestStepStatus(coordinates job.TestStepCoordinates) (*job.TestStepStatus, error) {
+func (jr *JobRunner) buildTestStepStatus(ctx xcontext.Context, coordinates job.TestStepCoordinates) (*job.TestStepStatus, error) {
 
 	testStepStatus := job.TestStepStatus{TestStepCoordinates: coordinates}
 
 	// Fetch all Events associated to this TestStep
-	testEvents, err := jr.testEvManager.Fetch(
+	testEvents, err := jr.testEvManager.Fetch(ctx,
 		testevent.QueryJobID(coordinates.JobID),
 		testevent.QueryRunID(coordinates.RunID),
 		testevent.QueryTestName(coordinates.TestName),
@@ -97,7 +98,7 @@ func (jr *JobRunner) buildTestStepStatus(coordinates job.TestStepCoordinates) (*
 			// we don't want target routing events in step events, but we want
 			// them in target events below
 			if _, skip := targetRoutingEvents[event.Data.EventName]; skip {
-				jobLog.Warningf("Found routing event '%s' with no target associated, this could indicate a bug", event.Data.EventName)
+				ctx.Warnf("Found routing event '%s' with no target associated, this could indicate a bug", event.Data.EventName)
 				continue
 			}
 			// this goes into TestStepStatus.Events
@@ -118,7 +119,7 @@ func (jr *JobRunner) buildTestStepStatus(coordinates job.TestStepCoordinates) (*
 }
 
 // buildTestStatus builds the status of a test belonging to a specific to a test
-func (jr *JobRunner) buildTestStatus(coordinates job.TestCoordinates, currentJob *job.Job) (*job.TestStatus, error) {
+func (jr *JobRunner) buildTestStatus(ctx xcontext.Context, coordinates job.TestCoordinates, currentJob *job.Job) (*job.TestStatus, error) {
 
 	var currentTest *test.Test
 	// Identify the test within the Job for which we are asking to calculate the status
@@ -144,7 +145,7 @@ func (jr *JobRunner) buildTestStatus(coordinates job.TestCoordinates, currentJob
 			TestStepName:    bundle.TestStep.Name(),
 			TestStepLabel:   bundle.TestStepLabel,
 		}
-		testStepStatus, err := jr.buildTestStepStatus(testStepCoordinates)
+		testStepStatus, err := jr.buildTestStepStatus(currentJob.StateCtx, testStepCoordinates)
 		if err != nil {
 			return nil, fmt.Errorf("could not build TestStatus for test %s: %v", bundle.TestStep.Name(), err)
 		}
@@ -156,7 +157,7 @@ func (jr *JobRunner) buildTestStatus(coordinates job.TestCoordinates, currentJob
 
 	// Fetch all events signaling that a Target has been acquired. This is the source of truth
 	// indicating which Targets belong to a Test.
-	targetAcquiredEvents, err := jr.testEvManager.Fetch(
+	targetAcquiredEvents, err := jr.testEvManager.Fetch(ctx,
 		testevent.QueryJobID(coordinates.JobID),
 		testevent.QueryRunID(coordinates.RunID),
 		testevent.QueryTestName(coordinates.TestName),
@@ -198,7 +199,7 @@ func (jr *JobRunner) BuildRunStatus(coordinates job.RunCoordinates, currentJob *
 
 	for index, currentTest := range currentJob.Tests {
 		testCoordinates := job.TestCoordinates{RunCoordinates: coordinates, TestName: currentTest.Name}
-		testStatus, err := jr.buildTestStatus(testCoordinates, currentJob)
+		testStatus, err := jr.buildTestStatus(currentJob.StateCtx, testCoordinates, currentJob)
 		if err != nil {
 			return nil, fmt.Errorf("could not rebuild status for test %s: %v", currentTest.Name, err)
 		}
@@ -211,7 +212,7 @@ func (jr *JobRunner) BuildRunStatus(coordinates job.RunCoordinates, currentJob *
 func (jr *JobRunner) BuildRunStatuses(currentJob *job.Job) ([]job.RunStatus, error) {
 
 	// Calculate the status only for the runs which effectively were executed
-	runStartEvents, err := jr.frameworkEventManager.Fetch(frameworkevent.QueryEventName(EventRunStarted), frameworkevent.QueryJobID(currentJob.ID))
+	runStartEvents, err := jr.frameworkEventManager.Fetch(currentJob.StateCtx, frameworkevent.QueryEventName(EventRunStarted), frameworkevent.QueryJobID(currentJob.ID))
 	if err != nil {
 		return nil, fmt.Errorf("could not determine how many runs were executed: %v", err)
 	}

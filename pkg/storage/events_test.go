@@ -10,6 +10,9 @@ import (
 	"os"
 	"testing"
 
+	"github.com/facebookincubator/contest/pkg/xcontext"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/stretchr/testify/require"
 
 	"github.com/facebookincubator/contest/pkg/event"
@@ -37,23 +40,32 @@ var (
 	forbiddenEvents = []event.Name{
 		"TestEventForbidden1",
 	}
+	ctx = logrusctx.NewContext(logger.LevelDebug)
 )
 
 type nullStorage struct{}
 
-func (n *nullStorage) StoreJobRequest(request *job.Request) (types.JobID, error) {
+func (n *nullStorage) StoreJobRequest(ctx xcontext.Context, request *job.Request) (types.JobID, error) {
 	return types.JobID(0), nil
 }
-func (n *nullStorage) GetJobRequest(jobID types.JobID) (*job.Request, error)  { return nil, nil }
-func (n *nullStorage) StoreJobReport(report *job.JobReport) error             { return nil }
-func (n *nullStorage) GetJobReport(jobID types.JobID) (*job.JobReport, error) { return nil, nil }
-func (n *nullStorage) ListJobs(query *JobQuery) ([]types.JobID, error)        { return nil, nil }
-func (n *nullStorage) StoreTestEvent(event testevent.Event) error             { return nil }
-func (n *nullStorage) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, error) {
+func (n *nullStorage) GetJobRequest(ctx xcontext.Context, jobID types.JobID) (*job.Request, error) {
 	return nil, nil
 }
-func (n *nullStorage) StoreFrameworkEvent(event frameworkevent.Event) error { return nil }
-func (n *nullStorage) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]frameworkevent.Event, error) {
+func (n *nullStorage) StoreJobReport(ctx xcontext.Context, report *job.JobReport) error { return nil }
+func (n *nullStorage) GetJobReport(ctx xcontext.Context, jobID types.JobID) (*job.JobReport, error) {
+	return nil, nil
+}
+func (n *nullStorage) ListJobs(ctx xcontext.Context, query *JobQuery) ([]types.JobID, error) {
+	return nil, nil
+}
+func (n *nullStorage) StoreTestEvent(ctx xcontext.Context, event testevent.Event) error { return nil }
+func (n *nullStorage) GetTestEvents(ctx xcontext.Context, eventQuery *testevent.Query) ([]testevent.Event, error) {
+	return nil, nil
+}
+func (n *nullStorage) StoreFrameworkEvent(ctx xcontext.Context, event frameworkevent.Event) error {
+	return nil
+}
+func (n *nullStorage) GetFrameworkEvent(ctx xcontext.Context, eventQuery *frameworkevent.Query) ([]frameworkevent.Event, error) {
 	return nil, nil
 }
 
@@ -70,14 +82,14 @@ func TestMain(m *testing.M) {
 
 func TestEmitUnrestricted(t *testing.T) {
 	em := NewTestEventEmitter(header)
-	require.NoError(t, em.Emit(testevent.Data{EventName: allowedEvents[0]}))
-	require.NoError(t, em.Emit(testevent.Data{EventName: allowedEvents[1]}))
-	require.NoError(t, em.Emit(testevent.Data{EventName: forbiddenEvents[0]}))
+	require.NoError(t, em.Emit(ctx, testevent.Data{EventName: allowedEvents[0]}))
+	require.NoError(t, em.Emit(ctx, testevent.Data{EventName: allowedEvents[1]}))
+	require.NoError(t, em.Emit(ctx, testevent.Data{EventName: forbiddenEvents[0]}))
 }
 
 func TestEmitRestricted(t *testing.T) {
 	em := NewTestEventEmitterWithAllowedEvents(header, &allowedMap)
-	require.NoError(t, em.Emit(testevent.Data{EventName: allowedEvents[0]}))
-	require.NoError(t, em.Emit(testevent.Data{EventName: allowedEvents[1]}))
-	require.Error(t, em.Emit(testevent.Data{EventName: forbiddenEvents[0]}))
+	require.NoError(t, em.Emit(ctx, testevent.Data{EventName: allowedEvents[0]}))
+	require.NoError(t, em.Emit(ctx, testevent.Data{EventName: allowedEvents[1]}))
+	require.Error(t, em.Emit(ctx, testevent.Data{EventName: forbiddenEvents[0]}))
 }

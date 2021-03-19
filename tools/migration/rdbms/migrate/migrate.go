@@ -7,8 +7,9 @@ package migrate
 
 import (
 	"database/sql"
-	"github.com/sirupsen/logrus"
 	"runtime"
+
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Migrate is the interface that every migration task must implement to support
@@ -20,7 +21,7 @@ type Migrate interface {
 }
 
 // Factory defines a factory type of an object implementing Migration interface
-type Factory func(log *logrus.Entry) Migrate
+type Factory func(ctx xcontext.Context) Migrate
 
 // Migration represents a migration task registered in the migration tool
 type Migration struct {

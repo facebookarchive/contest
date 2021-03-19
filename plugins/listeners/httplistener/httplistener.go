@@ -18,14 +18,15 @@ import (
 	"github.com/facebookincubator/contest/pkg/api"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/job"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
-var log = logging.GetLogger("listeners/httplistener")
-
 // HTTPListener implements the api.Listener interface.
-type HTTPListener struct {
+type HTTPListener struct{}
+
+func NewHTTPListener() *HTTPListener {
+	return &HTTPListener{}
 }
 
 // HTTPAPIResponse is returned when an API method succeeds. It wraps the content
@@ -77,13 +78,14 @@ func strToJobID(s string) (types.JobID, error) {
 }
 
 type apiHandler struct {
+	ctx xcontext.Context
 	api *api.API
 }
 
-func reply(w http.ResponseWriter, status int, msg string) {
+func (h *apiHandler) reply(w http.ResponseWriter, status int, msg string) {
 	w.WriteHeader(status)
 	if _, err := fmt.Fprint(w, msg); err != nil {
-		log.Printf("Cannot write to client socket: %v", err)
+		h.ctx.Debugf("Cannot write to client socket: %v", err)
 	}
 }
 
@@ -98,12 +100,17 @@ func (h *apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// This is only used by status, stop, and reply. Ignored for other
 	// methods. If not set by the client, this is an empty string.
 	if r.Method != "POST" {
-		reply(w, http.StatusBadRequest, "Only POST requests are supported")
+		h.reply(w, http.StatusBadRequest, "Only POST requests are supported")
 		return
 	}
 	jobIDStr := r.PostFormValue("jobID")
 	jobDesc := r.PostFormValue("jobDesc")
 	requestor := api.EventRequestor(r.PostFormValue("requestor"))
+
+	ctx := h.ctx.WithTags(xcontext.Fields{
+		"http_verb":      verb,
+		"http_requestor": requestor,
+	}).WithField("http_job_id", jobIDStr)
 
 	switch verb {
 	case "start":
@@ -112,7 +119,7 @@ func (h *apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			errMsg = "Missing job description"
 			break
 		}
-		if resp, err = h.api.Start(requestor, jobDesc); err != nil {
+		if resp, err = h.api.Start(ctx, requestor, jobDesc); err != nil {
 			httpStatus = http.StatusBadRequest
 			errMsg = fmt.Sprintf("Start failed: %v", err)
 		}
@@ -123,7 +130,7 @@ func (h *apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			errMsg = fmt.Sprintf("Status failed: %v", err)
 			break
 		}
-		if resp, err = h.api.Status(requestor, jobID); err != nil {
+		if resp, err = h.api.Status(ctx, requestor, jobID); err != nil {
 			httpStatus = http.StatusBadRequest
 			errMsg = fmt.Sprintf("Status failed: %v", err)
 		}
@@ -134,7 +141,7 @@ func (h *apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			errMsg = fmt.Sprintf("Stop failed: %v", err)
 			break
 		}
-		if resp, err = h.api.Stop(requestor, jobID); err != nil {
+		if resp, err = h.api.Stop(ctx, requestor, jobID); err != nil {
 			httpStatus = http.StatusBadRequest
 			errMsg = fmt.Sprintf("Stop failed: %v", err)
 		}
@@ -145,7 +152,7 @@ func (h *apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			errMsg = fmt.Sprintf("Retry failed: %v", err)
 			break
 		}
-		if resp, err = h.api.Retry(requestor, jobID); err != nil {
+		if resp, err = h.api.Retry(ctx, requestor, jobID); err != nil {
 			httpStatus = http.StatusBadRequest
 			errMsg = fmt.Sprintf("Retry failed: %v", err)
 		}
@@ -166,7 +173,7 @@ func (h *apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if tagsStr := r.PostFormValue("tags"); len(tagsStr) > 0 {
 			tags = strings.Split(tagsStr, ",")
 		}
-		if resp, err = h.api.List(requestor, states, tags); err != nil {
+		if resp, err = h.api.List(ctx, requestor, states, tags); err != nil {
 			httpStatus = http.StatusBadRequest
 			errMsg = fmt.Sprintf("List failed: %v", err)
 		}
@@ -184,7 +191,7 @@ func (h *apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			panic(fmt.Sprintf("cannot marshal HTTPAPIError: %v", err))
 		}
-		reply(w, httpStatus, string(msg))
+		h.reply(w, httpStatus, string(msg))
 		return
 	}
 	apiResp := NewHTTPAPIResponse(&resp)
@@ -197,10 +204,10 @@ func (h *apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		panic(fmt.Sprintf("cannot marshal HTTPAPIResponse: %v", err))
 	}
 	msg := buffer.Bytes()
-	reply(w, httpStatus, string(msg))
+	h.reply(w, httpStatus, string(msg))
 }
 
-func listenWithCancellation(cancel <-chan struct{}, s *http.Server) error {
+func listenWithCancellation(ctx xcontext.Context, s *http.Server) error {
 	var (
 		errCh = make(chan error, 1)
 	)
@@ -209,32 +216,32 @@ func listenWithCancellation(cancel <-chan struct{}, s *http.Server) error {
 	go func() {
 		errCh <- s.ListenAndServe()
 	}()
-	log.Infof("Started HTTP API listener on %s", s.Addr)
+	ctx.Infof("Started HTTP API listener on %s", s.Addr)
 	// wait for cancellation or for completion
 	select {
 	case err := <-errCh:
 		return err
-	case <-cancel:
-		log.Printf("Received server shut down request")
+	case <-ctx.Done():
+		ctx.Debugf("Received server shut down request")
 		return s.Close()
 	}
 }
 
 // Serve implements the api.Listener.Serve interface method. It starts an HTTP
 // API listener and returns an api.Event channel that the caller can iterate on.
-func (h *HTTPListener) Serve(cancel <-chan struct{}, a *api.API) error {
+func (h *HTTPListener) Serve(ctx xcontext.Context, a *api.API) error {
 	if a == nil {
 		return errors.New("API object is nil")
 	}
 	s := http.Server{
 		Addr:         ":8080",
-		Handler:      &apiHandler{api: a},
+		Handler:      &apiHandler{ctx: ctx, api: a},
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
-	if err := listenWithCancellation(cancel, &s); err != nil {
+	ctx.Debugf("Serving a listener")
+	if err := listenWithCancellation(ctx, &s); err != nil {
 		return fmt.Errorf("HTTP listener failed: %v", err)
 	}
-	log.Printf("Server shut down successfully.")
 	return nil
 }

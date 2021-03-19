@@ -11,9 +11,9 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Name is the name used to look this plugin up.
@@ -31,7 +31,7 @@ func (ts *badTargets) Name() string {
 }
 
 // Run executes a step that messes up the flow of targets.
-func (ts *badTargets) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *badTargets) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	for {
 		select {
 		case tgt, ok := <-ch.In:
@@ -47,30 +47,30 @@ func (ts *badTargets) Run(ctx statectx.Context, ch test.TestStepChannels, params
 				select {
 				case ch.Out <- &tgt2:
 				case <-ctx.Done():
-					return statectx.ErrCanceled
+					return xcontext.Canceled
 				}
 			case "TDup":
 				select {
 				case ch.Out <- tgt:
 				case <-ctx.Done():
-					return statectx.ErrCanceled
+					return xcontext.Canceled
 				}
 				select {
 				case ch.Out <- tgt:
 				case <-ctx.Done():
-					return statectx.ErrCanceled
+					return xcontext.Canceled
 				}
 			case "TExtra":
 				tgt2 := &target.Target{ID: "TExtra2"}
 				select {
 				case ch.Out <- tgt:
 				case <-ctx.Done():
-					return statectx.ErrCanceled
+					return xcontext.Canceled
 				}
 				select {
 				case ch.Out <- tgt2:
 				case <-ctx.Done():
-					return statectx.ErrCanceled
+					return xcontext.Canceled
 				}
 			case "T1":
 				// Mangle the returned target name.
@@ -78,25 +78,25 @@ func (ts *badTargets) Run(ctx statectx.Context, ch test.TestStepChannels, params
 				select {
 				case ch.Out <- tgt2:
 				case <-ctx.Done():
-					return statectx.ErrCanceled
+					return xcontext.Canceled
 				}
 			default:
 				return fmt.Errorf("Unexpected target name: %q", tgt.ID)
 			}
 		case <-ctx.Done():
-			return statectx.ErrCanceled
+			return xcontext.Canceled
 		}
 	}
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *badTargets) ValidateParameters(params test.TestStepParameters) error {
+func (ts *badTargets) ValidateParameters(ctx xcontext.Context, params test.TestStepParameters) error {
 	return nil
 }
 
 // Resume tries to resume a previously interrupted test step. ExampleTestStep
 // cannot resume.
-func (ts *badTargets) Resume(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *badTargets) Resume(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

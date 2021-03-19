@@ -17,6 +17,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 func assembleQuery(baseQuery bytes.Buffer, selectClauses []string) (string, error) {
@@ -180,7 +181,7 @@ func TestEventEmitTime(ev testevent.Event) interface{} {
 
 // StoreTestEvent appends an event to the internal buffer and triggers a flush
 // when the internal storage utilization goes beyond `testEventsFlushSize`
-func (r *RDBMS) StoreTestEvent(event testevent.Event) error {
+func (r *RDBMS) StoreTestEvent(_ xcontext.Context, event testevent.Event) error {
 
 	defer r.testEventsLock.Unlock()
 	r.testEventsLock.Lock()
@@ -221,7 +222,7 @@ func (r *RDBMS) flushTestEvents() error {
 }
 
 // GetTestEvents retrieves test events matching the query fields provided
-func (r *RDBMS) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, error) {
+func (r *RDBMS) GetTestEvents(ctx xcontext.Context, eventQuery *testevent.Query) ([]testevent.Event, error) {
 
 	// Flush pending events before Get operations
 	r.testEventsLock.Lock()
@@ -243,7 +244,7 @@ func (r *RDBMS) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, e
 	}
 
 	results := []testevent.Event{}
-	log.Debugf("Executing query: %s, fields: %v", query, fields)
+	ctx.Debugf("Executing query: %s, fields: %v", query, fields)
 	rows, err := r.db.Query(query, fields...)
 	if err != nil {
 		return nil, err
@@ -258,7 +259,7 @@ func (r *RDBMS) GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, e
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			log.Warningf("could not close rows for test events: %v", err)
+			ctx.Warnf("could not close rows for test events: %v", err)
 		}
 	}()
 	for rows.Next() {
@@ -322,7 +323,7 @@ func FrameworkEventEmitTime(ev frameworkevent.Event) interface{} {
 
 // StoreFrameworkEvent appends an event to the internal buffer and triggers a flush
 // when the internal storage utilization goes beyond `frameworkEventsFlushSize`
-func (r *RDBMS) StoreFrameworkEvent(event frameworkevent.Event) error {
+func (r *RDBMS) StoreFrameworkEvent(ctx xcontext.Context, event frameworkevent.Event) error {
 
 	defer r.frameworkEventsLock.Unlock()
 	r.frameworkEventsLock.Lock()
@@ -372,7 +373,7 @@ func (r *RDBMS) flushFrameworkEvents() error {
 }
 
 // GetFrameworkEvent retrieves framework events matching the query fields provided
-func (r *RDBMS) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]frameworkevent.Event, error) {
+func (r *RDBMS) GetFrameworkEvent(ctx xcontext.Context, eventQuery *frameworkevent.Query) ([]frameworkevent.Event, error) {
 
 	// Flush pending events before Get operations
 	r.frameworkEventsLock.Lock()
@@ -392,7 +393,7 @@ func (r *RDBMS) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]framework
 		return nil, fmt.Errorf("could not execute select query for test events: %v", err)
 	}
 	results := []frameworkevent.Event{}
-	log.Debugf("Executing query: %s, fields: %v", query, fields)
+	ctx.Debugf("Executing query: %s, fields: %v", query, fields)
 	rows, err := r.db.Query(query, fields...)
 	if err != nil {
 		return nil, err
@@ -400,7 +401,7 @@ func (r *RDBMS) GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]framework
 
 	defer func() {
 		if err := rows.Close(); err != nil {
-			log.Warningf("could not close rows for framework events: %v", err)
+			ctx.Warnf("could not close rows for framework events: %v", err)
 		}
 	}()
 

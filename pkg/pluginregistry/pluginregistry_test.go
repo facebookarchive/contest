@@ -11,10 +11,16 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	ctx = logrusctx.NewContext(logger.LevelDebug)
 )
 
 // Definition of two dummy TestSteps to be used to test the PluginRegistry
@@ -28,7 +34,7 @@ func NewAStep() test.TestStep {
 }
 
 // ValidateParameters validates the parameters for the AStep
-func (e AStep) ValidateParameters(params test.TestStepParameters) error {
+func (e AStep) ValidateParameters(ctx xcontext.Context, params test.TestStepParameters) error {
 	return nil
 }
 
@@ -38,7 +44,7 @@ func (e AStep) Name() string {
 }
 
 // Run executes the AStep
-func (e AStep) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (e AStep) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	return nil
 }
 
@@ -48,18 +54,18 @@ func (e AStep) CanResume() bool {
 }
 
 // Resume tries to resume AStep
-func (e AStep) Resume(ctx statectx.Context, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (e AStep) Resume(ctx xcontext.Context, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: "AStep"}
 }
 
 func TestRegisterTestStep(t *testing.T) {
-	pr := NewPluginRegistry()
+	pr := NewPluginRegistry(ctx)
 	err := pr.RegisterTestStep("AStep", NewAStep, []event.Name{event.Name("AStepEventName")})
 	require.NoError(t, err)
 }
 
 func TestRegisterTestStepDoesNotValidate(t *testing.T) {
-	pr := NewPluginRegistry()
+	pr := NewPluginRegistry(ctx)
 	err := pr.RegisterTestStep("AStep", NewAStep, []event.Name{event.Name("Event which does not validate")})
 	require.Error(t, err)
 }

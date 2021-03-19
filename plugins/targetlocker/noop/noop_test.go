@@ -11,7 +11,13 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	ctx = logrusctx.NewContext(logger.LevelDebug)
 )
 
 func TestNoopNew(t *testing.T) {
@@ -27,12 +33,12 @@ func TestNoopLock(t *testing.T) {
 	// So, zero targets is OK.
 	jobID := types.JobID(123)
 	jobTargetManagerAcquireTimeout := 5 * time.Minute
-	require.Nil(t, tl.Lock(jobID, jobTargetManagerAcquireTimeout, nil))
-	require.Nil(t, tl.Lock(jobID, jobTargetManagerAcquireTimeout, []*target.Target{}))
-	require.Nil(t, tl.Lock(jobID, jobTargetManagerAcquireTimeout, []*target.Target{
+	require.Nil(t, tl.Lock(ctx, jobID, jobTargetManagerAcquireTimeout, nil))
+	require.Nil(t, tl.Lock(ctx, jobID, jobTargetManagerAcquireTimeout, []*target.Target{}))
+	require.Nil(t, tl.Lock(ctx, jobID, jobTargetManagerAcquireTimeout, []*target.Target{
 		&target.Target{ID: "blah"},
 	}))
-	require.Nil(t, tl.Lock(jobID, jobTargetManagerAcquireTimeout, []*target.Target{
+	require.Nil(t, tl.Lock(ctx, jobID, jobTargetManagerAcquireTimeout, []*target.Target{
 		&target.Target{ID: "blah"},
 		&target.Target{ID: "bleh"},
 	}))
@@ -45,15 +51,15 @@ func TestNoopTryLock(t *testing.T) {
 	// So, zero targets is OK.
 	jobID := types.JobID(123)
 	jobTargetManagerAcquireTimeout := 5 * time.Minute
-	_, err := tl.TryLock(jobID, jobTargetManagerAcquireTimeout, nil, 0)
+	_, err := tl.TryLock(ctx, jobID, jobTargetManagerAcquireTimeout, nil, 0)
 	require.Nil(t, err)
-	_, err = tl.TryLock(jobID, jobTargetManagerAcquireTimeout, []*target.Target{}, 0)
+	_, err = tl.TryLock(ctx, jobID, jobTargetManagerAcquireTimeout, []*target.Target{}, 0)
 	require.Nil(t, err)
-	_, err = tl.TryLock(jobID, jobTargetManagerAcquireTimeout, []*target.Target{
+	_, err = tl.TryLock(ctx, jobID, jobTargetManagerAcquireTimeout, []*target.Target{
 		&target.Target{ID: "blah"},
 	}, 1)
 	require.Nil(t, err)
-	_, err = tl.TryLock(jobID, jobTargetManagerAcquireTimeout, []*target.Target{
+	_, err = tl.TryLock(ctx, jobID, jobTargetManagerAcquireTimeout, []*target.Target{
 		&target.Target{ID: "blah"},
 		&target.Target{ID: "bleh"},
 	}, 2)
@@ -66,12 +72,12 @@ func TestNoopUnlock(t *testing.T) {
 	// non-zero targets is the framework's responsibility, not the plugin.
 	// So, zero targets is OK.
 	jobID := types.JobID(123)
-	require.Nil(t, tl.Unlock(jobID, nil))
-	require.Nil(t, tl.Unlock(jobID, []*target.Target{}))
-	require.Nil(t, tl.Unlock(jobID, []*target.Target{
+	require.Nil(t, tl.Unlock(ctx, jobID, nil))
+	require.Nil(t, tl.Unlock(ctx, jobID, []*target.Target{}))
+	require.Nil(t, tl.Unlock(ctx, jobID, []*target.Target{
 		&target.Target{ID: "blah"},
 	}))
-	require.Nil(t, tl.Unlock(jobID, []*target.Target{
+	require.Nil(t, tl.Unlock(ctx, jobID, []*target.Target{
 		&target.Target{ID: "blah"},
 		&target.Target{ID: "bleh"},
 	}))

@@ -11,6 +11,7 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/storage"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 func eventToStringNoTime(ev testevent.Event) string {
@@ -20,9 +21,9 @@ func eventToStringNoTime(ev testevent.Event) string {
 
 // GetTestEventsAsString queries storage for particular test's events,
 // further filtering by target ID and/or step label.
-func GetTestEventsAsString(st storage.EventStorage, testName string, targetID, stepLabel *string) string {
+func GetTestEventsAsString(ctx xcontext.Context, st storage.EventStorage, testName string, targetID, stepLabel *string) string {
 	q, _ := testevent.BuildQuery(testevent.QueryTestName(testName))
-	results, _ := st.GetTestEvents(q)
+	results, _ := st.GetTestEvents(ctx, q)
 	var resultsForTarget []string
 	for _, r := range results {
 		if targetID != nil {

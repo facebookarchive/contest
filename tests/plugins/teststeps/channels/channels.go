@@ -9,8 +9,8 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Name is the name used to look this plugin up.
@@ -28,7 +28,7 @@ func (ts *channels) Name() string {
 }
 
 // Run executes a step that runs fine but closes its output channels on exit.
-func (ts *channels) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *channels) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	for target := range ch.In {
 		ch.Out <- target
 	}
@@ -39,13 +39,13 @@ func (ts *channels) Run(ctx statectx.Context, ch test.TestStepChannels, params t
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *channels) ValidateParameters(params test.TestStepParameters) error {
+func (ts *channels) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	return nil
 }
 
 // Resume tries to resume a previously interrupted test step. Channels test step
 // cannot resume.
-func (ts *channels) Resume(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *channels) Resume(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

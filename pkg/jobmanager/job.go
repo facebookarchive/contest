@@ -14,12 +14,12 @@ import (
 	pkg_config "github.com/facebookincubator/contest/pkg/config"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/storage/limits"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
-func newJob(registry *pluginregistry.PluginRegistry, jobDescriptor *job.Descriptor, resolver stepsResolver) (*job.Job, error) {
+func newJob(ctx xcontext.Context, registry *pluginregistry.PluginRegistry, jobDescriptor *job.Descriptor, resolver stepsResolver) (*job.Job, error) {
 
 	if resolver == nil {
 		return nil, fmt.Errorf("cannot create job without resolver")
@@ -42,7 +42,7 @@ func newJob(registry *pluginregistry.PluginRegistry, jobDescriptor *job.Descript
 	}
 
 	tests := make([]*test.Test, 0, len(jobDescriptor.TestDescriptors))
-	stepsDescriptors, err := resolver.GetStepsDescriptors()
+	stepsDescriptors, err := resolver.GetStepsDescriptors(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("could not get steps descriptors: %w", err)
 	}
@@ -60,12 +60,12 @@ func newJob(registry *pluginregistry.PluginRegistry, jobDescriptor *job.Descript
 		if err != nil {
 			return nil, err
 		}
-		bundleTestFetcher, err := registry.NewTestFetcherBundle(td)
+		bundleTestFetcher, err := registry.NewTestFetcherBundle(ctx, td)
 		if err != nil {
 			return nil, err
 		}
 
-		bundleTest, err := newStepBundles(thisTestStepsDescriptors, registry)
+		bundleTest, err := newStepBundles(ctx, thisTestStepsDescriptors, registry)
 		if err != nil {
 			return nil, fmt.Errorf("could not create step bundles: %w", err)
 		}
@@ -112,31 +112,32 @@ func newJob(registry *pluginregistry.PluginRegistry, jobDescriptor *job.Descript
 		FinalReporterBundles:        finalReportersBundle,
 	}
 
-	job.StateCtx, job.StateCtxPause, job.StateCtxCancel = statectx.New()
+	job.StateCtx, job.StateCtxPause = xcontext.WithNotify(ctx, xcontext.Paused)
+	job.StateCtx, job.StateCtxCancel = xcontext.WithCancel(job.StateCtx)
 	return &job, nil
 
 }
 
 // NewJobFromDescriptor creates a job object from a job descriptor
-func NewJobFromDescriptor(registry *pluginregistry.PluginRegistry, jobDescriptor *job.Descriptor) (*job.Job, error) {
+func NewJobFromDescriptor(ctx xcontext.Context, registry *pluginregistry.PluginRegistry, jobDescriptor *job.Descriptor) (*job.Job, error) {
 	resolver := fetcherStepsResolver{jobDescriptor: jobDescriptor, registry: registry}
-	return newJob(registry, jobDescriptor, resolver)
+	return newJob(ctx, registry, jobDescriptor, resolver)
 }
 
 // NewJobFromExtendedDescriptor creates a job object from an extended job descriptor
-func NewJobFromExtendedDescriptor(registry *pluginregistry.PluginRegistry, jobDescriptor *job.ExtendedDescriptor) (*job.Job, error) {
+func NewJobFromExtendedDescriptor(ctx xcontext.Context, registry *pluginregistry.PluginRegistry, jobDescriptor *job.ExtendedDescriptor) (*job.Job, error) {
 	resolver := literalStepsResolver{stepsDescriptors: jobDescriptor.TestStepsDescriptors}
-	return newJob(registry, &jobDescriptor.Descriptor, resolver)
+	return newJob(ctx, registry, &jobDescriptor.Descriptor, resolver)
 }
 
 // NewJobFromJSONDescriptor builds a descriptor object from a JSON serialization
-func NewJobFromJSONDescriptor(registry *pluginregistry.PluginRegistry, jobDescriptorJSON string) (*job.Job, error) {
+func NewJobFromJSONDescriptor(ctx xcontext.Context, registry *pluginregistry.PluginRegistry, jobDescriptorJSON string) (*job.Job, error) {
 	var jd *job.Descriptor
 	if err := json.Unmarshal([]byte(jobDescriptorJSON), &jd); err != nil {
 		return nil, err
 	}
 
-	j, err := NewJobFromDescriptor(registry, jd)
+	j, err := NewJobFromDescriptor(ctx, registry, jd)
 	if err != nil {
 		return nil, err
 	}

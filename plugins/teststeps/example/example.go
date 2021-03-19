@@ -8,22 +8,18 @@ package example
 import (
 	"fmt"
 	"math/rand"
-	"strings"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/logging"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/plugins/teststeps"
 )
 
 // Name is the name used to look this plugin up.
 var Name = "Example"
-
-var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
 // Params this step accepts.
 const (
@@ -65,22 +61,22 @@ func (ts *Step) shouldFail(t *target.Target) bool {
 }
 
 // Run executes the example step.
-func (ts *Step) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
-	f := func(ctx statectx.Context, target *target.Target) error {
-		log.Infof("Executing on target %s", target)
+func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+	f := func(ctx xcontext.Context, target *target.Target) error {
+		ctx.Infof("Executing on target %s", target)
 		// NOTE: you may want more robust error handling here, possibly just
 		//       logging the error, or a retry mechanism. Returning an error
 		//       here means failing the entire job.
-		if err := ev.Emit(testevent.Data{EventName: StartedEvent, Target: target, Payload: nil}); err != nil {
+		if err := ev.Emit(ctx, testevent.Data{EventName: StartedEvent, Target: target, Payload: nil}); err != nil {
 			return fmt.Errorf("failed to emit start event: %v", err)
 		}
 		if ts.shouldFail(target) {
-			if err := ev.Emit(testevent.Data{EventName: FailedEvent, Target: target, Payload: nil}); err != nil {
+			if err := ev.Emit(ctx, testevent.Data{EventName: FailedEvent, Target: target, Payload: nil}); err != nil {
 				return fmt.Errorf("failed to emit finished event: %v", err)
 			}
 			return fmt.Errorf("target failed")
 		} else {
-			if err := ev.Emit(testevent.Data{EventName: FinishedEvent, Target: target, Payload: nil}); err != nil {
+			if err := ev.Emit(ctx, testevent.Data{EventName: FinishedEvent, Target: target, Payload: nil}); err != nil {
 				return fmt.Errorf("failed to emit failed event: %v", err)
 			}
 		}
@@ -90,7 +86,7 @@ func (ts *Step) Run(ctx statectx.Context, ch test.TestStepChannels, params test.
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *Step) ValidateParameters(params test.TestStepParameters) error {
+func (ts *Step) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	if params.GetOne(FailPctParam).String() != "" {
 		if pct, err := params.GetInt(FailPctParam); err == nil {
 			ts.failPct = pct
@@ -103,7 +99,7 @@ func (ts *Step) ValidateParameters(params test.TestStepParameters) error {
 
 // Resume tries to resume a previously interrupted test step. ExampleTestStep
 // cannot resume.
-func (ts *Step) Resume(ctx statectx.Context, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *Step) Resume(ctx xcontext.Context, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

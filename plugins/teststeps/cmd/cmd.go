@@ -10,25 +10,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/facebookincubator/contest/pkg/statectx"
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/plugins/teststeps"
 )
 
 // Name is the name used to look this plugin up.
 var Name = "Cmd"
-
-var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
 // event names for this plugin.
 const (
@@ -79,7 +75,7 @@ func (ts Cmd) Name() string {
 	return Name
 }
 
-func emitEvent(name event.Name, payload interface{}, tgt *target.Target, ev testevent.Emitter) error {
+func emitEvent(ctx xcontext.Context, name event.Name, payload interface{}, tgt *target.Target, ev testevent.Emitter) error {
 	payloadStr, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("cannot encode payload for event '%s': %v", name, err)
@@ -90,18 +86,20 @@ func emitEvent(name event.Name, payload interface{}, tgt *target.Target, ev test
 		Target:    tgt,
 		Payload:   &rm,
 	}
-	if err := ev.Emit(evData); err != nil {
+	if err := ev.Emit(ctx, evData); err != nil {
 		return fmt.Errorf("cannot emit event EventCmdStart: %v", err)
 	}
 	return nil
 }
 
 // Run executes the cmd step.
-func (ts *Cmd) Run(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *Cmd) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+	log := ctx.Logger()
+
 	if err := ts.validateAndPopulate(params); err != nil {
 		return err
 	}
-	f := func(ctx statectx.Context, target *target.Target) error {
+	f := func(ctx xcontext.Context, target *target.Target) error {
 		// expand args
 		var args []string
 		for _, arg := range ts.args {
@@ -120,31 +118,31 @@ func (ts *Cmd) Run(ctx statectx.Context, ch test.TestStepChannels, params test.T
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
 		if cmd.Dir != "" {
-			log.Printf("Running command '%+v' in directory '%+v'", cmd, cmd.Dir)
+			log.Debugf("Running command '%+v' in directory '%+v'", cmd, cmd.Dir)
 		} else {
-			log.Printf("Running command '%+v'", cmd)
+			log.Debugf("Running command '%+v'", cmd)
 		}
 
 		// Emit EventCmdStart
-		if err := emitEvent(EventCmdStart, eventCmdStartPayload{Path: cmd.Path, Args: cmd.Args, Dir: cmd.Dir}, target, ev); err != nil {
-			log.Warningf("Failed to emit event: %v", err)
+		if err := emitEvent(ctx, EventCmdStart, eventCmdStartPayload{Path: cmd.Path, Args: cmd.Args, Dir: cmd.Dir}, target, ev); err != nil {
+			log.Warnf("Failed to emit event: %v", err)
 		}
 
 		runErr := cmd.Run()
 
-		if err := emitEvent(EventCmdEnd, nil, target, ev); err != nil {
-			log.Warningf("Failed to emit event: %v", err)
+		if err := emitEvent(ctx, EventCmdEnd, nil, target, ev); err != nil {
+			log.Warnf("Failed to emit event: %v", err)
 		}
 		if ts.emitStdout {
 			log.Infof("Emitting stdout event")
-			if err := emitEvent(EventCmdStdout, eventCmdStdoutPayload{Msg: stdout.String()}, target, ev); err != nil {
-				log.Warningf("Failed to emit event: %v", err)
+			if err := emitEvent(ctx, EventCmdStdout, eventCmdStdoutPayload{Msg: stdout.String()}, target, ev); err != nil {
+				log.Warnf("Failed to emit event: %v", err)
 			}
 		}
 		if ts.emitStderr {
 			log.Infof("Emitting stderr event")
-			if err := emitEvent(EventCmdStderr, eventCmdStderrPayload{Msg: stderr.String()}, target, ev); err != nil {
-				log.Warningf("Failed to emit event: %v", err)
+			if err := emitEvent(ctx, EventCmdStderr, eventCmdStderrPayload{Msg: stderr.String()}, target, ev); err != nil {
+				log.Warnf("Failed to emit event: %v", err)
 			}
 		}
 
@@ -196,13 +194,13 @@ func (ts *Cmd) validateAndPopulate(params test.TestStepParameters) error {
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *Cmd) ValidateParameters(params test.TestStepParameters) error {
+func (ts *Cmd) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	return ts.validateAndPopulate(params)
 }
 
 // Resume tries to resume a previously interrupted test step. Cmd cannot
 // resume.
-func (ts *Cmd) Resume(ctx statectx.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
+func (ts *Cmd) Resume(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
 	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }
 

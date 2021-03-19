@@ -10,6 +10,8 @@ package test
 import (
 	"time"
 
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
@@ -49,6 +51,10 @@ var testDescs = `
 ]
 `
 
+var (
+	ctx = logrusctx.NewContext(logger.LevelDebug)
+)
+
 type JobSuite struct {
 	suite.Suite
 
@@ -78,7 +84,7 @@ func (suite *JobSuite) TestGetJobRequest() {
 		RequestTime:   time.Now(),
 		JobDescriptor: jobDescriptorFirst,
 	}
-	jobIDa, err := suite.txStorage.StoreJobRequest(&jobRequestFirst)
+	jobIDa, err := suite.txStorage.StoreJobRequest(ctx, &jobRequestFirst)
 	require.NoError(t, err)
 
 	jobRequestSecond := job.Request{
@@ -87,10 +93,10 @@ func (suite *JobSuite) TestGetJobRequest() {
 		RequestTime:   time.Now(),
 		JobDescriptor: jobDescriptorSecond,
 	}
-	jobIDb, err := suite.txStorage.StoreJobRequest(&jobRequestSecond)
+	jobIDb, err := suite.txStorage.StoreJobRequest(ctx, &jobRequestSecond)
 	require.NoError(t, err)
 
-	request, err := suite.txStorage.GetJobRequest(jobIDa)
+	request, err := suite.txStorage.GetJobRequest(ctx, jobIDa)
 
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), types.JobID(jobIDa), request.JobID)
@@ -103,7 +109,7 @@ func (suite *JobSuite) TestGetJobRequest() {
 	require.True(t, request.RequestTime.After(time.Now().Add(-2*time.Second)))
 	require.True(t, request.RequestTime.Before(time.Now().Add(2*time.Second)))
 
-	request, err = suite.txStorage.GetJobRequest(jobIDb)
+	request, err = suite.txStorage.GetJobRequest(ctx, jobIDb)
 
 	// Creation timestamp corresponds to the timestamp of the insertion into the
 	// database. Assert that the timestamp retrieved from the database is within
@@ -133,7 +139,7 @@ func (suite *JobSuite) TestListJobs() {
 		RequestTime:   time.Now(),
 		JobDescriptor: jobDescriptorFirst,
 	}
-	jobIDa, err := suite.txStorage.StoreJobRequest(&jobRequestFirst)
+	jobIDa, err := suite.txStorage.StoreJobRequest(ctx, &jobRequestFirst)
 	require.NoError(t, err)
 
 	jobRequestSecond := job.Request{
@@ -142,75 +148,75 @@ func (suite *JobSuite) TestListJobs() {
 		RequestTime:   time.Now(),
 		JobDescriptor: jobDescriptorSecond,
 	}
-	jobIDb, err := suite.txStorage.StoreJobRequest(&jobRequestSecond)
+	jobIDb, err := suite.txStorage.StoreJobRequest(ctx, &jobRequestSecond)
 	require.NoError(t, err)
 
 	var res []types.JobID
 
 	// No match criteria - returns all jobs.
-	res, err = suite.txStorage.ListJobs(mustBuildQuery(t))
+	res, err = suite.txStorage.ListJobs(ctx, mustBuildQuery(t))
 	require.NoError(t, err)
 	require.Equal(t, []types.JobID{jobIDa, jobIDb}, res)
 
 	// List by states - matching any state is enough.
 	// Both jobs are currently in Unknown state.
-	res, err = suite.txStorage.ListJobs(mustBuildQuery(t,
+	res, err = suite.txStorage.ListJobs(ctx, mustBuildQuery(t,
 		storage.QueryJobStates(job.JobStateCompleted, job.JobStateFailed),
 	))
 	require.NoError(t, err)
 	require.Empty(t, res)
 	require.NotNil(t, res)
-	res, err = suite.txStorage.ListJobs(mustBuildQuery(t,
+	res, err = suite.txStorage.ListJobs(ctx, mustBuildQuery(t,
 		storage.QueryJobStates(job.JobStateCompleted, job.JobStateFailed, job.JobStateUnknown),
 	))
 	require.NoError(t, err)
 	require.Equal(t, []types.JobID{jobIDa, jobIDb}, res)
 
 	// Tag matching - single tag.
-	res, err = suite.txStorage.ListJobs(mustBuildQuery(t,
+	res, err = suite.txStorage.ListJobs(ctx, mustBuildQuery(t,
 		storage.QueryJobTags("tests")))
 	require.NoError(t, err)
 	require.Equal(t, []types.JobID{jobIDa}, res)
 
 	// Tag matching - must match all tags.
-	res, err = suite.txStorage.ListJobs(mustBuildQuery(t,
+	res, err = suite.txStorage.ListJobs(ctx, mustBuildQuery(t,
 		storage.QueryJobTags("integ", "tests")))
 	require.NoError(t, err)
 	require.Equal(t, []types.JobID{jobIDa}, res)
-	res, err = suite.txStorage.ListJobs(mustBuildQuery(t,
+	res, err = suite.txStorage.ListJobs(ctx, mustBuildQuery(t,
 		storage.QueryJobTags("integ", "tests", "no_such_tag")))
 	require.NoError(t, err)
 	require.Empty(t, res)
 	require.NotNil(t, res)
 
 	// Match by state - without any events both jobs are in unknown state.
-	res, err = suite.txStorage.ListJobs(mustBuildQuery(t,
+	res, err = suite.txStorage.ListJobs(ctx, mustBuildQuery(t,
 		storage.QueryJobStates(job.JobStateUnknown)))
 	require.NoError(t, err)
 	require.Equal(t, []types.JobID{jobIDa, jobIDb}, res)
 
 	// Inject state events
-	require.NoError(t, suite.txStorage.StoreFrameworkEvent(frameworkevent.Event{
+	require.NoError(t, suite.txStorage.StoreFrameworkEvent(ctx, frameworkevent.Event{
 		JobID: jobIDa, EventName: job.EventJobStarted, EmitTime: time.Unix(1, 0),
 	}))
-	require.NoError(t, suite.txStorage.StoreFrameworkEvent(frameworkevent.Event{
+	require.NoError(t, suite.txStorage.StoreFrameworkEvent(ctx, frameworkevent.Event{
 		JobID: jobIDb, EventName: job.EventJobStarted, EmitTime: time.Unix(2, 0),
 	}))
-	require.NoError(t, suite.txStorage.StoreFrameworkEvent(frameworkevent.Event{
+	require.NoError(t, suite.txStorage.StoreFrameworkEvent(ctx, frameworkevent.Event{
 		JobID: jobIDb, EventName: job.EventJobFailed, EmitTime: time.Unix(3, 0),
 	}))
-	require.NoError(t, suite.txStorage.StoreFrameworkEvent(frameworkevent.Event{
+	require.NoError(t, suite.txStorage.StoreFrameworkEvent(ctx, frameworkevent.Event{
 		JobID: jobIDa, EventName: job.EventJobCompleted, EmitTime: time.Unix(4, 0),
 	}))
 
 	// Multiple states - match any of them
-	res, err = suite.txStorage.ListJobs(mustBuildQuery(t,
+	res, err = suite.txStorage.ListJobs(ctx, mustBuildQuery(t,
 		storage.QueryJobStates(job.JobStateCompleted, job.JobStateFailed, job.JobStatePaused)))
 	require.NoError(t, err)
 	require.Equal(t, []types.JobID{jobIDa, jobIDb}, res)
 
 	// State and tag match - must match both
-	res, err = suite.txStorage.ListJobs(mustBuildQuery(t,
+	res, err = suite.txStorage.ListJobs(ctx, mustBuildQuery(t,
 		storage.QueryJobStates(job.JobStateCompleted, job.JobStateFailed, job.JobStatePaused),
 		storage.QueryJobTags("tests", "foo"),
 	))

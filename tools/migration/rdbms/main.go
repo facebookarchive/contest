@@ -14,6 +14,8 @@ import (
 
 	// Import migration packages so that golang migrations can register themselves
 	_ "github.com/facebookincubator/contest/db/rdbms/migration"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 
 	"github.com/facebookincubator/contest/tools/migration/rdbms/migrate"
 
@@ -59,8 +61,6 @@ func usage() {
 
 func main() {
 
-	var log = logrus.New()
-
 	if len(os.Args) < 2 {
 		flags.Usage()
 		return
@@ -73,39 +73,39 @@ func main() {
 		panic(err)
 	}
 
-	log.SetOutput(os.Stdout)
-	log.SetLevel(logrus.InfoLevel)
+	logLevel := logger.LevelInfo
 	if *flagDebug {
-		log.SetLevel(logrus.DebugLevel)
+		logLevel = logger.LevelDebug
 	}
+	var ctx = logrusctx.NewContext(logLevel)
+	ctx.Logger().OriginalLogger().(*logrus.Entry).Logger.SetOutput(os.Stdout)
 
 	if *flagDir == "" {
 		flags.Usage()
-		log.Fatalf("migration directory was not specified")
+		ctx.Logger().Fatalf("migration directory was not specified")
 	}
 
 	for _, m := range migrate.Migrations {
-		logger := log.WithField("migration", filepath.Base(m.Name))
-		migration := m.Factory(logger)
+		migration := m.Factory(ctx.WithField("migration", filepath.Base(m.Name)))
 		goose.AddNamedMigration(m.Name, migration.Up, migration.Down)
 	}
 
 	command := os.Args[len(os.Args)-1]
 	db, err := goose.OpenDBWithDriver(*flagDBDriver, *flagDBURI)
 	if err != nil {
-		log.Fatalf("failed to open DB: %v", err)
+		ctx.Logger().Fatalf("failed to open DB: %v", err)
 	}
 	if err := db.Ping(); err != nil {
-		log.Fatalf("db not reachable: %v", err)
+		ctx.Logger().Fatalf("db not reachable: %v", err)
 	}
 
 	defer func() {
 		if err := db.Close(); err != nil {
-			log.Fatalf("failed to close DB: %v", err)
+			ctx.Logger().Fatalf("failed to close DB: %v", err)
 		}
 	}()
 
 	if err := goose.Run(command, db, *flagDir, flags.Args()...); err != nil {
-		log.Fatalf("could not run command %v for migration: %v", command, err)
+		ctx.Logger().Fatalf("could not run command %v for migration: %v", command, err)
 	}
 }
