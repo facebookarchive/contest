@@ -34,6 +34,9 @@ const (
 
 	// LevelDebug will report about Debugf-s, Infof-s, ...
 	LevelDebug = internal.LevelDebug
+
+	// EndOfLevel is just used as a limiter for `for`-s.
+	EndOfLevel
 )
 
 // ParseLogLevel parses incoming string into a Level and returns

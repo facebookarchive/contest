@@ -34,7 +34,7 @@ func NewContext(logLevel logger.Level, opts ...bundles.Option) xcontext.Context 
 		ErrorOutputPaths: []string{"stderr"},
 	}
 	switch cfg.Format {
-	case bundles.LogFormatPlainText:
+	case bundles.LogFormatPlainText, bundles.LogFormatPlainTextCompact:
 		loggerCfg.Encoding = "console"
 	case bundles.LogFormatJSON:
 		loggerCfg.Encoding = "json"

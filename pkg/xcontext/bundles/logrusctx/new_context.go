@@ -64,6 +64,10 @@ func NewContext(logLevel logger.Level, opts ...bundles.Option) xcontext.Context 
 			TimestampFormat:  cfg.TimestampFormat,
 			CallerPrettyfier: callerFormatter,
 		})
+	case bundles.LogFormatPlainTextCompact:
+		entry.Logger.SetFormatter(&CompactTextFormatter{
+			TimestampFormat: cfg.TimestampFormat,
+		})
 	default:
 		entry.Logger.SetFormatter(&logrus.TextFormatter{
 			TimestampFormat:  cfg.TimestampFormat,

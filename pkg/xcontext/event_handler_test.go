@@ -50,7 +50,7 @@ func TestWaiterGC(t *testing.T) {
 	wg.Wait()
 
 	runtime.GC()
-	require.Equal(t, goroutines, runtime.NumGoroutine())
+	require.GreaterOrEqual(t, goroutines, runtime.NumGoroutine())
 }
 
 func TestContextCanceled(t *testing.T) {

@@ -38,6 +38,11 @@ const (
 	// LogFormatPlainText means to write logs as a plain text.
 	LogFormatPlainText = LogFormat(iota)
 
+	// LogFormatPlainTextCompact means to write logs as a compact plain text.
+	//
+	// Falls back to LogFormatPlainText if the compact format is not supported.
+	LogFormatPlainTextCompact
+
 	// LogFormatJSON means to write logs as JSON objects.
 	LogFormatJSON
 )
