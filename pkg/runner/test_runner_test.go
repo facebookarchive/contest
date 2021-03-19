@@ -37,9 +37,8 @@ import (
 )
 
 const (
-	testName          = "SimpleTest"
-	stepInjectTimeout = 3 * time.Second
-	shutdownTimeout   = 3 * time.Second
+	testName        = "SimpleTest"
+	shutdownTimeout = 3 * time.Second
 )
 
 var (
@@ -90,7 +89,7 @@ func TestMain(m *testing.M) {
 }
 
 func newTestRunner() *TestRunner {
-	return NewTestRunnerWithTimeouts(stepInjectTimeout, shutdownTimeout)
+	return NewTestRunnerWithTimeouts(shutdownTimeout)
 }
 
 func resetEventStorage() {
@@ -187,7 +186,7 @@ func Test1Step1Success(t *testing.T) {
 // We block for longer than the shutdown timeout of the test runner.
 func Test1StepLongerThanShutdown1Success(t *testing.T) {
 	resetEventStorage()
-	tr := NewTestRunnerWithTimeouts(stepInjectTimeout, 100*time.Millisecond)
+	tr := NewTestRunnerWithTimeouts(100 * time.Millisecond)
 	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1")},
 		[]test.TestStepBundle{
@@ -304,7 +303,7 @@ func Test3StepsNotReachedStepNotRun(t *testing.T) {
 // and does not return.
 func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 	resetEventStorage()
-	tr := NewTestRunnerWithTimeouts(100*time.Millisecond, 200*time.Millisecond)
+	tr := NewTestRunnerWithTimeouts(200 * time.Millisecond)
 	ctx, cancel := xcontext.WithCancel(ctx)
 	defer cancel()
 	_, err := runWithTimeout(t, tr, ctx, nil, 1, 2*time.Second,
@@ -315,22 +314,6 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.IsType(t, &cerrors.ErrTestStepsNeverReturned{}, err)
-}
-
-// A misbehaving step that does not process any targets.
-func TestNoReturnStepWithoutTargetForwarding(t *testing.T) {
-	resetEventStorage()
-	tr := NewTestRunnerWithTimeouts(100*time.Millisecond, 200*time.Millisecond)
-	ctx, cancel := xcontext.WithCancel(ctx)
-	defer cancel()
-	_, err := runWithTimeout(t, tr, ctx, nil, 1, 2*time.Second,
-		[]*target.Target{tgt("T1")},
-		[]test.TestStepBundle{
-			newStep("Step 1", hanging.Name, nil),
-		},
-	)
-	require.Error(t, err)
-	require.IsType(t, &cerrors.ErrTestTargetInjectionTimedOut{}, err)
 }
 
 // A misbehaving step that panics.
@@ -382,10 +365,6 @@ func TestStepYieldsResultForNonexistentTarget(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.IsType(t, &cerrors.ErrTestStepReturnedUnexpectedResult{}, err)
-	require.Equal(t, `
-{[1 1 SimpleTest Step 1][Target{ID: "TExtra"} TargetIn]}
-{[1 1 SimpleTest Step 1][Target{ID: "TExtra"} TargetOut]}
-`, getTargetEvents("TExtra"))
 	require.Equal(t, "\n\n", getTargetEvents("TExtra2"))
 	require.Equal(t, `
 {[1 1 SimpleTest Step 1][(*Target)(nil) TestError &"\"test step Step 1 returned unexpected result for TExtra2\""]}

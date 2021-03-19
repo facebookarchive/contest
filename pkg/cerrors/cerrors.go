@@ -43,17 +43,6 @@ func (e *ErrTestStepsNeverReturned) Error() string {
 	return fmt.Sprintf("test step [%s] did not return", strings.Join(e.StepNames, ", "))
 }
 
-// ErrTestTargetInjectionTimedOut indicates that test step did not ingest a target
-// within allotted time.
-type ErrTestTargetInjectionTimedOut struct {
-	StepName string
-}
-
-// Error returns the error string associated with the error
-func (e *ErrTestTargetInjectionTimedOut) Error() string {
-	return fmt.Sprintf("test step %v failed to ingest a target", e.StepName)
-}
-
 // ErrTestStepClosedChannels indicates that the test step returned after
 // closing its output channels, which constitutes an API violation
 type ErrTestStepClosedChannels struct {

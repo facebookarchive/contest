@@ -41,8 +41,7 @@ import (
 //  * We then wait for all the step runners and readers to shut down.
 //  * Once all the activity has died down, resulting state is examined and an error is returned, if any.
 type TestRunner struct {
-	stepInjectTimeout time.Duration // Time to wait for steps to accept each target
-	shutdownTimeout   time.Duration // Time to wait for steps runners to finish a the end of the run
+	shutdownTimeout time.Duration // Time to wait for steps runners to finish a the end of the run
 
 	steps     []*stepState            // The pipeline, in order of execution
 	targets   map[string]*targetState // Target state lookup map
@@ -192,7 +191,10 @@ func (tr *TestRunner) run(
 			}
 		}
 		tgs.tgt = tgt
-		tgs.resCh = make(chan error)
+		// Buffer of 1 is needed so that the step reader does not block when submitting result back
+		// to the target handler. Target handler may not yet be ready to receive the result,
+		// i.e. reporting TargetIn event which may involve network I/O.
+		tgs.resCh = make(chan error, 1)
 		tr.targets[tgt.ID] = tgs
 		tr.mu.Unlock()
 		tr.targetsWg.Add(1)
@@ -372,12 +374,6 @@ func (tr *TestRunner) injectTarget(ctx xcontext.Context, tgs *targetState, ss *s
 			return fmt.Errorf("failed to report target injection: %w", err)
 		}
 		tr.cond.Signal()
-	case <-time.After(tr.stepInjectTimeout):
-		ctx.Errorf("timed out while injecting a target")
-		if err := ss.ev.Emit(ctx, testevent.Data{EventName: target.EventTargetInErr, Target: tgs.tgt}); err != nil {
-			ctx.Errorf("failed to emit event: %s", err)
-		}
-		return &cerrors.ErrTestTargetInjectionTimedOut{StepName: ss.sb.TestStepLabel}
 	case <-ctx.Done():
 		return xcontext.Canceled
 	}
@@ -793,17 +789,16 @@ tgtLoop:
 	return runErr
 }
 
-func NewTestRunnerWithTimeouts(stepInjectTimeout, shutdownTimeout time.Duration) *TestRunner {
+func NewTestRunnerWithTimeouts(shutdownTimeout time.Duration) *TestRunner {
 	tr := &TestRunner{
-		stepInjectTimeout: stepInjectTimeout,
-		shutdownTimeout:   shutdownTimeout,
+		shutdownTimeout: shutdownTimeout,
 	}
 	tr.cond = sync.NewCond(&tr.mu)
 	return tr
 }
 
 func NewTestRunner() *TestRunner {
-	return NewTestRunnerWithTimeouts(config.StepInjectTimeout, config.TestRunnerShutdownTimeout)
+	return NewTestRunnerWithTimeouts(config.TestRunnerShutdownTimeout)
 }
 
 func (tph targetStepPhase) String() string {
