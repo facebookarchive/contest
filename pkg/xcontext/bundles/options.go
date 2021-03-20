@@ -38,6 +38,11 @@ const (
 	// LogFormatPlainText means to write logs as a plain text.
 	LogFormatPlainText = LogFormat(iota)
 
+	// LogFormatPlainTextCompact means to write logs as a compact plain text.
+	//
+	// Falls back to LogFormatPlainText if the compact format is not supported.
+	LogFormatPlainTextCompact
+
 	// LogFormatJSON means to write logs as JSON objects.
 	LogFormatJSON
 )
@@ -58,10 +63,19 @@ func (opt OptionTracer) apply(cfg *Config) {
 	cfg.Tracer = opt.Tracer
 }
 
+// OptionTimestampFormat defines the format of timestamps while logging.
+type OptionTimestampFormat string
+
+func (opt OptionTimestampFormat) apply(cfg *Config) {
+	cfg.TimestampFormat = string(opt)
+}
+
 // Config is a configuration state resulted from Option-s.
 type Config struct {
 	LoggerReportCaller bool
 	TracerReportCaller bool
+	TimestampFormat    string
+	VerboseCaller      bool
 	Tracer             xcontext.Tracer
 	Format             LogFormat
 }

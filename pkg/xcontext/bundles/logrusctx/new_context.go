@@ -7,6 +7,9 @@ package logrusctx
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
+	"runtime"
 
 	"github.com/sirupsen/logrus"
 
@@ -44,11 +47,33 @@ func NewContext(logLevel logger.Level, opts ...bundles.Option) xcontext.Context 
 	loggerRaw.SetLevel(logrusadapter.Adapter.Level(logLevel))
 	loggerRaw.ReportCaller = cfg.LoggerReportCaller
 	entry := logrus.NewEntry(loggerRaw)
+
+	var callerFormatter func(frame *runtime.Frame) (function string, file string)
+	if !cfg.VerboseCaller {
+		callerFormatter = func(frame *runtime.Frame) (function string, file string) {
+			if frame == nil {
+				return
+			}
+			file = fmt.Sprintf("%s:%d", filepath.Base(frame.File), frame.Line)
+			return
+		}
+	}
 	switch cfg.Format {
-	case bundles.LogFormatPlainText:
-		entry.Logger.SetFormatter(&logrus.TextFormatter{})
 	case bundles.LogFormatJSON:
-		entry.Logger.SetFormatter(&logrus.JSONFormatter{})
+		entry.Logger.SetFormatter(&logrus.JSONFormatter{
+			TimestampFormat:  cfg.TimestampFormat,
+			CallerPrettyfier: callerFormatter,
+		})
+	case bundles.LogFormatPlainTextCompact:
+		entry.Logger.SetFormatter(&CompactTextFormatter{
+			TimestampFormat: cfg.TimestampFormat,
+		})
+	default:
+		entry.Logger.SetFormatter(&logrus.TextFormatter{
+			TimestampFormat:  cfg.TimestampFormat,
+			FullTimestamp:    cfg.TimestampFormat != "",
+			CallerPrettyfier: callerFormatter,
+		})
 	}
 	ctx := xcontext.NewContext(
 		context.Background(), "",
