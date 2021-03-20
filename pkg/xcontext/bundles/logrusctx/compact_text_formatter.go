@@ -7,14 +7,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/sirupsen/logrus"
 )
 
-var logLevelSymbol [logger.EndOfLevel]byte
+var logLevelSymbol []byte
 
 func init() {
-	for level := logger.Level(0); level < logger.EndOfLevel; level++ {
+	logLevelSymbol = make([]byte, len(logrus.AllLevels)+1)
+	for _, level := range logrus.AllLevels {
 		logLevelSymbol[level] = strings.ToUpper(level.String()[:1])[0]
 	}
 }
