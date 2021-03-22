@@ -10,7 +10,7 @@
 package internal
 
 import (
-	"github.com/facebookincubator/contest/pkg/xcontext/internal/fields"
+	"github.com/facebookincubator/contest/pkg/xcontext/fields"
 )
 
 // Fields is a multiple of fields which are attached to logger/tracer messages.

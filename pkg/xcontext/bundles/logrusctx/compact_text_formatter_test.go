@@ -19,7 +19,8 @@ func TestCompactTextFormatterFormat(t *testing.T) {
 			"key0": "value0",
 			"key1": "value1",
 		},
-		Time: time.Unix(1, 2),
+		Level: logrus.ErrorLevel,
+		Time:  time.Unix(1, 2),
 		Caller: &runtime.Frame{
 			Function: "func",
 			File:     "/directory/file",
@@ -28,5 +29,5 @@ func TestCompactTextFormatterFormat(t *testing.T) {
 		Message: "message",
 	})
 	require.NoError(t, err)
-	require.Equal(t, "[01.000000002 U file:3] message\tkey0=value0\tkey1=value1\n", string(b))
+	require.Equal(t, "[01.000000002 E file:3] message\tkey0=value0\tkey1=value1\n", string(b))
 }
