@@ -67,12 +67,12 @@ func TestContextCanceled(t *testing.T) {
 	<-ctx.Done()
 	<-ctx.Until(nil)
 
-	require.Equal(t, Canceled, ctx.Err())
+	require.Equal(t, ErrCanceled, ctx.Err())
 	require.Nil(t, ctx.Notifications())
 
 	var paused bool
 	select {
-	case <-ctx.Until(Paused):
+	case <-ctx.Until(ErrPaused):
 		paused = true
 	default:
 	}
@@ -80,16 +80,16 @@ func TestContextCanceled(t *testing.T) {
 }
 
 func TestContextPaused(t *testing.T) {
-	ctx, pauseFunc := WithNotify(nil, Paused)
+	ctx, pauseFunc := WithNotify(nil, ErrPaused)
 	require.NotNil(t, ctx)
 
 	pauseFunc()
 
-	<-ctx.Until(Paused)
+	<-ctx.Until(ErrPaused)
 	<-ctx.Until(nil)
 
 	require.Nil(t, ctx.Err())
-	require.Equal(t, []error{Paused}, ctx.Notifications())
+	require.Equal(t, []error{ErrPaused}, ctx.Notifications())
 
 	var canceled bool
 	select {
@@ -102,7 +102,7 @@ func TestContextPaused(t *testing.T) {
 
 func TestMultipleCancelPause(t *testing.T) {
 	ctx, cancelFunc := WithCancel(nil)
-	ctx, pauseFunc := WithNotify(ctx, Paused)
+	ctx, pauseFunc := WithNotify(ctx, ErrPaused)
 	require.NotNil(t, ctx)
 
 	pauseFunc()
@@ -112,30 +112,30 @@ func TestMultipleCancelPause(t *testing.T) {
 
 	<-ctx.Done()
 	<-ctx.Until(nil)
-	<-ctx.Until(Paused)
+	<-ctx.Until(ErrPaused)
 
-	require.Equal(t, Canceled, ctx.Err())
-	require.Equal(t, []error{Paused, Paused}, ctx.Notifications())
+	require.Equal(t, ErrCanceled, ctx.Err())
+	require.Equal(t, []error{ErrPaused, ErrPaused}, ctx.Notifications())
 }
 
 func TestGrandGrandGrandChild(t *testing.T) {
-	ctx0, notifyFunc := WithNotify(nil, Paused)
+	ctx0, notifyFunc := WithNotify(nil, ErrPaused)
 	ctx1, _ := WithCancel(ctx0.Clone())
-	ctx2, _ := WithNotify(ctx1.Clone(), Paused)
+	ctx2, _ := WithNotify(ctx1.Clone(), ErrPaused)
 
-	require.False(t, ctx2.IsSignaledWith(Paused))
+	require.False(t, ctx2.IsSignaledWith(ErrPaused))
 	notifyFunc()
-	<-ctx2.Until(Paused)
+	<-ctx2.Until(ErrPaused)
 }
 
 func TestWithParent(t *testing.T) {
 	t.Run("pause_propagated", func(t *testing.T) {
-		parentCtx, pauseFunc := WithNotify(nil, Paused)
+		parentCtx, pauseFunc := WithNotify(nil, ErrPaused)
 		childCtx := parentCtx.Clone()
 
 		pauseFunc()
-		<-childCtx.Until(Paused)
-		require.Equal(t, []error{Paused}, childCtx.Notifications())
+		<-childCtx.Until(ErrPaused)
+		require.Equal(t, []error{ErrPaused}, childCtx.Notifications())
 		<-childCtx.Until(nil)
 
 		require.Nil(t, childCtx.Err())
@@ -146,24 +146,24 @@ func TestWithParent(t *testing.T) {
 
 		parentCancelFunc()
 		<-childCtx.Done()
-		require.Equal(t, Canceled, childCtx.Err())
+		require.Equal(t, ErrCanceled, childCtx.Err())
 		<-childCtx.Until(nil)
 
 		require.Nil(t, childCtx.Notifications())
 	})
 	t.Run("pause_cancel_happened_before_context_created", func(t *testing.T) {
 		parentCtx, cancelFunc := WithCancel(nil)
-		parentCtx, pauseFunc := WithNotify(parentCtx, Paused)
+		parentCtx, pauseFunc := WithNotify(parentCtx, ErrPaused)
 		pauseFunc()
 		cancelFunc()
 
 		childCtx := parentCtx.Clone()
 		<-childCtx.Done()
-		<-childCtx.Until(Paused)
+		<-childCtx.Until(ErrPaused)
 		<-childCtx.Until(nil)
 
-		require.Equal(t, Canceled, childCtx.Err())
-		require.Equal(t, []error{Paused}, childCtx.Notifications())
+		require.Equal(t, ErrCanceled, childCtx.Err())
+		require.Equal(t, []error{ErrPaused}, childCtx.Notifications())
 	})
 	t.Run("child_pause_cancel_do_not_affect_parent", func(t *testing.T) {
 		parentCtxs := map[string]Context{}
@@ -172,7 +172,7 @@ func TestWithParent(t *testing.T) {
 		for parentName, parentCtx := range parentCtxs {
 			t.Run(parentName, func(t *testing.T) {
 				childCtx, cancelFunc := WithCancel(parentCtx.Clone())
-				_, pauseFunc := WithNotify(childCtx, Paused)
+				_, pauseFunc := WithNotify(childCtx, ErrPaused)
 
 				pauseFunc()
 				cancelFunc()

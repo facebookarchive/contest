@@ -473,7 +473,7 @@ func TestPauseResumeSimple(t *testing.T) {
 	}
 	{
 		tr1 := newTestRunner()
-		ctx1, pause := xcontext.WithNotify(ctx, xcontext.Paused)
+		ctx1, pause := xcontext.WithNotify(ctx, xcontext.ErrPaused)
 		ctx1, cancel := xcontext.WithCancel(ctx1)
 		defer cancel()
 		go func() {
@@ -483,7 +483,7 @@ func TestPauseResumeSimple(t *testing.T) {
 		}()
 		resumeState, err = runWithTimeout(t, tr1, ctx1, nil, 1, 2*time.Second, targets, steps)
 		require.Error(t, err)
-		require.IsType(t, xcontext.Paused, err)
+		require.IsType(t, xcontext.ErrPaused, err)
 		require.NotNil(t, resumeState)
 	}
 	ctx.Debugf("Resume state: %s", string(resumeState))

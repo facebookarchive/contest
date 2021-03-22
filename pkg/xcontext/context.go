@@ -520,7 +520,7 @@ func (ctx *ctxValue) StdCtxUntil(err error) context.Context {
 		case <-garbageCollected:
 			return
 		case <-ctx.Until(err):
-			h.cancel(Canceled)
+			h.cancel(ErrCanceled)
 		}
 	}()
 

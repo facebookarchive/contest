@@ -10,12 +10,12 @@ import (
 	"errors"
 )
 
-// Canceled is returned by Context.Err when the context was canceled
-var Canceled = context.Canceled
+// ErrCanceled is returned by Context.Err when the context was canceled
+var ErrCanceled = context.Canceled
 
-// DeadlineExceeded is returned by Context.Err when the context reached
+// ErrDeadlineExceeded is returned by Context.Err when the context reached
 // the deadline.
-var DeadlineExceeded = context.DeadlineExceeded
+var ErrDeadlineExceeded = context.DeadlineExceeded
 
-// Paused is returned by Context.Err when the context was paused
-var Paused = errors.New("job is paused")
+// ErrPaused is returned by Context.Err when the context was paused
+var ErrPaused = errors.New("job is paused")

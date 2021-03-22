@@ -47,30 +47,30 @@ func (ts *badTargets) Run(ctx xcontext.Context, ch test.TestStepChannels, params
 				select {
 				case ch.Out <- &tgt2:
 				case <-ctx.Done():
-					return xcontext.Canceled
+					return xcontext.ErrCanceled
 				}
 			case "TDup":
 				select {
 				case ch.Out <- tgt:
 				case <-ctx.Done():
-					return xcontext.Canceled
+					return xcontext.ErrCanceled
 				}
 				select {
 				case ch.Out <- tgt:
 				case <-ctx.Done():
-					return xcontext.Canceled
+					return xcontext.ErrCanceled
 				}
 			case "TExtra":
 				tgt2 := &target.Target{ID: "TExtra2"}
 				select {
 				case ch.Out <- tgt:
 				case <-ctx.Done():
-					return xcontext.Canceled
+					return xcontext.ErrCanceled
 				}
 				select {
 				case ch.Out <- tgt2:
 				case <-ctx.Done():
-					return xcontext.Canceled
+					return xcontext.ErrCanceled
 				}
 			case "T1":
 				// Mangle the returned target name.
@@ -78,13 +78,13 @@ func (ts *badTargets) Run(ctx xcontext.Context, ch test.TestStepChannels, params
 				select {
 				case ch.Out <- tgt2:
 				case <-ctx.Done():
-					return xcontext.Canceled
+					return xcontext.ErrCanceled
 				}
 			default:
 				return fmt.Errorf("Unexpected target name: %q", tgt.ID)
 			}
 		case <-ctx.Done():
-			return xcontext.Canceled
+			return xcontext.ErrCanceled
 		}
 	}
 }

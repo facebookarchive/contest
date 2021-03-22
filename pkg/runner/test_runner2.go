@@ -236,7 +236,7 @@ func (tr *TestRunner) run(
 		if tgs.CurPhase == targetStepPhaseRun {
 			numInFlightTargets++
 		}
-		if stepErr != nil && stepErr != xcontext.Paused {
+		if stepErr != nil && stepErr != xcontext.ErrPaused {
 			resumeOk = false
 		}
 	}
@@ -255,13 +255,13 @@ func (tr *TestRunner) run(
 	ctx.Debugf("ctx-cancel-is: %v; ctx-notifications-are: %v", ctx.Err(), ctx.Notifications())
 	select {
 	case <-ctx.Done():
-		return nil, xcontext.Canceled
+		return nil, xcontext.ErrCanceled
 	default:
 	}
 
 	// Have we been asked to pause? If yes, is it safe to do so?
 	select {
-	case <-ctx.Until(xcontext.Paused):
+	case <-ctx.Until(xcontext.ErrPaused):
 		if !resumeOk {
 			ctx.Warnf("paused but not ok to resume")
 			break
@@ -275,7 +275,7 @@ func (tr *TestRunner) run(
 		if runErr != nil {
 			ctx.Errorf("unable to serialize the state: %s", runErr)
 		} else {
-			runErr = xcontext.Paused
+			runErr = xcontext.ErrPaused
 		}
 	default:
 	}
@@ -349,7 +349,7 @@ func (tr *TestRunner) waitStepRunners(ctx xcontext.Context) error {
 	// Emit step error events.
 	for _, ss := range tr.steps {
 		ctx.Debugf("%s %v", ss, ss.runErr)
-		if ss.runErr != nil && ss.runErr != xcontext.Paused && ss.runErr != xcontext.Canceled {
+		if ss.runErr != nil && ss.runErr != xcontext.ErrPaused && ss.runErr != xcontext.ErrCanceled {
 			if err := ss.emitEvent(ctx, EventTestError, nil, ss.runErr.Error()); err != nil {
 				ctx.Errorf("failed to emit event: %s", err)
 			}
@@ -375,7 +375,7 @@ func (tr *TestRunner) injectTarget(ctx xcontext.Context, tgs *targetState, ss *s
 		}
 		tr.cond.Signal()
 	case <-ctx.Done():
-		return xcontext.Canceled
+		return xcontext.ErrCanceled
 	}
 	return nil
 }
@@ -385,7 +385,7 @@ func (tr *TestRunner) awaitTargetResult(ctx xcontext.Context, tgs *targetState, 
 	case res, ok := <-tgs.resCh:
 		if !ok {
 			ctx.Debugf("%s: result channel closed", tgs)
-			return xcontext.Canceled
+			return xcontext.ErrCanceled
 		}
 		ctx.Debugf("%s: result recd for %s", tgs, ss)
 		var err error
@@ -414,7 +414,7 @@ func (tr *TestRunner) awaitTargetResult(ctx xcontext.Context, tgs *targetState, 
 		tr.mu.Lock()
 		ctx.Debugf("%s: canceled 2", tgs)
 		tr.mu.Unlock()
-		return xcontext.Canceled
+		return xcontext.ErrCanceled
 	}
 }
 
@@ -428,7 +428,7 @@ loop:
 	for i := tgs.CurStep; i < len(tr.steps); {
 		// Early check for pause or cancelation.
 		select {
-		case <-ctx.Until(xcontext.Paused):
+		case <-ctx.Until(xcontext.ErrPaused):
 			ctx.Debugf("%s: paused 0", tgs)
 			break loop
 		case <-ctx.Done():
@@ -458,7 +458,7 @@ loop:
 		tr.mu.Lock()
 		if err != nil {
 			ss.ctx.Errorf("%s", err)
-			if err != xcontext.Canceled {
+			if err != xcontext.ErrCanceled {
 				ss.setErrLocked(err)
 			} else {
 				ss.ctx.Debugf("%s: canceled 1", tgs)
@@ -591,7 +591,7 @@ func (tr *TestRunner) reportTargetResult(ss *stepState, tgt *target.Target, res 
 			select {
 			case <-ss.ctx.Done():
 				// If canceled, target handler may have left early. We don't care though.
-				return nil, xcontext.Canceled
+				return nil, xcontext.ErrCanceled
 			default:
 				// This should not happen, must be an internal error.
 				return nil, fmt.Errorf("%s: target handler %s is not there, dropping result on the floor", ss, tgs)

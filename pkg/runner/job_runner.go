@@ -155,7 +155,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 						if err := tl.Unlock(j.StateCtx, j.ID, targets); err != nil {
 							j.StateCtx.Warnf("Failed to unlock targets (%v) for job ID %d: %v", targets, j.ID, err)
 						}
-					case <-j.StateCtx.Until(xcontext.Paused):
+					case <-j.StateCtx.Until(xcontext.ErrPaused):
 						j.StateCtx.Debugf("Received pause request, NOT releasing targets so the job can be resumed")
 						return
 					case <-done:
@@ -182,7 +182,7 @@ func (jr *JobRunner) Run(j *job.Job) ([][]*job.Report, []*job.Report, error) {
 				j.StateCtx.Infof("Run #%d: running test #%d for job '%s' (job ID: %d) on %d targets", run+1, idx, j.Name, j.ID, len(targets))
 				testRunner := NewTestRunner()
 				resumeState, err := testRunner.Run(j.StateCtx, t, targets, j.ID, types.RunID(run+1), nil)
-				if err == xcontext.Paused {
+				if err == xcontext.ErrPaused {
 					j.StateCtx.Debugf("Runner paused, state: %s", string(resumeState))
 					// TODO(rojer): Persist the state.
 				} else {

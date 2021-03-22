@@ -153,11 +153,11 @@ func (j *Job) Pause() {
 
 // IsCancelled returns whether the job has been cancelled
 func (j *Job) IsCancelled() bool {
-	return j.StateCtx.IsSignaledWith(xcontext.Canceled)
+	return j.StateCtx.IsSignaledWith(xcontext.ErrCanceled)
 }
 
 func (j *Job) IsPaused() bool {
-	return j.StateCtx.IsSignaledWith(xcontext.Paused)
+	return j.StateCtx.IsSignaledWith(xcontext.ErrPaused)
 }
 
 // InfoFetcher defines how to fetch job information
