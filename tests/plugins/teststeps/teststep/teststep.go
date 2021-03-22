@@ -79,7 +79,7 @@ func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.
 		select {
 		case <-time.After(delay):
 		case <-ctx.Done():
-			return xcontext.Canceled
+			return xcontext.ErrCanceled
 		}
 		if ts.shouldFail(target, params) {
 			if err := ev.Emit(ctx, testevent.Data{EventName: FailedEvent, Target: target, Payload: nil}); err != nil {

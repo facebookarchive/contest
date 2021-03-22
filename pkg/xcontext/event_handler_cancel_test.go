@@ -29,11 +29,11 @@ func TestCancellation(t *testing.T) {
 
 	cancelFunc()
 	<-ctx.Done()
-	require.Equal(t, Canceled, ctx.Err())
+	require.Equal(t, ErrCanceled, ctx.Err())
 
 	// further cancels do not affect the error code
 	customCancelFunc()
-	require.Equal(t, Canceled, ctx.Err())
+	require.Equal(t, ErrCanceled, ctx.Err())
 }
 
 func TestAbstractParentContext(t *testing.T) {
@@ -58,11 +58,11 @@ func TestCancelContextAsParentContext(t *testing.T) {
 
 		parCancelFunc0()
 		<-ctx.Done()
-		require.Equal(t, Canceled, ctx.Err())
+		require.Equal(t, ErrCanceled, ctx.Err())
 
 		parCancelFunc1()
 		ctxCancelFunc()
-		require.Equal(t, Canceled, ctx.Err())
+		require.Equal(t, ErrCanceled, ctx.Err())
 	})
 
 	t.Run("child_cancel_does_not_affect_parent", func(t *testing.T) {
@@ -73,7 +73,7 @@ func TestCancelContextAsParentContext(t *testing.T) {
 
 		ctxCancelFunc()
 		<-ctx.Done()
-		require.Equal(t, Canceled, ctx.Err())
+		require.Equal(t, ErrCanceled, ctx.Err())
 
 		var blocked bool
 		select {
@@ -87,7 +87,7 @@ func TestCancelContextAsParentContext(t *testing.T) {
 		parCancelFunc()
 		<-parCtx.Done()
 		require.Equal(t, customSignal, parCtx.Err())
-		require.Equal(t, Canceled, ctx.Err())
+		require.Equal(t, ErrCanceled, ctx.Err())
 	})
 }
 
@@ -118,9 +118,9 @@ func TestParentInitiallyCancelled(t *testing.T) {
 		require.NotNil(t, ctx)
 
 		<-ctx.Done()
-		require.Equal(t, Canceled, ctx.Err())
+		require.Equal(t, ErrCanceled, ctx.Err())
 
 		cancelFunc() // should be no effect
-		require.Equal(t, Canceled, ctx.Err())
+		require.Equal(t, ErrCanceled, ctx.Err())
 	})
 }

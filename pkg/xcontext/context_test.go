@@ -17,7 +17,7 @@ import (
 func tryLeak() {
 	ctx := Background()
 	ctx, _ = WithCancel(ctx)
-	ctx, _ = WithNotify(ctx, Paused)
+	ctx, _ = WithNotify(ctx, ErrPaused)
 	ctx.Until(nil)
 	ctx = WithResetSignalers(ctx)
 	ctx = WithStdContext(ctx, context.Background())

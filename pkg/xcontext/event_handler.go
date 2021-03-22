@@ -30,10 +30,10 @@ func WithDeadline(parent Context, t time.Time) (Context, CancelFunc) {
 	h := ctx.addEventHandler()
 	h.deadline = &t
 	time.AfterFunc(time.Until(t), func() {
-		h.cancel(DeadlineExceeded)
+		h.cancel(ErrDeadlineExceeded)
 	})
 	return ctx, func() {
-		h.cancel(Canceled)
+		h.cancel(ErrCanceled)
 	}
 }
 
@@ -248,7 +248,7 @@ func (h *eventHandler) cancel(errs ...error) {
 	defer h.locker.Unlock()
 
 	if len(errs) == 0 {
-		h.receivedCancels = append(h.receivedCancels, Canceled)
+		h.receivedCancels = append(h.receivedCancels, ErrCanceled)
 	} else {
 		h.receivedCancels = append(h.receivedCancels, errs...)
 	}
