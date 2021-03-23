@@ -60,11 +60,10 @@ func (ts *TerminalExpect) Run(ctx xcontext.Context, ch test.TestStepChannels, pa
 	if err := ts.validateAndPopulate(params); err != nil {
 		return err
 	}
-	hook, err := termhook.NewHook(ts.Port, ts.Speed, match(ts.Match, log))
+	hook, err := termhook.NewHook(ts.Port, ts.Speed, false, match(ts.Match, log))
 	if err != nil {
 		return err
 	}
-	hook.ReadOnly = true
 	// f implements plugins.PerTargetFunc
 	f := func(ctx xcontext.Context, target *target.Target) error {
 		errCh := make(chan error, 1)
