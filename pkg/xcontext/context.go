@@ -297,9 +297,9 @@ type CancelFunc = context.CancelFunc
 func (ctx *ctxValue) clone() *ctxValue {
 	return &ctxValue{
 		traceIDValue:    ctx.traceIDValue,
-		loggerInstance:  ctx.loggerInstance,
-		metricsInstance: ctx.metricsInstance,
-		tracerInstance:  ctx.tracerInstance,
+		loggerInstance:  ctx.loadLoggerInstance(),
+		metricsInstance: ctx.loadMetricsInstance(),
+		tracerInstance:  ctx.loadTracerInstance(),
 		pendingFields:   ctx.pendingFields.Clone(),
 		pendingTags:     ctx.pendingTags.Clone(),
 		valuesHandler:   ctx.valuesHandler,
@@ -337,13 +337,13 @@ func (ctx *ctxValue) considerPendingTags() {
 	ctx.pendingTags.Slice = nil
 	ctx.pendingTags.IsReadOnly = false
 
-	if loggerInstance := ctx.loadLoggerInstance(); loggerInstance != nil {
+	if loggerInstance := *ctx.loadLoggerInstance(); loggerInstance != nil {
 		ctx.storeLoggerInstance(loggerInstance.WithFields(pendingTags))
 	}
-	if tracerInstance := ctx.loadTracerInstance(); tracerInstance != nil {
+	if tracerInstance := *ctx.loadTracerInstance(); tracerInstance != nil {
 		ctx.storeTracerInstance(tracerInstance.WithFields(pendingTags))
 	}
-	if metricsInstance := ctx.loadMetricsInstance(); metricsInstance != nil {
+	if metricsInstance := *ctx.loadMetricsInstance(); metricsInstance != nil {
 		ctx.storeMetricsInstance(metricsInstance.WithTags(pendingTags))
 	}
 }
@@ -357,10 +357,10 @@ func (ctx *ctxValue) considerPendingFields() {
 	ctx.pendingFields.Slice = nil
 	ctx.pendingFields.IsReadOnly = false
 
-	if loggerInstance := ctx.loadLoggerInstance(); loggerInstance != nil {
+	if loggerInstance := *ctx.loadLoggerInstance(); loggerInstance != nil {
 		ctx.storeLoggerInstance(loggerInstance.WithFields(pendingFields))
 	}
-	if tracerInstance := ctx.loadTracerInstance(); tracerInstance != nil {
+	if tracerInstance := *ctx.loadTracerInstance(); tracerInstance != nil {
 		ctx.storeTracerInstance(tracerInstance.WithFields(pendingFields))
 	}
 }
@@ -372,13 +372,13 @@ func (ctx *ctxValue) considerPending() {
 
 // Logger returns a Logger.
 func (ctx *ctxValue) Logger() Logger {
-	loggerInstance := ctx.loadLoggerInstance()
+	loggerInstance := *ctx.loadLoggerInstance()
 	if loggerInstance == nil {
 		return nil
 	}
 	ctx.mutationSyncer.Do(func() {
 		ctx.considerPending()
-		loggerInstance = ctx.loadLoggerInstance()
+		loggerInstance = *ctx.loadLoggerInstance()
 	})
 	return loggerInstance
 }
@@ -393,13 +393,13 @@ func (ctx *ctxValue) WithLogger(logger Logger) Context {
 
 // Metrics returns a Metrics handler.
 func (ctx *ctxValue) Metrics() Metrics {
-	metricsInstance := ctx.loadMetricsInstance()
+	metricsInstance := *ctx.loadMetricsInstance()
 	if metricsInstance == nil {
 		return nil
 	}
 	ctx.mutationSyncer.Do(func() {
 		ctx.considerPending()
-		metricsInstance = ctx.loadMetricsInstance()
+		metricsInstance = *ctx.loadMetricsInstance()
 	})
 	return metricsInstance
 }
@@ -414,13 +414,13 @@ func (ctx *ctxValue) WithMetrics(metrics Metrics) Context {
 
 // Tracer returns a Tracer handler.
 func (ctx *ctxValue) Tracer() Tracer {
-	tracerInstance := ctx.loadTracerInstance()
+	tracerInstance := *ctx.loadTracerInstance()
 	if tracerInstance == nil {
 		return dummyTracerInstance
 	}
 	ctx.mutationSyncer.Do(func() {
 		ctx.considerPending()
-		tracerInstance = ctx.loadTracerInstance()
+		tracerInstance = *ctx.loadTracerInstance()
 	})
 	return tracerInstance
 }
