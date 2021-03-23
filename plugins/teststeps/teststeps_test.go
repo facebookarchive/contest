@@ -63,8 +63,7 @@ func TestForEachTargetOneTarget(t *testing.T) {
 	}
 	go func() {
 		d.inCh <- &target.Target{ID: "target001"}
-		// signal end of input
-		d.inCh <- nil
+		close(d.inCh)
 	}()
 	ctx, cancel := xcontext.WithCancel(ctx)
 	defer cancel()
@@ -94,8 +93,7 @@ func TestForEachTargetOneTargetAllFail(t *testing.T) {
 	}
 	go func() {
 		d.inCh <- &target.Target{ID: "target001"}
-		// signal end of input
-		d.inCh <- nil
+		close(d.inCh)
 	}()
 	ctx, cancel := xcontext.WithCancel(ctx)
 	defer cancel()
@@ -125,8 +123,7 @@ func TestForEachTargetTenTargets(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			d.inCh <- &target.Target{ID: fmt.Sprintf("target%00d", i)}
 		}
-		// signal end of input
-		d.inCh <- nil
+		close(d.inCh)
 	}()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -156,8 +153,7 @@ func TestForEachTargetTenTargetsAllFail(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			d.inCh <- &target.Target{ID: fmt.Sprintf("target%00d", i)}
 		}
-		// signal end of input
-		d.inCh <- nil
+		close(d.inCh)
 	}()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -193,8 +189,7 @@ func TestForEachTargetTenTargetsOneFails(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			d.inCh <- &target.Target{ID: fmt.Sprintf("target%03d", i)}
 		}
-		// signal end of input
-		d.inCh <- nil
+		close(d.inCh)
 	}()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -228,7 +223,7 @@ func TestForEachTargetTenTargetsOneFails(t *testing.T) {
 // I am using a deadline of 3s to give it some margin, knowing that if it is sequential
 // it will take ~10s.
 func TestForEachTargetTenTargetsParallelism(t *testing.T) {
-	sleepTime := time.Second
+	sleepTime := 300 * time.Millisecond
 	d := newData()
 	fn := func(ctx xcontext.Context, tgt *target.Target) error {
 		d.ctx.Debugf("Handling target %+v", tgt)
@@ -248,8 +243,7 @@ func TestForEachTargetTenTargetsParallelism(t *testing.T) {
 		for i := 0; i < numTargets; i++ {
 			d.inCh <- &target.Target{ID: fmt.Sprintf("target%03d", i)}
 		}
-		// signal end of input
-		d.inCh <- nil
+		close(d.inCh)
 	}()
 
 	deadlineExceeded := false
@@ -301,7 +295,7 @@ func TestForEachTargetTenTargetsParallelism(t *testing.T) {
 }
 
 func TestForEachTargetCancelSignalPropagation(t *testing.T) {
-	sleepTime := time.Second * 5
+	sleepTime := 300 * time.Millisecond
 	numTargets := 10
 	var canceledTargets int32
 	d := newData()
@@ -324,7 +318,7 @@ func TestForEachTargetCancelSignalPropagation(t *testing.T) {
 		for i := 0; i < numTargets; i++ {
 			d.inCh <- &target.Target{ID: fmt.Sprintf("target%03d", i)}
 		}
-		d.inCh <- nil
+		close(d.inCh)
 	}()
 
 	go func() {
@@ -339,7 +333,7 @@ func TestForEachTargetCancelSignalPropagation(t *testing.T) {
 }
 
 func TestForEachTargetCancelBeforeInputChannelClosed(t *testing.T) {
-	sleepTime := time.Second * 5
+	sleepTime := 300 * time.Millisecond
 	numTargets := 10
 	var canceledTargets int32
 	d := newData()

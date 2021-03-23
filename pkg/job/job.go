@@ -13,7 +13,6 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
-	"github.com/facebookincubator/contest/pkg/xcontext"
 
 	"github.com/insomniacslk/xjson"
 )
@@ -74,12 +73,6 @@ type Job struct {
 	// subsequently use to search and aggregate.
 	Tags []string
 
-	// TODO: StateCtx should be owned by the JobManager
-	// cancel or pause is a job-wide channel used to request and detect job's state change.
-	StateCtx       xcontext.Context
-	StateCtxPause  func()
-	StateCtxCancel func()
-
 	// How many times a job has to run. 0 means infinite.
 	// A "run" is the execution of a sequence of tests. For example, setting
 	// Runs to 2 will execute all the tests defined in `Tests` once, and then
@@ -139,25 +132,6 @@ func (js State) String() string {
 		string(EventJobCancelled),
 		string(EventJobCancellationFailed),
 	}[js]
-}
-
-// Cancel closes the cancel channel to signal cancellation
-func (j *Job) Cancel() {
-	j.StateCtxCancel()
-}
-
-// Pause closes the pause channel to signal pause
-func (j *Job) Pause() {
-	j.StateCtxPause()
-}
-
-// IsCancelled returns whether the job has been cancelled
-func (j *Job) IsCancelled() bool {
-	return j.StateCtx.IsSignaledWith(xcontext.ErrCanceled)
-}
-
-func (j *Job) IsPaused() bool {
-	return j.StateCtx.IsSignaledWith(xcontext.ErrPaused)
 }
 
 // InfoFetcher defines how to fetch job information

@@ -9,9 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/insomniacslk/xjson"
@@ -27,8 +25,6 @@ import (
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 )
-
-var cancellationTimeout = 60 * time.Second
 
 // ErrorEventPayload represents the payload carried by a failure event (e.g. JobStateFailed, JobStateCancelled, etc.)
 type ErrorEventPayload struct {
@@ -47,19 +43,26 @@ type ErrorEventPayload struct {
 type JobManager struct {
 	config
 
-	jobs      map[types.JobID]*job.Job
+	jobs      map[types.JobID]*jobInfo
 	jobRunner *runner.JobRunner
 
 	jobsMu sync.Mutex
 	jobsWg sync.WaitGroup
 
-	jobStorageManager storage.JobStorageManager
+	jsm storage.JobStorageManager
 
 	frameworkEvManager frameworkevent.EmitterFetcher
 	testEvManager      testevent.Fetcher
 
 	apiListener    api.Listener
 	pluginRegistry *pluginregistry.PluginRegistry
+
+	apiCancel xcontext.CancelFunc
+}
+
+type jobInfo struct {
+	job           *job.Job
+	pause, cancel func()
 }
 
 // New initializes and returns a new JobManager with the given API listener.
@@ -67,7 +70,7 @@ func New(l api.Listener, pr *pluginregistry.PluginRegistry, opts ...Option) (*Jo
 	if pr == nil {
 		return nil, errors.New("plugin registry cannot be nil")
 	}
-	jobStorageManager := storage.NewJobStorageManager()
+	jsm := storage.NewJobStorageManager()
 
 	frameworkEvManager := storage.NewFrameworkEventEmitterFetcher()
 	testEvManager := storage.NewTestEventFetcher()
@@ -86,8 +89,8 @@ func New(l api.Listener, pr *pluginregistry.PluginRegistry, opts ...Option) (*Jo
 		config:             cfg,
 		apiListener:        l,
 		pluginRegistry:     pr,
-		jobs:               make(map[types.JobID]*job.Job),
-		jobStorageManager:  jobStorageManager,
+		jobs:               make(map[types.JobID]*jobInfo),
+		jsm:                jsm,
 		frameworkEvManager: frameworkEvManager,
 		testEvManager:      testEvManager,
 	}
@@ -95,7 +98,7 @@ func New(l api.Listener, pr *pluginregistry.PluginRegistry, opts ...Option) (*Jo
 	return &jm, nil
 }
 
-func (jm *JobManager) handleEvent(ev *api.Event) {
+func (jm *JobManager) handleEvent(ctx xcontext.Context, ev *api.Event) {
 	var resp *api.EventResponse
 
 	switch ev.Type {
@@ -130,24 +133,27 @@ func (jm *JobManager) handleEvent(ev *api.Event) {
 	}
 }
 
-// Start is responsible for starting the API listener and responding to incoming
-// events. It also responds to cancellation requests coming from SIGINT/SIGTERM
-// signals, propagating the signals downwards to all jobs.
-func (jm *JobManager) Start(ctx xcontext.Context, sigs chan os.Signal) error {
-	log := ctx.Logger()
-	log.Debugf("Starting JobManager")
-	defer log.Debugf("Stopped JobManager")
-
+// Run is responsible for starting the API listener and responding to incoming events.
+func (jm *JobManager) Run(ctx xcontext.Context, resumeJobs bool) error {
 	a, err := api.New(jm.config.apiOptions...)
 	if err != nil {
-		return fmt.Errorf("Cannot start JobManager: %w", err)
+		return fmt.Errorf("Cannot start API: %w", err)
+	}
+
+	// First, resume paused jobs.
+	if resumeJobs {
+		if err := jm.resumeJobs(ctx); err != nil {
+			return fmt.Errorf("failed to resume jobs: %w", err)
+		}
 	}
 
 	apiCtx, apiCancel := xcontext.WithCancel(ctx)
+	jm.apiCancel = apiCancel
+
 	errCh := make(chan error, 1)
 	go func() {
 		lErr := jm.apiListener.Serve(apiCtx, a)
-		ctx.Debugf("Server shut down successfully.")
+		ctx.Infof("Listener shut down successfully.")
 		errCh <- lErr
 	}()
 
@@ -156,114 +162,90 @@ loop:
 		select {
 		// handle events from the API
 		case ev := <-a.Events:
-			ev.Context.Debugf("Handling event %+v", ev)
+			ctx.Debugf("Handling event %+v", ev)
 			// send the response, and wait for the given timeout
-			jm.handleEvent(ev)
+			jm.handleEvent(ctx, ev)
 		// check for errors or premature termination from the listener.
 		case err := <-errCh:
-			log.Infof("JobManager: API listener failed, triggering a cancellation of all jobs")
-			jm.CancelAll(ctx)
 			if err != nil {
-				return fmt.Errorf("error reported by API listener: %v", err)
+				ctx.Infof("JobManager: API listener failed (%v)", err)
 			}
-			return errors.New("API listener terminated prematurely without errors")
-		// handle signals to shut down gracefully. If the cancellation takes too
-		// long, it will be terminated.
-		case sig := <-sigs:
-			// TODO: stop processing signals inside jobmanager, this is
-			//       as responsibility of "main".
-			// We were interrupted by a signal, time to leave!
-			if sig == syscall.SIGUSR1 {
-				log.Debugf("Interrupted by signal '%s': wait for jobs and exit", sig)
-				apiCancel()
-			} else {
-				log.Debugf("Interrupted by signal '%s': pause jobs and exit", sig)
-				apiCancel()
-				jm.PauseJobs(ctx)
-			}
-			select {
-			case err := <-errCh:
-				if err != nil {
-					return fmt.Errorf("API listener terminated with error: %v", err)
-				}
-				// break the outer loop
-				break loop
-			case <-time.After(cancellationTimeout):
-				return fmt.Errorf("API listener didn't shut down within %v, exiting", cancellationTimeout)
-			}
+			break loop
+		case <-ctx.Until(xcontext.ErrPaused):
+			ctx.Infof("Paused")
+			jm.PauseAll(ctx)
+			break loop
+		case <-ctx.Done():
+			ctx.Infof("Cancelled")
+			jm.CancelAll(ctx)
+			break loop
 		}
 	}
+	jm.StopAPI()
 	// Downstream runner are guaranteed to have shutdown control path protected
 	// by timeouts, therefore here we can wait for all jobs registered in the
 	// WaitGroup to terminate correctly or timeout during termination
+	jm.jobsMu.Lock()
+	ctx.Infof("Waiting for %d jobs", len(jm.jobs))
+	jm.jobsMu.Unlock()
 	jm.jobsWg.Wait()
+	ctx.Infof("Finished")
 	return nil
 }
 
 // CancelJob sends a cancellation request to a specific job.
 func (jm *JobManager) CancelJob(jobID types.JobID) error {
 	jm.jobsMu.Lock()
+	defer jm.jobsMu.Unlock()
 	// get the job from the local cache rather than the storage layer. We can
 	// only cancel jobs that we are actively handling.
-	j, ok := jm.jobs[jobID]
+	ji, ok := jm.jobs[jobID]
 	if !ok {
-		jm.jobsMu.Unlock()
 		return fmt.Errorf("unknown job ID: %d", jobID)
 	}
-	j.Cancel()
+	ji.cancel()
 	delete(jm.jobs, jobID)
-	jm.jobsMu.Unlock()
 	return nil
 }
 
-// CancelAll sends a cancellation request to the API listener and to every running
-// job.
+// StopAPI stops accepting new requests.
+func (jm *JobManager) StopAPI() {
+	jm.apiCancel()
+}
+
+// CancelAll cancels all running jobs.
 func (jm *JobManager) CancelAll(ctx xcontext.Context) {
-	log := ctx.Logger()
-	// TODO This doesn't seem the right thing to do, if the listener fails we should
-	// pause, not cancel.
-
-	// Get the job from the local cache rather than the storage layer. We can
-	// only cancel jobs that we are actively handling.
-	log.Infof("JobManager: cancelling all jobs")
-	for jobID, job := range jm.jobs {
-		log.Debugf("JobManager: cancelling job with ID %v", jobID)
-		job.Cancel()
+	jm.jobsMu.Lock()
+	defer jm.jobsMu.Unlock()
+	for jobID, ji := range jm.jobs {
+		ctx.Debugf("JobManager: cancelling job %d", jobID)
+		ji.cancel()
 	}
 }
 
-// PauseJobs sends a pause request to every running job.
-func (jm *JobManager) PauseJobs(ctx xcontext.Context) {
-	log := ctx.Logger()
-
-	log.Infof("JobManager: requested pausing")
-	for jobID, job := range jm.jobs {
-		log.Debugf("JobManager: pausing job with ID %v", jobID)
-		job.Pause()
+// CancelAll pauses all running jobs.
+func (jm *JobManager) PauseAll(ctx xcontext.Context) {
+	jm.jobsMu.Lock()
+	defer jm.jobsMu.Unlock()
+	for jobID, ji := range jm.jobs {
+		ctx.Debugf("JobManager: cancelling job %d", jobID)
+		ji.pause()
 	}
 }
 
-func (jm *JobManager) emitErrEvent(ctx xcontext.Context, jobID types.JobID, eventName event.Name, err error) error {
-	var (
-		rawPayload json.RawMessage
-		payloadPtr *json.RawMessage
-	)
-	if err != nil {
-		ctx.Errorf(err.Error())
-		payload := ErrorEventPayload{Err: *xjson.NewError(err)}
-		payloadJSON, err := json.Marshal(payload)
-		if err != nil {
-			ctx.Warnf("Could not serialize payload for event %s: %v", eventName, err)
+func (jm *JobManager) emitEventPayload(ctx xcontext.Context, jobID types.JobID, eventName event.Name, payload interface{}) error {
+	var payloadJSON json.RawMessage
+	if payload != nil {
+		if p, err := json.Marshal(payload); err == nil {
+			payloadJSON = json.RawMessage(p)
 		} else {
-			rawPayload = json.RawMessage(payloadJSON)
-			payloadPtr = &rawPayload
+			return fmt.Errorf("Could not serialize payload for event %s: %v", eventName, err)
 		}
 	}
-
 	ev := frameworkevent.Event{
 		JobID:     jobID,
 		EventName: eventName,
-		Payload:   payloadPtr,
+		Payload:   &payloadJSON,
 		EmitTime:  time.Now(),
 	}
 	if err := jm.frameworkEvManager.Emit(ctx, ev); err != nil {
@@ -271,6 +253,14 @@ func (jm *JobManager) emitErrEvent(ctx xcontext.Context, jobID types.JobID, even
 		return err
 	}
 	return nil
+}
+
+func (jm *JobManager) emitErrEvent(ctx xcontext.Context, jobID types.JobID, eventName event.Name, err error) error {
+	if err != nil {
+		ctx.Errorf(err.Error())
+		return jm.emitEventPayload(ctx, jobID, eventName, &ErrorEventPayload{Err: *xjson.NewError(err)})
+	}
+	return jm.emitEventPayload(ctx, jobID, eventName, nil)
 }
 
 func (jm *JobManager) emitEvent(ctx xcontext.Context, jobID types.JobID, eventName event.Name) error {

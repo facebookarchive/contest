@@ -112,10 +112,7 @@ func newJob(ctx xcontext.Context, registry *pluginregistry.PluginRegistry, jobDe
 		FinalReporterBundles:        finalReportersBundle,
 	}
 
-	job.StateCtx, job.StateCtxPause = xcontext.WithNotify(ctx, xcontext.ErrPaused)
-	job.StateCtx, job.StateCtxCancel = xcontext.WithCancel(job.StateCtx)
 	return &job, nil
-
 }
 
 // NewJobFromDescriptor creates a job object from a job descriptor

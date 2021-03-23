@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/facebookincubator/contest/cmds/plugins"
 	"github.com/facebookincubator/contest/pkg/api"
@@ -19,6 +20,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
 	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/facebookincubator/contest/plugins/listeners/httplistener"
@@ -35,6 +37,8 @@ var (
 	flagTargetLocker   = flag.String("targetLocker", inmemory.Name, "Target locker implementation to use")
 	flagInstanceTag    = flag.String("instanceTag", "", "A tag for this instance. Server will only operate on jobs with this tag and will add this tag to the jobs it creates.")
 	flagLogLevel       = flag.String("logLevel", "debug", "A log level, possible values: debug, info, warning, error, panic, fatal")
+	flagPauseTimeout   = flag.Int("pauseTimeout", 0, "SIGINT/SIGTERM shutdown timeout (seconds), after which pause will be escalated to cancellaton; -1 - no escalation, 0 - do not pause, cancel immediately")
+	flagResumeJobs     = flag.Bool("resumeJobs", false, "Attempt to resume paused jobs")
 )
 
 func main() {
@@ -44,7 +48,9 @@ func main() {
 		panic(err)
 	}
 
-	ctx := logrusctx.NewContext(logLevel, logging.DefaultOptions()...)
+	ctx, cancel := xcontext.WithCancel(logrusctx.NewContext(logLevel, logging.DefaultOptions()...))
+	ctx2, pause := xcontext.WithNotify(ctx, xcontext.ErrPaused)
+	ctx = ctx2
 	log := ctx.Logger()
 
 	pluginRegistry := pluginregistry.NewPluginRegistry(ctx)
@@ -139,12 +145,55 @@ func main() {
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
-	log.Debugf("JobManager %+v", jm)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
 
-	if err := jm.Start(ctx, sigs); err != nil {
+	go func() {
+		intLevel := 0
+		// cancel immediately if pauseTimeout is zero
+		if *flagPauseTimeout == 0 {
+			intLevel = 1
+		}
+		for {
+			sig, ok := <-sigs
+			if !ok {
+				return
+			}
+			switch sig {
+			case syscall.SIGUSR1:
+				// Gentle shutdown: stop accepting requests, drain without asserting pause signal.
+				jm.StopAPI()
+			case syscall.SIGINT:
+				fallthrough
+			case syscall.SIGTERM:
+				// First signal - pause and drain, second - cancel.
+				jm.StopAPI()
+				if intLevel == 0 {
+					log.Infof("Signal %q, pausing jobs", sig)
+					pause()
+					if *flagPauseTimeout > 0 {
+						go func() {
+							select {
+							case <-ctx.Done():
+							case <-time.After(time.Duration(*flagPauseTimeout) * time.Second):
+								log.Errorf("Timed out waiting for jobs to pause, canceling")
+								cancel()
+							}
+						}()
+					}
+					intLevel++
+				} else {
+					log.Infof("Signal %q, canceling", sig)
+					cancel()
+				}
+			}
+		}
+	}()
+
+	if err := jm.Run(ctx, *flagResumeJobs); err != nil {
 		log.Fatalf("%v", err)
 	}
+	close(sigs)
+	log.Infof("Exiting")
 }
