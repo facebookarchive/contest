@@ -223,6 +223,13 @@ func (tr *TestRunner) run(
 	targetCancel()
 	tr.targetsWg.Wait()
 
+	// Has the run been canceled? If so, ignore whatever happened, it doesn't matter.
+	select {
+	case <-ctx.Done():
+		runErr = xcontext.ErrCanceled
+	default:
+	}
+
 	// Examine the resulting state.
 	ctx.Debugf("leaving, err %v, target states:", runErr)
 	tr.mu.Lock()
@@ -232,7 +239,7 @@ func (tr *TestRunner) run(
 	for i, tgt := range targets {
 		tgs := tr.targets[tgt.ID]
 		stepErr := tr.steps[tgs.CurStep].runErr
-		ctx.Debugf("  %d %s %v", i, tgs, stepErr)
+		ctx.Debugf("  %d %s %t", i, tgs, (stepErr == nil))
 		if tgs.CurPhase == targetStepPhaseRun {
 			numInFlightTargets++
 		}
@@ -249,14 +256,6 @@ func (tr *TestRunner) run(
 	// Is there a useful error to report?
 	if runErr != nil {
 		return nil, runErr
-	}
-
-	// Has the run been canceled?
-	ctx.Debugf("ctx-cancel-is: %v; ctx-notifications-are: %v", ctx.Err(), ctx.Notifications())
-	select {
-	case <-ctx.Done():
-		return nil, xcontext.ErrCanceled
-	default:
 	}
 
 	// Have we been asked to pause? If yes, is it safe to do so?
@@ -340,6 +339,7 @@ func (tr *TestRunner) waitStepRunners(ctx xcontext.Context) error {
 		}
 		for _, ss := range tr.steps {
 			if ss.stepRunning {
+				ss.setErrLocked(&cerrors.ErrTestStepsNeverReturned{StepNames: []string{ss.sb.TestStepLabel}})
 				nrerr.StepNames = append(nrerr.StepNames, ss.sb.TestStepLabel)
 				// We cannot make the step itself return but we can at least release the reader.
 				tr.safeCloseOutCh(ss)

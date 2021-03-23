@@ -2,7 +2,7 @@ FROM mysql:8.0
 
 # Configure golang environment to run migration against database
 RUN apt-get update && apt-get install -y curl && apt-get clean
-RUN curl -L https://golang.org/dl/go1.15.6.linux-amd64.tar.gz | tar xzf -
+RUN curl -L https://golang.org/dl/go1.16.2.linux-amd64.tar.gz | tar xzf -
 ENV GOROOT=/go
 ENV PATH=$PATH:/go/bin
 

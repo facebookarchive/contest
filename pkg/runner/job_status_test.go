@@ -64,16 +64,19 @@ func (fem dummyFrameworkEventManager) FetchAsync(ctx xcontext.Context, fields ..
 }
 
 func TestBuildRunStatuses(t *testing.T) {
+	ctx := xcontext.Background()
 	jr := &JobRunner{
 		targetMap:             nil,
 		targetLock:            nil,
 		frameworkEventManager: dummyFrameworkEventManager{t: t},
 		testEvManager:         nil,
 	}
-	runStatuses, err := jr.BuildRunStatuses(&job.Job{
-		ID:   1,
-		Runs: 3,
-	})
+	runStatuses, err := jr.BuildRunStatuses(
+		ctx, &job.Job{
+			ID:   1,
+			Runs: 3,
+		},
+	)
 	require.NoError(t, err)
 	require.Len(t, runStatuses, 2)
 }

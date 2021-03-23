@@ -265,3 +265,30 @@ var jobDescriptorDuplicateTag = descriptorMust2(&templateData{
        "TestName": "IntegrationTest: slow echo"
    }`,
 })
+
+var jobDescriptorSlowEcho2 = descriptorMust2(&templateData{
+	Runs:        2,
+	RunInterval: "0.5s",
+	Def: `
+   "TestFetcherFetchParameters": {
+       "Steps": [
+           {
+               "name": "slowecho",
+               "label": "Step 1",
+               "parameters": {
+                 "sleep": ["0.5"],
+                 "text": ["Hello step 1"]
+               }
+           },
+           {
+               "name": "slowecho",
+               "label": "Step 2",
+               "parameters": {
+                 "sleep": ["0"],
+                 "text": ["Hello step 2"]
+               }
+           }
+       ],
+       "TestName": "IntegrationTest: resume"
+   }`,
+})

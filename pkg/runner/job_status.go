@@ -145,7 +145,7 @@ func (jr *JobRunner) buildTestStatus(ctx xcontext.Context, coordinates job.TestC
 			TestStepName:    bundle.TestStep.Name(),
 			TestStepLabel:   bundle.TestStepLabel,
 		}
-		testStepStatus, err := jr.buildTestStepStatus(currentJob.StateCtx, testStepCoordinates)
+		testStepStatus, err := jr.buildTestStepStatus(ctx, testStepCoordinates)
 		if err != nil {
 			return nil, fmt.Errorf("could not build TestStatus for test %s: %v", bundle.TestStep.Name(), err)
 		}
@@ -193,13 +193,13 @@ func (jr *JobRunner) buildTestStatus(ctx xcontext.Context, coordinates job.TestC
 }
 
 // BuildRunStatus builds the status of a run with a job
-func (jr *JobRunner) BuildRunStatus(coordinates job.RunCoordinates, currentJob *job.Job) (*job.RunStatus, error) {
+func (jr *JobRunner) BuildRunStatus(ctx xcontext.Context, coordinates job.RunCoordinates, currentJob *job.Job) (*job.RunStatus, error) {
 
 	runStatus := job.RunStatus{RunCoordinates: coordinates, TestStatuses: make([]job.TestStatus, len(currentJob.Tests))}
 
 	for index, currentTest := range currentJob.Tests {
 		testCoordinates := job.TestCoordinates{RunCoordinates: coordinates, TestName: currentTest.Name}
-		testStatus, err := jr.buildTestStatus(currentJob.StateCtx, testCoordinates, currentJob)
+		testStatus, err := jr.buildTestStatus(ctx, testCoordinates, currentJob)
 		if err != nil {
 			return nil, fmt.Errorf("could not rebuild status for test %s: %v", currentTest.Name, err)
 		}
@@ -209,10 +209,10 @@ func (jr *JobRunner) BuildRunStatus(coordinates job.RunCoordinates, currentJob *
 }
 
 // BuildRunStatuses builds the status of all runs belonging to the job
-func (jr *JobRunner) BuildRunStatuses(currentJob *job.Job) ([]job.RunStatus, error) {
+func (jr *JobRunner) BuildRunStatuses(ctx xcontext.Context, currentJob *job.Job) ([]job.RunStatus, error) {
 
 	// Calculate the status only for the runs which effectively were executed
-	runStartEvents, err := jr.frameworkEventManager.Fetch(currentJob.StateCtx, frameworkevent.QueryEventName(EventRunStarted), frameworkevent.QueryJobID(currentJob.ID))
+	runStartEvents, err := jr.frameworkEventManager.Fetch(ctx, frameworkevent.QueryEventName(EventRunStarted), frameworkevent.QueryJobID(currentJob.ID))
 	if err != nil {
 		return nil, fmt.Errorf("could not determine how many runs were executed: %v", err)
 	}
@@ -240,7 +240,7 @@ func (jr *JobRunner) BuildRunStatuses(currentJob *job.Job) ([]job.RunStatus, err
 	var runStatuses []job.RunStatus
 	for runID := types.RunID(1); runID <= numRuns; runID++ {
 		runCoordinates := job.RunCoordinates{JobID: currentJob.ID, RunID: runID}
-		runStatus, err := jr.BuildRunStatus(runCoordinates, currentJob)
+		runStatus, err := jr.BuildRunStatus(ctx, runCoordinates, currentJob)
 		if err != nil {
 			return nil, fmt.Errorf("could not rebuild run status for run %d: %v", runID, err)
 		}

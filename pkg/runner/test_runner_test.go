@@ -163,7 +163,7 @@ func runWithTimeout(t *testing.T, tr *TestRunner, ctx xcontext.Context, resumeSt
 func Test1Step1Success(t *testing.T) {
 	resetEventStorage()
 	tr := newTestRunner()
-	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
+	_, err := runWithTimeout(t, tr, ctx, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1")},
 		[]test.TestStepBundle{
 			newTestStep("Step 1", 0, "", ""),
@@ -187,7 +187,7 @@ func Test1Step1Success(t *testing.T) {
 func Test1StepLongerThanShutdown1Success(t *testing.T) {
 	resetEventStorage()
 	tr := NewTestRunnerWithTimeouts(100 * time.Millisecond)
-	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
+	_, err := runWithTimeout(t, tr, ctx, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1")},
 		[]test.TestStepBundle{
 			newTestStep("Step 1", 0, "", "T1=500"),
@@ -210,7 +210,7 @@ func Test1StepLongerThanShutdown1Success(t *testing.T) {
 func Test1Step1Fail(t *testing.T) {
 	resetEventStorage()
 	tr := newTestRunner()
-	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
+	_, err := runWithTimeout(t, tr, ctx, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1")},
 		[]test.TestStepBundle{
 			newTestStep("Step 1", 100, "", ""),
@@ -233,7 +233,7 @@ func Test1Step1Fail(t *testing.T) {
 func Test1Step1Success1Fail(t *testing.T) {
 	resetEventStorage()
 	tr := newTestRunner()
-	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
+	_, err := runWithTimeout(t, tr, ctx, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1"), tgt("T2")},
 		[]test.TestStepBundle{
 			newTestStep("Step 1", 0, "T1", "T2=100"),
@@ -263,7 +263,7 @@ func Test1Step1Success1Fail(t *testing.T) {
 func Test3StepsNotReachedStepNotRun(t *testing.T) {
 	resetEventStorage()
 	tr := newTestRunner()
-	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
+	_, err := runWithTimeout(t, tr, ctx, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1"), tgt("T2")},
 		[]test.TestStepBundle{
 			newTestStep("Step 1", 0, "T1", ""),
@@ -320,7 +320,7 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 func TestStepPanics(t *testing.T) {
 	resetEventStorage()
 	tr := newTestRunner()
-	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
+	_, err := runWithTimeout(t, tr, ctx, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1")},
 		[]test.TestStepBundle{
 			newStep("Step 1", panicstep.Name, nil),
@@ -336,7 +336,7 @@ func TestStepPanics(t *testing.T) {
 func TestStepClosesChannels(t *testing.T) {
 	resetEventStorage()
 	tr := newTestRunner()
-	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
+	_, err := runWithTimeout(t, tr, ctx, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("T1")},
 		[]test.TestStepBundle{
 			newStep("Step 1", channels.Name, nil),
@@ -357,7 +357,7 @@ func TestStepClosesChannels(t *testing.T) {
 func TestStepYieldsResultForNonexistentTarget(t *testing.T) {
 	resetEventStorage()
 	tr := newTestRunner()
-	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
+	_, err := runWithTimeout(t, tr, ctx, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("TExtra")},
 		[]test.TestStepBundle{
 			newStep("Step 1", badtargets.Name, nil),
@@ -375,7 +375,7 @@ func TestStepYieldsResultForNonexistentTarget(t *testing.T) {
 func TestStepYieldsDuplicateResult(t *testing.T) {
 	resetEventStorage()
 	tr := newTestRunner()
-	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
+	_, err := runWithTimeout(t, tr, ctx, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("TGood"), tgt("TDup")},
 		[]test.TestStepBundle{
 			// TGood makes it past here unscathed and gets delayed in Step 2,
@@ -392,7 +392,7 @@ func TestStepYieldsDuplicateResult(t *testing.T) {
 func TestStepLosesTargets(t *testing.T) {
 	resetEventStorage()
 	tr := newTestRunner()
-	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
+	_, err := runWithTimeout(t, tr, ctx, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("TGood"), tgt("TDrop")},
 		[]test.TestStepBundle{
 			newStep("Step 1", badtargets.Name, nil),
@@ -408,7 +408,7 @@ func TestStepLosesTargets(t *testing.T) {
 func TestStepYieldsResultForUnexpectedTarget(t *testing.T) {
 	resetEventStorage()
 	tr := newTestRunner()
-	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
+	_, err := runWithTimeout(t, tr, ctx, nil, 1, 2*time.Second,
 		[]*target.Target{tgt("TExtra"), tgt("TExtra2")},
 		[]test.TestStepBundle{
 			// TExtra2 fails here.
@@ -429,7 +429,7 @@ func TestRandomizedMultiStep(t *testing.T) {
 	for i := 1; i <= 100; i++ {
 		targets = append(targets, tgt(fmt.Sprintf("T%d", i)))
 	}
-	_, err := runWithTimeout(t, tr, nil, nil, 1, 2*time.Second,
+	_, err := runWithTimeout(t, tr, ctx, nil, 1, 2*time.Second,
 		targets,
 		[]test.TestStepBundle{
 			newTestStep("Step 1", 0, "", "*=10"),  // All targets pass the first step, with a slight delay
