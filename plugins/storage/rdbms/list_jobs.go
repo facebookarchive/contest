@@ -40,6 +40,10 @@ func (r *RDBMS) ListJobs(_ xcontext.Context, query *storage.JobQuery) ([]types.J
 		parts = append(parts, fmt.Sprintf(`INNER JOIN job_tags jt%d ON jobs.job_id = jt%d.job_id`, i, i))
 	}
 	var conds []string
+	if len(query.ServerID) > 0 {
+		conds = append(conds, "jobs.server_id = ?")
+		qargs = append(qargs, query.ServerID)
+	}
 	if len(query.States) > 0 {
 		stst := make([]string, len(query.States))
 		for i, st := range query.States {

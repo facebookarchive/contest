@@ -19,12 +19,14 @@ type JobQueryField interface {
 type JobQueryFields []JobQueryField
 
 type JobQuery struct {
-	States []job.State
-	Tags   []string
+	States   []job.State
+	Tags     []string
+	ServerID string
 }
 
 type jobQueryFieldStates []job.State
 type jobQueryFieldTags []string
+type jobQueryFieldServerID string
 
 func QueryJobStates(states ...job.State) JobQueryField { return jobQueryFieldStates(states) }
 func (value jobQueryFieldStates) queryFieldPointer(query *JobQuery) interface{} {
@@ -34,6 +36,11 @@ func (value jobQueryFieldStates) queryFieldPointer(query *JobQuery) interface{} 
 func QueryJobTags(tags ...string) JobQueryField { return jobQueryFieldTags(tags) }
 func (value jobQueryFieldTags) queryFieldPointer(query *JobQuery) interface{} {
 	return &query.Tags
+}
+
+func QueryJobServerID(serverID string) JobQueryField { return jobQueryFieldServerID(serverID) }
+func (value jobQueryFieldServerID) queryFieldPointer(query *JobQuery) interface{} {
+	return &query.ServerID
 }
 
 func BuildJobQuery(queryFields ...JobQueryField) (*JobQuery, error) {

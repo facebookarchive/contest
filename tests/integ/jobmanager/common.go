@@ -61,30 +61,32 @@ type command struct {
 	jobID         types.JobID
 	jobDescriptor string
 	// List arguments
-	states []job.State
-	tags   []string
+	jobQuery *storage.JobQuery
 }
 
 const fakeJobID types.JobID = 1234567
 
 // TestListener implements a dummy api.Listener interface for testing purposes
 type TestListener struct {
+	// API instance this listener is serving
+	api *api.API
 	// commandCh is an input channel to the Serve() function of the TestListener
 	// which controls the type of operation that should be triggered towards the
 	// JobManager
-	commandCh <-chan command
+	commandCh chan command
 	// responseCh is an input channel to the integrations tests where the
 	// dummy TestListener forwards the responses coming from the API layer
-	responseCh chan<- api.Response
+	responseCh chan api.Response
 	// errorCh is an input channel to the integration tests where the
 	// dummy TestListener forwards errors coming from the API layer
-	errorCh chan<- error
+	errorCh chan error
 }
 
 // Serve implements the main logic of a dummy listener which talks to the API
 // layer to trigger actions in the JobManager
 func (tl *TestListener) Serve(ctx xcontext.Context, contestApi *api.API) error {
 	ctx.Debugf("Serving mock listener")
+	tl.api = contestApi
 	for {
 		select {
 		case command := <-tl.commandCh:
@@ -109,7 +111,7 @@ func (tl *TestListener) Serve(ctx xcontext.Context, contestApi *api.API) error {
 				}
 				tl.responseCh <- resp
 			case List:
-				resp, err := contestApi.List(ctx, "IntegrationTest", command.states, command.tags)
+				resp, err := contestApi.List(ctx, "IntegrationTest", command.jobQuery)
 				if err != nil {
 					tl.errorCh <- err
 				}
@@ -168,12 +170,9 @@ type TestJobManagerSuite struct {
 	eventManager frameworkevent.EmitterFetcher
 	targetLocker target.Locker
 
-	// commandCh is the counterpart of the commandCh in the Listener
-	commandCh chan command
-	// responseCh is the counterpart of the responseCh in the Listener
-	responseCh chan api.Response
-	// errorCh is the counterpart of the errorCh in the Listener
-	errorCh chan error
+	// API listener
+	listener *TestListener
+
 	// jobManagerCh is a control channel used to signal the termination of JobManager
 	jobManagerCh chan struct{}
 	// ctx is an input context to the JobManager which can be used to pause or cancel JobManager
@@ -191,9 +190,9 @@ func (suite *TestJobManagerSuite) startJobManager(resumeJobs bool) {
 func (suite *TestJobManagerSuite) startJob(jobDescriptor string) (types.JobID, error) {
 	var resp api.Response
 	start := command{commandType: StartJob, jobDescriptor: jobDescriptor}
-	suite.commandCh <- start
+	suite.listener.commandCh <- start
 	select {
-	case resp = <-suite.responseCh:
+	case resp = <-suite.listener.responseCh:
 		if resp.Err != nil {
 			return types.JobID(0), resp.Err
 		}
@@ -207,9 +206,9 @@ func (suite *TestJobManagerSuite) startJob(jobDescriptor string) (types.JobID, e
 func (suite *TestJobManagerSuite) stopJob(jobID types.JobID) error {
 	var resp api.Response
 	stop := command{commandType: StopJob, jobID: jobID}
-	suite.commandCh <- stop
+	suite.listener.commandCh <- stop
 	select {
-	case resp = <-suite.responseCh:
+	case resp = <-suite.listener.responseCh:
 		if resp.Err != nil {
 			return resp.Err
 		}
@@ -220,10 +219,10 @@ func (suite *TestJobManagerSuite) stopJob(jobID types.JobID) error {
 }
 
 func (suite *TestJobManagerSuite) jobStatus(jobID types.JobID) (*job.Status, error) {
-	suite.commandCh <- command{commandType: Status, jobID: jobID}
+	suite.listener.commandCh <- command{commandType: Status, jobID: jobID}
 	var resp api.Response
 	select {
-	case resp = <-suite.responseCh:
+	case resp = <-suite.listener.responseCh:
 		if resp.Err != nil {
 			return nil, resp.Err
 		}
@@ -233,11 +232,25 @@ func (suite *TestJobManagerSuite) jobStatus(jobID types.JobID) (*job.Status, err
 	return resp.Data.(api.ResponseDataStatus).Status, nil
 }
 
-func (suite *TestJobManagerSuite) listJobs(states []job.State, tags []string) ([]types.JobID, error) {
-	suite.commandCh <- command{commandType: List, states: states, tags: tags}
+func (suite *TestJobManagerSuite) listJobs(states []job.State, tags []string, serverID string) ([]types.JobID, error) {
+	var fields []storage.JobQueryField
+	if len(states) > 0 {
+		fields = append(fields, storage.QueryJobStates(states...))
+	}
+	if len(tags) > 0 {
+		fields = append(fields, storage.QueryJobTags(tags...))
+	}
+	if len(serverID) > 0 {
+		fields = append(fields, storage.QueryJobServerID(serverID))
+	}
+	jobQuery, err := storage.BuildJobQuery(fields...)
+	if err != nil {
+		return nil, err
+	}
+	suite.listener.commandCh <- command{commandType: List, jobQuery: jobQuery}
 	var resp api.Response
 	select {
-	case resp = <-suite.responseCh:
+	case resp = <-suite.listener.responseCh:
 		if resp.Err != nil {
 			return nil, resp.Err
 		}
@@ -277,16 +290,13 @@ func (suite *TestJobManagerSuite) SetupTest() {
 }
 
 func (suite *TestJobManagerSuite) initJobManager(instanceTag string) {
-	suite.commandCh = make(chan command)
-	suite.responseCh = make(chan api.Response)
-	suite.errorCh = make(chan error)
-	testListener := TestListener{commandCh: suite.commandCh, responseCh: suite.responseCh, errorCh: suite.errorCh}
+	suite.listener = &TestListener{commandCh: make(chan command), responseCh: make(chan api.Response), errorCh: make(chan error)}
 	suite.jobManagerCh = make(chan struct{})
 	var opts []jobmanager.Option
 	if instanceTag != "" {
 		opts = append(opts, jobmanager.OptionInstanceTag(instanceTag))
 	}
-	jm, err := jobmanager.New(&testListener, suite.pluginRegistry, opts...)
+	jm, err := jobmanager.New(suite.listener, suite.pluginRegistry, opts...)
 	require.NoError(suite.T(), err)
 	suite.jm = jm
 	suite.jmCtx, suite.jmCancel = xcontext.WithCancel(logrusctx.NewContext(logger.LevelDebug, logging.DefaultOptions()...))
@@ -754,7 +764,7 @@ func (suite *TestJobManagerSuite) TestJobManagerDifferentInstances() {
 		require.Equal(suite.T(), 1, len(ev))
 
 		// Make sure we can list the job and get its status.
-		jobIDs, err := suite.listJobs(nil, nil)
+		jobIDs, err := suite.listJobs(nil, nil, "")
 		require.NoError(suite.T(), err)
 		require.Equal(suite.T(), []types.JobID{jobID}, jobIDs)
 		jobStatus, err := suite.jobStatus(jobID)
@@ -768,7 +778,7 @@ func (suite *TestJobManagerSuite) TestJobManagerDifferentInstances() {
 	{
 		suite.initJobManager("_B")
 		suite.startJobManager(false /* resumeJobs */)
-		jobIDs, err := suite.listJobs(nil, nil)
+		jobIDs, err := suite.listJobs(nil, nil, "")
 		require.NoError(suite.T(), err)
 		require.Empty(suite.T(), jobIDs)
 		jobStatus, err := suite.jobStatus(jobID)
@@ -782,7 +792,7 @@ func (suite *TestJobManagerSuite) TestJobListing() {
 	suite.startJobManager(false /* resumeJobs */)
 
 	// There are no jobs to begin with.
-	jobIDs, err := suite.listJobs(nil, nil)
+	jobIDs, err := suite.listJobs(nil, nil, "")
 	require.NoError(suite.T(), err)
 	require.Empty(suite.T(), jobIDs)
 
@@ -799,31 +809,39 @@ func (suite *TestJobManagerSuite) TestJobListing() {
 	require.Equal(suite.T(), 1, len(ev))
 
 	// No filters
-	jobIDs, err = suite.listJobs(nil, nil)
+	jobIDs, err = suite.listJobs(nil, nil, "")
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), []types.JobID{jobID1, jobID2}, jobIDs)
 
 	// Filter by state - any state should match
-	jobIDs, err = suite.listJobs([]job.State{job.JobStateCompleted}, nil)
+	jobIDs, err = suite.listJobs([]job.State{job.JobStateCompleted}, nil, "")
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), []types.JobID{jobID1}, jobIDs)
-	jobIDs, err = suite.listJobs([]job.State{job.JobStateFailed}, nil)
+	jobIDs, err = suite.listJobs([]job.State{job.JobStateFailed}, nil, "")
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), []types.JobID{jobID2}, jobIDs)
-	jobIDs, err = suite.listJobs([]job.State{job.JobStateCompleted, job.JobStateCancelled, job.JobStateFailed}, nil)
+	jobIDs, err = suite.listJobs([]job.State{job.JobStateCompleted, job.JobStateCancelled, job.JobStateFailed}, nil, "")
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), []types.JobID{jobID1, jobID2}, jobIDs)
 
 	// Filter by tags - all that specified tags must be present.
-	jobIDs, err = suite.listJobs(nil, []string{"integration_testing"})
+	jobIDs, err = suite.listJobs(nil, []string{"integration_testing"}, "")
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), []types.JobID{jobID1, jobID2}, jobIDs)
-	jobIDs, err = suite.listJobs(nil, []string{"foo", "integration_testing"})
+	jobIDs, err = suite.listJobs(nil, []string{"foo", "integration_testing"}, "")
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), []types.JobID{jobID1}, jobIDs)
 
 	// Filter by both tags and state.
-	jobIDs, err = suite.listJobs([]job.State{job.JobStateCompleted}, []string{"integration_testing"})
+	jobIDs, err = suite.listJobs([]job.State{job.JobStateCompleted}, []string{"integration_testing"}, "")
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), []types.JobID{jobID1}, jobIDs)
+
+	// Filter by server ID.
+	jobIDs, err = suite.listJobs(nil, nil, "foo")
+	require.NoError(suite.T(), err)
+	require.Empty(suite.T(), jobIDs)
+	jobIDs, err = suite.listJobs(nil, nil, suite.listener.api.ServerID())
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), []types.JobID{jobID1, jobID2}, jobIDs)
 }

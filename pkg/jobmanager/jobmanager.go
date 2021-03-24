@@ -141,7 +141,7 @@ func (jm *JobManager) Run(ctx xcontext.Context, resumeJobs bool) error {
 
 	// First, resume paused jobs.
 	if resumeJobs {
-		if err := jm.resumeJobs(ctx); err != nil {
+		if err := jm.resumeJobs(ctx, a.ServerID()); err != nil {
 			return fmt.Errorf("failed to resume jobs: %w", err)
 		}
 	}

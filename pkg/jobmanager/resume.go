@@ -17,8 +17,9 @@ import (
 	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
-func (jm *JobManager) resumeJobs(ctx xcontext.Context) error {
+func (jm *JobManager) resumeJobs(ctx xcontext.Context, serverID string) error {
 	queryFields := []storage.JobQueryField{
+		storage.QueryJobServerID(serverID),
 		storage.QueryJobStates(job.JobStatePaused),
 	}
 	if jm.config.instanceTag != "" {
@@ -32,7 +33,7 @@ func (jm *JobManager) resumeJobs(ctx xcontext.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to list paused jobs: %w", err)
 	}
-	ctx.Infof("Found %d paused jobs", len(pausedJobs))
+	ctx.Infof("Found %d paused jobs for %s/%s", len(pausedJobs), jm.config.instanceTag, serverID)
 	for _, jobID := range pausedJobs {
 		if err := jm.resumeJob(ctx, jobID); err != nil {
 			ctx.Errorf("failed to resume job %d: %v, failing it", jobID, err)

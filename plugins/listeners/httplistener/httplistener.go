@@ -18,6 +18,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/api"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/job"
+	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 )
@@ -157,9 +158,9 @@ func (h *apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			errMsg = fmt.Sprintf("Retry failed: %v", err)
 		}
 	case "list":
-		var states []job.State
-		var tags []string
+		var fields []storage.JobQueryField
 		if statesStr := r.PostFormValue("states"); len(statesStr) > 0 {
+			var states []job.State
 			for _, sts := range strings.Split(statesStr, ",") {
 				st, err := job.EventNameToJobState(event.Name(sts))
 				if err != nil {
@@ -169,11 +170,18 @@ func (h *apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 				states = append(states, st)
 			}
+			fields = append(fields, storage.QueryJobStates(states...))
 		}
 		if tagsStr := r.PostFormValue("tags"); len(tagsStr) > 0 {
-			tags = strings.Split(tagsStr, ",")
+			fields = append(fields, storage.QueryJobTags(strings.Split(tagsStr, ",")...))
 		}
-		if resp, err = h.api.List(ctx, requestor, states, tags); err != nil {
+		jobQuery, err := storage.BuildJobQuery(fields...)
+		if err != nil {
+			httpStatus = http.StatusBadRequest
+			errMsg = fmt.Sprintf("Invalid query: %v", err)
+			break
+		}
+		if resp, err = h.api.List(ctx, requestor, jobQuery); err != nil {
 			httpStatus = http.StatusBadRequest
 			errMsg = fmt.Sprintf("List failed: %v", err)
 		}

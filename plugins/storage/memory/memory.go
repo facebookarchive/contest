@@ -221,6 +221,11 @@ func (m *Memory) ListJobs(_ xcontext.Context, query *storage.JobQuery) ([]types.
 	}
 jobLoop:
 	for jobId, jobInfo := range m.jobInfo {
+		if len(query.ServerID) > 0 {
+			if jobInfo.request.ServerID != query.ServerID {
+				continue
+			}
+		}
 		if len(query.Tags) > 0 {
 			for _, qTag := range query.Tags {
 				found := false

@@ -10,7 +10,6 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/api"
 	"github.com/facebookincubator/contest/pkg/job"
-	"github.com/facebookincubator/contest/pkg/storage"
 )
 
 func (jm *JobManager) list(ev *api.Event) *api.EventResponse {
@@ -24,22 +23,9 @@ func (jm *JobManager) list(ev *api.Event) *api.EventResponse {
 		evResp.Err = fmt.Errorf("invaid argument type %T", ev.Msg)
 		return evResp
 	}
-	var queryFields []storage.JobQueryField
-	if len(msg.States) > 0 {
-		queryFields = append(queryFields, storage.QueryJobStates(msg.States...))
-	}
-	var tags []string
+	jobQuery := msg.Query
 	if jm.config.instanceTag != "" {
-		tags = job.AddTags(tags, jm.config.instanceTag)
-	}
-	tags = job.AddTags(tags, msg.Tags...)
-	if len(tags) > 0 {
-		queryFields = append(queryFields, storage.QueryJobTags(tags...))
-	}
-	jobQuery, err := storage.BuildJobQuery(queryFields...)
-	if err != nil {
-		evResp.Err = fmt.Errorf("failed to build job query: %w", err)
-		return evResp
+		jobQuery.Tags = job.AddTags(jobQuery.Tags, jm.config.instanceTag)
 	}
 	res, err := jm.jsm.ListJobs(ctx, jobQuery)
 	if err != nil {
