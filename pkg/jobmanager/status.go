@@ -30,7 +30,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 	}
 
 	// Look up job request.
-	req, err := jm.jobStorageManager.GetJobRequestAsync(ctx, jobID)
+	req, err := jm.jsm.GetJobRequestAsync(ctx, jobID)
 	if err != nil {
 		evResp.Err = fmt.Errorf("failed to fetch request for job ID %d: %w", jobID, err)
 		return &evResp
@@ -112,7 +112,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 		}
 	}
 
-	report, err := jm.jobStorageManager.GetJobReportAsync(ctx, jobID)
+	report, err := jm.jsm.GetJobReportAsync(ctx, jobID)
 	if err != nil {
 		evResp.Err = fmt.Errorf("could not fetch job report: %v", err)
 		return &evResp
@@ -134,7 +134,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 		return &evResp
 	}
 	runCoordinates := job.RunCoordinates{JobID: jobID, RunID: runID}
-	runStatus, err := jm.jobRunner.BuildRunStatus(runCoordinates, currentJob)
+	runStatus, err := jm.jobRunner.BuildRunStatus(ctx, runCoordinates, currentJob)
 	if err != nil {
 		evResp.Err = fmt.Errorf("could not rebuild the status of the job: %v", err)
 		return &evResp

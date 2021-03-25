@@ -68,7 +68,7 @@ func (ts *Step) shouldFail(t *target.Target, params test.TestStepParameters) boo
 func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	f := func(ctx xcontext.Context, target *target.Target) error {
 		// Sleep to ensure TargetIn fires first. This simplifies test assertions.
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 		if err := ev.Emit(ctx, testevent.Data{EventName: StartedEvent, Target: target, Payload: nil}); err != nil {
 			return fmt.Errorf("failed to emit start event: %v", err)
 		}

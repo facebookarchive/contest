@@ -6,9 +6,13 @@
 package job
 
 import (
+	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/facebookincubator/contest/pkg/event"
+	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/types"
 )
 
 // EventJobStarted indicates that a Job is beginning execution
@@ -76,3 +80,20 @@ func EventNameToJobState(ev event.Name) (State, error) {
 	}
 	return JobStateUnknown, fmt.Errorf("invalid job state %q", ev)
 }
+
+// PauseEventPayload is the payload of the JobStatePaused event.
+// It is persisted in the database and used to resume jobs.
+type PauseEventPayload struct {
+	Version int         `json:"v"`
+	JobID   types.JobID `json:"job_id"`
+	RunID   types.RunID `json:"run_id"`
+	// If we are sleeping before the run, this will specify when the run should begin.
+	StartAt *time.Time `json:"start_at,omitempty"`
+	// Otherwise, if test execution is in progress targets and runner state will be populated.
+	Targets         []*target.Target `json:"targets,omitempty"`
+	TestRunnerState json.RawMessage  `json:"trs,omitempty"`
+}
+
+// Currently supported version of the pause state.
+// Attempting to resume paused jobs with version other than this will fail.
+var CurrentPauseEventPayloadVersion = 1

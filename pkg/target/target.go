@@ -28,6 +28,9 @@ var EventTargetErr = event.Name("TargetErr")
 // EventTargetAcquired indicates that a target has been acquired for a Test
 var EventTargetAcquired = event.Name("TargetAcquired")
 
+// EventTargetAcquired indicates that a target has been released
+var EventTargetReleased = event.Name("TargetReleased")
+
 // ErrPayload represents the payload associated with a TargetErr event
 type ErrPayload struct {
 	Error string

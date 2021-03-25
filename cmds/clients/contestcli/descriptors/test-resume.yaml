@@ -1,0 +1,44 @@
+JobName: A job to test resumption
+Runs: 3
+RunInterval: 10s
+Tags: [test, resume]
+TestDescriptors:
+    - TargetManagerName: TargetList
+      TargetManagerAcquireParameters:
+        Targets:
+          - ID: T1
+          #- ID: T2
+      TargetManagerReleaseParameters:
+      TestFetcherName: literal
+      TestFetcherFetchParameters:
+          TestName: literal test
+          Steps:
+              - name: cmd
+                label: Step 1
+                parameters:
+                    executable: [echo]
+                    args: ["Step 1, target {{ .ID }}"]
+                    emit_stdout: [true]
+                    emit_stderr: [true]
+              - name: cmd
+                label: Step 2
+                parameters:
+                    executable: [sleep]
+                    args: [5]
+                    emit_stdout: [true]
+                    emit_stderr: [true]
+              - name: cmd
+                label: Step 3
+                parameters:
+                    executable: [echo]
+                    args: ["Step 3, target {{ .ID }}"]
+                    emit_stdout: [true]
+                    emit_stderr: [true]
+Reporting:
+    RunReporters:
+        - name: TargetSuccess
+          parameters:
+              SuccessExpression: "=100%"
+        - name: noop
+    FinalReporters:
+        - name: noop

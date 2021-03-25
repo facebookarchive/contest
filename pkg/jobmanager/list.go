@@ -41,7 +41,7 @@ func (jm *JobManager) list(ev *api.Event) *api.EventResponse {
 		evResp.Err = fmt.Errorf("failed to build job query: %w", err)
 		return evResp
 	}
-	res, err := jm.jobStorageManager.ListJobs(ctx, jobQuery)
+	res, err := jm.jsm.ListJobs(ctx, jobQuery)
 	if err != nil {
 		evResp.Err = fmt.Errorf("failed to list jobs: %w", err)
 		return evResp

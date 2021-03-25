@@ -10,19 +10,18 @@ package test
 import (
 	"errors"
 	"fmt"
-	"os"
-	"syscall"
+	"strings"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/facebookincubator/contest/pkg/api"
-	"github.com/facebookincubator/contest/pkg/config"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/jobmanager"
+	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -34,6 +33,8 @@ import (
 	"github.com/facebookincubator/contest/plugins/targetlocker/inmemory"
 	"github.com/facebookincubator/contest/plugins/targetmanagers/targetlist"
 	"github.com/facebookincubator/contest/plugins/testfetchers/literal"
+	testsCommon "github.com/facebookincubator/contest/tests/common"
+	"github.com/facebookincubator/contest/tests/common/goroutine_leak_check"
 	testsIntegCommon "github.com/facebookincubator/contest/tests/integ/common"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/crash"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/fail"
@@ -55,8 +56,6 @@ const (
 	List     CommandType = "list"
 )
 
-var ctx = logrusctx.NewContext(logger.LevelDebug)
-
 type command struct {
 	commandType   CommandType
 	jobID         types.JobID
@@ -65,6 +64,8 @@ type command struct {
 	states []job.State
 	tags   []string
 }
+
+const fakeJobID types.JobID = 1234567
 
 // TestListener implements a dummy api.Listener interface for testing purposes
 type TestListener struct {
@@ -85,7 +86,6 @@ type TestListener struct {
 func (tl *TestListener) Serve(ctx xcontext.Context, contestApi *api.API) error {
 	ctx.Debugf("Serving mock listener")
 	for {
-		ctx.Debugf("select")
 		select {
 		case command := <-tl.commandCh:
 			ctx.Debugf("received command: %#+v", command)
@@ -133,7 +133,7 @@ func pollForEvent(eventManager frameworkevent.EmitterFetcher, ev event.Name, job
 				frameworkevent.QueryJobID(jobID),
 				frameworkevent.QueryEventName(ev),
 			}
-			ev, err := eventManager.Fetch(ctx, queryFields...)
+			ev, err := eventManager.Fetch(xcontext.Background(), queryFields...)
 			if err != nil {
 				return nil, err
 			}
@@ -176,14 +176,14 @@ type TestJobManagerSuite struct {
 	errorCh chan error
 	// jobManagerCh is a control channel used to signal the termination of JobManager
 	jobManagerCh chan struct{}
-	// sigs is an input channel to the JobManager which carries UNIX signals
-	// that could trigger pause or termination of the JobManager itself.
-	sigs chan os.Signal
+	// ctx is an input context to the JobManager which can be used to pause or cancel JobManager
+	jmCtx             xcontext.Context
+	jmPause, jmCancel func()
 }
 
-func (suite *TestJobManagerSuite) startJobManager() {
+func (suite *TestJobManagerSuite) startJobManager(resumeJobs bool) {
 	go func() {
-		_ = suite.jm.Start(ctx, suite.sigs)
+		_ = suite.jm.Run(suite.jmCtx, resumeJobs)
 		close(suite.jobManagerCh)
 	}()
 }
@@ -255,7 +255,7 @@ func (suite *TestJobManagerSuite) SetupTest() {
 	suite.jsm = jsm
 	suite.eventManager = eventManager
 
-	pr := pluginregistry.NewPluginRegistry(ctx)
+	pr := pluginregistry.NewPluginRegistry(xcontext.Background())
 	pr.RegisterTargetManager(targetlist.Name, targetlist.New)
 	pr.RegisterTestFetcher(literal.Name, literal.New)
 	pr.RegisterReporter(targetsuccess.Name, targetsuccess.New)
@@ -289,20 +289,15 @@ func (suite *TestJobManagerSuite) initJobManager(instanceTag string) {
 	jm, err := jobmanager.New(&testListener, suite.pluginRegistry, opts...)
 	require.NoError(suite.T(), err)
 	suite.jm = jm
-	suite.sigs = make(chan os.Signal)
+	suite.jmCtx, suite.jmCancel = xcontext.WithCancel(logrusctx.NewContext(logger.LevelDebug, logging.DefaultOptions()...))
+	suite.jmCtx, suite.jmPause = xcontext.WithNotify(suite.jmCtx, xcontext.ErrPaused)
 }
 
 func (suite *TestJobManagerSuite) stopJobManager() {
 	// Signal cancellation to the JobManager, which in turn will
 	// propagate cancellation signal to Serve method of the listener.
 	// JobManager.Start() will return and close jobManagerCh.
-	select {
-	case suite.sigs <- syscall.SIGINT:
-	case <-time.After(1 * time.Second):
-		// Some tests do cancel the JobManager, so if is not respondive to SIGINT, it
-		// might not be an issue. Regardless of where the cancellation signal originated,
-		// JobManager.Start() should return and close jobManagerCh.
-	}
+	suite.jmCancel()
 
 	select {
 	case <-suite.jobManagerCh:
@@ -318,11 +313,60 @@ func (suite *TestJobManagerSuite) TearDownTest() {
 	storage.SetAsyncStorage(suite.storage)
 }
 
+func (suite *TestJobManagerSuite) TearDownSuite() {
+	time.Sleep(20 * time.Millisecond)
+	if err := goroutine_leak_check.CheckLeakedGoRoutines(
+		"github.com/facebookincubator/contest/plugins/targetlocker/inmemory.broker",
+		"github.com/facebookincubator/contest/plugins/storage/rdbms.(*RDBMS).init.*",
+		"github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.*",
+	); err != nil {
+		panic(fmt.Sprintf("%s", err))
+	}
+}
+
+func (suite *TestJobManagerSuite) verifyTargetLockStatus(targetIDs []string, expectLocked bool) {
+	var targetsToLock, targetsToUnlock []*target.Target
+	for _, id := range targetIDs {
+		targetsToLock = append(targetsToLock, &target.Target{ID: id})
+	}
+	lockedTargets, err := suite.targetLocker.TryLock(suite.jmCtx, fakeJobID, 1*time.Second, targetsToLock, uint(len(targetsToLock)))
+	require.NoError(suite.T(), err)
+	// Immediately unlock any targets we may have locked, this was only a test.
+	if len(lockedTargets) > 0 {
+		for _, id := range lockedTargets {
+			targetsToUnlock = append(targetsToUnlock, &target.Target{ID: id})
+		}
+		require.NoError(suite.T(), suite.targetLocker.Unlock(suite.jmCtx, fakeJobID, targetsToUnlock))
+	}
+	if expectLocked {
+		// We expect all the targets to be locked, so we shouldn't be able to lock any.
+		require.Empty(suite.T(), lockedTargets, "expected targets to be locked but some were not")
+	} else {
+		// We expect targets to be unlocked, so we must have successfully locked all of them.
+		var badTargets []string
+		for _, id := range targetIDs {
+			found := false
+			for _, lid := range lockedTargets {
+				if id == lid {
+					found = true
+					break
+				}
+			}
+			if !found {
+				badTargets = append(badTargets, id)
+			}
+		}
+		require.Empty(suite.T(), badTargets, "targets are locked but shouldn't be")
+	}
+}
+
 func (suite *TestJobManagerSuite) testExit(
-	sig syscall.Signal,
+	sig func(),
 	expectedEvent event.Name,
 	exitTimeout time.Duration,
 ) types.JobID {
+
+	suite.startJobManager(false /* resumeJobs */)
 
 	jobID, err := suite.startJob(jobDescriptorSlowEcho)
 	require.NoError(suite.T(), err)
@@ -333,13 +377,11 @@ func (suite *TestJobManagerSuite) testExit(
 	require.Equal(suite.T(), 1, len(ev))
 	time.Sleep(100 * time.Millisecond)
 
-	// Signal cancellation to the JobManager, which in turn will
-	// propagate cancellation signal to Serve method of the listener.
-	// JobManager.Start() will return and close jobManagerCh.
-	select {
-	case suite.sigs <- sig:
-	case <-time.After(1 * time.Second):
-		suite.T().Fatalf("unable to push signal %s", sig)
+	// Signal pause or cancellation to the manager which in turn will
+	// propagate cancellation signal to Serve method of the listener
+	// and the running job.
+	if sig != nil {
+		sig()
 	}
 
 	select {
@@ -349,7 +391,8 @@ func (suite *TestJobManagerSuite) testExit(
 	}
 
 	// JobManager will emit a paused or cancelled event when the job completes
-	ev, err = suite.eventManager.Fetch(ctx,
+	ev, err = suite.eventManager.Fetch(
+		suite.jmCtx,
 		frameworkevent.QueryJobID(jobID),
 		frameworkevent.QueryEventName(expectedEvent),
 	)
@@ -359,22 +402,151 @@ func (suite *TestJobManagerSuite) testExit(
 	return jobID
 }
 
-func (suite *TestJobManagerSuite) TestPauseAndExit() {
-	suite.startJobManager()
+func (suite *TestJobManagerSuite) TestCancelAndExit() {
+	suite.testExit(suite.jmCancel, job.EventJobCancelled, 1*time.Second)
+	// Targets must be released when job is canceled.
+	suite.verifyTargetLockStatus([]string{"id1", "id2"}, false)
+}
 
-	suite.testExit(syscall.SIGINT, job.EventJobPaused, time.Second)
+func (suite *TestJobManagerSuite) TestPauseAndExit() {
+	suite.testExit(suite.jmPause, job.EventJobPaused, 3*time.Second)
+	// Targets should remain locked.
+	suite.verifyTargetLockStatus([]string{"id1", "id2"}, true)
+}
+
+func (suite *TestJobManagerSuite) testPauseAndResume(
+	pauseAfter time.Duration, lockedAfterPause bool, mutator func(),
+	finalState event.Name, lockedAfterResume bool) {
+	var jobID types.JobID
+
+	// Run the job and pause.
+	{
+		var err error
+
+		suite.startJobManager(true /* resumeJobs */)
+
+		jobID, err = suite.startJob(jobDescriptorSlowEcho2)
+		require.NoError(suite.T(), err)
+
+		// JobManager will emit an EventJobStarted when the Job is started
+		ev, err := pollForEvent(suite.eventManager, job.EventJobStarted, jobID, 1*time.Second)
+		require.NoError(suite.T(), err)
+		require.Equal(suite.T(), 1, len(ev))
+
+		// Wait for second run to begin
+		time.Sleep(pauseAfter)
+
+		// Signal pause to the manager.
+		suite.jmCtx.Infof("-> pausing")
+		suite.jmPause()
+
+		select {
+		case <-suite.jobManagerCh:
+		case <-time.After(3 * time.Second):
+			suite.T().Errorf("JobManager should return within the timeout")
+		}
+
+		ev, err = suite.eventManager.Fetch(
+			suite.jmCtx,
+			frameworkevent.QueryJobID(jobID),
+			frameworkevent.QueryEventName(job.EventJobPaused),
+		)
+		require.NoError(suite.T(), err)
+		require.Equal(suite.T(), 1, len(ev))
+	}
+
+	// Verify target lock state after the job has been paused.
+	suite.verifyTargetLockStatus([]string{"id1", "id2"}, lockedAfterPause)
+
+	// If there is a state mutator to run, do it now.
+	if mutator != nil {
+		mutator()
+	}
+
+	// Create a new JobManager instance.
+	suite.initJobManager("")
+
+	// Resume and run the job to completion.
+	{
+		suite.startJobManager(true /* resumeJobs */)
+		ev, err := pollForEvent(suite.eventManager, finalState, jobID, 5*time.Second)
+		require.NoError(suite.T(), err)
+		require.Equal(suite.T(), 1, len(ev))
+		suite.jmCancel()
+		select {
+		case <-suite.jobManagerCh:
+		case <-time.After(3 * time.Second):
+			suite.T().Errorf("JobManager should return within the timeout")
+		}
+	}
+
+	// Verify final target lock state.
+	suite.verifyTargetLockStatus([]string{"id1", "id2"}, lockedAfterResume)
+
+	if finalState == job.EventJobCompleted {
+		// Verify emitted events. Despite pausing ad different stages this should look perfectly normal.
+		require.Equal(suite.T(), strings.Replace(`
+{[JOBID 1 IntegrationTest: resume ][Target{ID: "id1"} TargetAcquired]}
+{[JOBID 1 IntegrationTest: resume Step 1][Target{ID: "id1"} TargetIn]}
+{[JOBID 1 IntegrationTest: resume Step 1][Target{ID: "id1"} TargetOut]}
+{[JOBID 1 IntegrationTest: resume Step 2][Target{ID: "id1"} TargetIn]}
+{[JOBID 1 IntegrationTest: resume Step 2][Target{ID: "id1"} TargetOut]}
+{[JOBID 1 IntegrationTest: resume ][Target{ID: "id1"} TargetReleased]}
+{[JOBID 2 IntegrationTest: resume ][Target{ID: "id1"} TargetAcquired]}
+{[JOBID 2 IntegrationTest: resume Step 1][Target{ID: "id1"} TargetIn]}
+{[JOBID 2 IntegrationTest: resume Step 1][Target{ID: "id1"} TargetOut]}
+{[JOBID 2 IntegrationTest: resume Step 2][Target{ID: "id1"} TargetIn]}
+{[JOBID 2 IntegrationTest: resume Step 2][Target{ID: "id1"} TargetOut]}
+{[JOBID 2 IntegrationTest: resume ][Target{ID: "id1"} TargetReleased]}
+`, "JOBID", fmt.Sprintf("%d", jobID), -1),
+			suite.getTargetEvents("IntegrationTest: resume", "id1"))
+	}
+}
+
+func (suite *TestJobManagerSuite) TestPauseAndResumeDuringRun1() {
+	// When paused during a run, targets should remain locked.
+	suite.testPauseAndResume(250*time.Millisecond, true, nil, job.EventJobCompleted, false)
+}
+
+func (suite *TestJobManagerSuite) TestPauseAndResumeBetweenRuns() {
+	// Pause between runs. Targets should not be locked in this case.
+	suite.testPauseAndResume(750*time.Millisecond, false, nil, job.EventJobCompleted, false)
+}
+
+func (suite *TestJobManagerSuite) TestPauseAndResumeDuringRun2() {
+	// When paused during a run, targets should remain locked.
+	suite.testPauseAndResume(1250*time.Millisecond, true, nil, job.EventJobCompleted, false)
+}
+
+func (suite *TestJobManagerSuite) TestPauseAndFailToResume() {
+	v := job.CurrentPauseEventPayloadVersion
+	defer func() { job.CurrentPauseEventPayloadVersion = v }()
+	suite.testPauseAndResume(1250*time.Millisecond, true, func() {
+		job.CurrentPauseEventPayloadVersion = -1 // Resume will fail due to incompatible version
+	}, job.EventJobFailed,
+		// Targets remain locked because we were unable to deserialize the state.
+		// Unfortunately, there is nothing we can do.
+		true)
+}
+
+func (suite *TestJobManagerSuite) getTargetEvents(testName, targetID string) string {
+	return suite.getEvents(testName, &targetID, nil)
+}
+
+func (suite *TestJobManagerSuite) getEvents(testName string, targetID, stepLabel *string) string {
+	return testsCommon.GetTestEventsAsString(suite.jmCtx, suite.txStorage, testName, targetID, stepLabel)
 }
 
 func (suite *TestJobManagerSuite) TestJobManagerJobStartSingle() {
-	suite.startJobManager()
+	suite.startJobManager(false /* resumeJobs */)
 
 	jobID, err := suite.startJob(jobDescriptorNoop)
 	require.NoError(suite.T(), err)
 
-	_, err = suite.jsm.GetJobRequest(ctx, types.JobID(jobID))
+	_, err = suite.jsm.GetJobRequest(suite.jmCtx, jobID)
 	require.NoError(suite.T(), err)
 
-	r, err := suite.jsm.GetJobRequest(ctx, types.JobID(jobID + 1))
+	r, err := suite.jsm.GetJobRequest(suite.jmCtx, jobID+1)
 	require.Error(suite.T(), err)
 	require.NotEqual(suite.T(), nil, r)
 
@@ -390,7 +562,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobStartSingle() {
 }
 
 func (suite *TestJobManagerSuite) TestJobManagerJobReport() {
-	suite.startJobManager()
+	suite.startJobManager(false /* resumeJobs */)
 
 	jobID, err := suite.startJob(jobDescriptorNoop)
 	require.NoError(suite.T(), err)
@@ -401,20 +573,20 @@ func (suite *TestJobManagerSuite) TestJobManagerJobReport() {
 	require.Equal(suite.T(), 1, len(ev))
 
 	// A Report must be persisted for the Job
-	jobReport, err := suite.jsm.GetJobReport(ctx, types.JobID(jobID))
+	jobReport, err := suite.jsm.GetJobReport(suite.jmCtx, jobID)
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(jobReport.RunReports))
 	require.Equal(suite.T(), 0, len(jobReport.FinalReports))
 
 	// Any other Job should not have a Job report, but fetching the
 	// report should not error out
-	jobReport, err = suite.jsm.GetJobReport(ctx, types.JobID(2))
+	jobReport, err = suite.jsm.GetJobReport(suite.jmCtx, types.JobID(2))
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), &job.JobReport{JobID: 2}, jobReport)
 }
 
 func (suite *TestJobManagerSuite) TestJobManagerJobCancellation() {
-	suite.startJobManager()
+	suite.startJobManager(false /* resumeJobs */)
 
 	jobID, err := suite.startJob(jobDescriptorSlowEcho)
 	require.NoError(suite.T(), err)
@@ -445,7 +617,7 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCancellation() {
 }
 
 func (suite *TestJobManagerSuite) TestJobManagerJobNotSuccessful() {
-	suite.startJobManager()
+	suite.startJobManager(false /* resumeJobs */)
 
 	jobID, err := suite.startJob(jobDescriptorFailure)
 	require.NoError(suite.T(), err)
@@ -456,14 +628,14 @@ func (suite *TestJobManagerSuite) TestJobManagerJobNotSuccessful() {
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
-	jobReport, err := suite.jsm.GetJobReport(ctx, types.JobID(jobID))
+	jobReport, err := suite.jsm.GetJobReport(suite.jmCtx, jobID)
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(jobReport.RunReports))
 	require.Equal(suite.T(), 0, len(jobReport.FinalReports))
 }
 
 func (suite *TestJobManagerSuite) TestJobManagerJobFailure() {
-	suite.startJobManager()
+	suite.startJobManager(false /* resumeJobs */)
 
 	jobID, err := suite.startJob(jobDescriptorFailure)
 	require.NoError(suite.T(), err)
@@ -474,14 +646,14 @@ func (suite *TestJobManagerSuite) TestJobManagerJobFailure() {
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 
-	jobReport, err := suite.jsm.GetJobReport(ctx, types.JobID(jobID))
+	jobReport, err := suite.jsm.GetJobReport(suite.jmCtx, jobID)
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(jobReport.RunReports))
 	require.Equal(suite.T(), 0, len(jobReport.FinalReports))
 }
 
 func (suite *TestJobManagerSuite) TestJobManagerJobCrash() {
-	suite.startJobManager()
+	suite.startJobManager(false /* resumeJobs */)
 
 	jobID, err := suite.startJob(jobDescriptorCrash)
 	require.NoError(suite.T(), err)
@@ -492,49 +664,15 @@ func (suite *TestJobManagerSuite) TestJobManagerJobCrash() {
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
 	require.Contains(suite.T(), string(*ev[0].Payload), "TestStep crashed")
-	jobReport, err := suite.jsm.GetJobReport(ctx, types.JobID(jobID))
+	jobReport, err := suite.jsm.GetJobReport(suite.jmCtx, jobID)
 
 	require.NoError(suite.T(), err)
 	// no reports are expected if the job crashes
 	require.Equal(suite.T(), &job.JobReport{JobID: jobID}, jobReport)
 }
 
-func (suite *TestJobManagerSuite) TestJobManagerJobCancellationFailure() {
-
-	config.TestRunnerShutdownTimeout = 1 * time.Second
-	config.TestRunnerStepShutdownTimeout = 1 * time.Second
-
-	suite.startJobManager()
-
-	jobID, err := suite.startJob(jobDescriptorHang)
-	require.NoError(suite.T(), err)
-
-	// Wait EventJobStarted event. This is necessary so that we can later issue a
-	// Stop command for a Job that we know is already running.
-	ev, err := pollForEvent(suite.eventManager, job.EventJobStarted, types.JobID(jobID), 5*time.Second)
-	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), 1, len(ev))
-
-	err = suite.stopJob(jobID)
-	require.NoError(suite.T(), err)
-
-	// JobManager will emit an EventJobCancelling as soon as the cancellation signal
-	// is asserted
-	ev, err = pollForEvent(suite.eventManager, job.EventJobCancelling, types.JobID(jobID), 5*time.Second)
-	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), 1, len(ev))
-
-	// JobManager will emit an EventJobCancelled event when the Job has
-	// completed cancellation successfully (completing cancellation successfully
-	// means that the TestRunner returns within the timeout and that
-	// TargetManage.Release() all targets)
-	ev, err = pollForEvent(suite.eventManager, job.EventJobCancelling, types.JobID(jobID), 5*time.Second)
-	require.NoError(suite.T(), err)
-	require.Equal(suite.T(), 1, len(ev))
-}
-
 func (suite *TestJobManagerSuite) TestTestStepNoLabel() {
-	suite.startJobManager()
+	suite.startJobManager(false /* resumeJobs */)
 
 	jobId, err := suite.startJob(jobDescriptorNoLabel)
 	require.Error(suite.T(), err)
@@ -544,7 +682,7 @@ func (suite *TestJobManagerSuite) TestTestStepNoLabel() {
 }
 
 func (suite *TestJobManagerSuite) TestTestStepLabelDuplication() {
-	suite.startJobManager()
+	suite.startJobManager(false /* resumeJobs */)
 
 	jobId, err := suite.startJob(jobDescriptorLabelDuplication)
 	require.Error(suite.T(), err)
@@ -553,7 +691,7 @@ func (suite *TestJobManagerSuite) TestTestStepLabelDuplication() {
 }
 
 func (suite *TestJobManagerSuite) TestTestStepNull() {
-	suite.startJobManager()
+	suite.startJobManager(false /* resumeJobs */)
 
 	jobId, err := suite.startJob(jobDescriptorNullStep)
 	require.Error(suite.T(), err)
@@ -562,7 +700,7 @@ func (suite *TestJobManagerSuite) TestTestStepNull() {
 }
 
 func (suite *TestJobManagerSuite) TestTestNull() {
-	suite.startJobManager()
+	suite.startJobManager(false /* resumeJobs */)
 
 	jobId, err := suite.startJob(jobDescriptorNullTest)
 	require.Error(suite.T(), err)
@@ -571,7 +709,7 @@ func (suite *TestJobManagerSuite) TestTestNull() {
 }
 
 func (suite *TestJobManagerSuite) TestBadTag() {
-	suite.startJobManager()
+	suite.startJobManager(false /* resumeJobs */)
 
 	jobId, err := suite.startJob(jobDescriptorBadTag)
 	require.Error(suite.T(), err)
@@ -580,7 +718,7 @@ func (suite *TestJobManagerSuite) TestBadTag() {
 }
 
 func (suite *TestJobManagerSuite) TestInternalTag() {
-	suite.startJobManager()
+	suite.startJobManager(false /* resumeJobs */)
 
 	jobId, err := suite.startJob(jobDescriptorInternalTag)
 	require.Error(suite.T(), err)
@@ -589,7 +727,7 @@ func (suite *TestJobManagerSuite) TestInternalTag() {
 }
 
 func (suite *TestJobManagerSuite) TestDuplicateTag() {
-	suite.startJobManager()
+	suite.startJobManager(false /* resumeJobs */)
 
 	jobId, err := suite.startJob(jobDescriptorDuplicateTag)
 	require.Error(suite.T(), err)
@@ -603,12 +741,12 @@ func (suite *TestJobManagerSuite) TestJobManagerDifferentInstances() {
 	var jobID types.JobID
 	{
 		suite.initJobManager("_A")
-		suite.startJobManager()
+		suite.startJobManager(false /* resumeJobs */)
 
 		jobID, err = suite.startJob(jobDescriptorNoop)
 		require.NoError(suite.T(), err)
 
-		_, err = suite.jsm.GetJobRequest(ctx, types.JobID(jobID))
+		_, err = suite.jsm.GetJobRequest(suite.jmCtx, types.JobID(jobID))
 		require.NoError(suite.T(), err)
 
 		ev, err := pollForEvent(suite.eventManager, job.EventJobCompleted, jobID, 1*time.Second)
@@ -629,7 +767,7 @@ func (suite *TestJobManagerSuite) TestJobManagerDifferentInstances() {
 	// Make sure another instance doesn't see the job.
 	{
 		suite.initJobManager("_B")
-		suite.startJobManager()
+		suite.startJobManager(false /* resumeJobs */)
 		jobIDs, err := suite.listJobs(nil, nil)
 		require.NoError(suite.T(), err)
 		require.Empty(suite.T(), jobIDs)
@@ -641,7 +779,7 @@ func (suite *TestJobManagerSuite) TestJobManagerDifferentInstances() {
 }
 
 func (suite *TestJobManagerSuite) TestJobListing() {
-	suite.startJobManager()
+	suite.startJobManager(false /* resumeJobs */)
 
 	// There are no jobs to begin with.
 	jobIDs, err := suite.listJobs(nil, nil)

@@ -49,8 +49,8 @@ func ForEachTarget(pluginName string, ctx xcontext.Context, ch test.TestStepChan
 	func() {
 		for {
 			select {
-			case tgt := <-ch.In:
-				if tgt == nil {
+			case tgt, ok := <-ch.In:
+				if !ok {
 					ctx.Debugf("%s: ForEachTarget: all targets have been received", pluginName)
 					return
 				}
