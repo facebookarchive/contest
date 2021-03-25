@@ -62,8 +62,7 @@ type stepState struct {
 
 	// Channels used to communicate with the plugin.
 	inCh  chan *target.Target
-	outCh chan *target.Target
-	errCh chan cerrors.TargetError
+	outCh chan test.TestStepResult
 	ev    testevent.Emitter
 
 	tgtDone map[*target.Target]bool // Targets for which results have been received.
@@ -149,8 +148,7 @@ func (tr *TestRunner) run(
 			stepIndex: i,
 			sb:        sb,
 			inCh:      make(chan *target.Target),
-			outCh:     make(chan *target.Target),
-			errCh:     make(chan cerrors.TargetError),
+			outCh:     make(chan test.TestStepResult),
 			ev: storage.NewTestEventEmitter(testevent.Header{
 				JobID:         jobID,
 				RunID:         runID,
@@ -549,7 +547,7 @@ func (tr *TestRunner) stepRunner(ss *stepState) {
 			tr.safeCloseOutCh(ss)
 		}
 	}()
-	chans := test.TestStepChannels{In: ss.inCh, Out: ss.outCh, Err: ss.errCh}
+	chans := test.TestStepChannels{In: ss.inCh, Out: ss.outCh}
 	runErr := ss.sb.TestStep.Run(ss.ctx, chans, ss.sb.Parameters, ss.ev)
 	ss.ctx.Debugf("%s: step runner finished %v", ss, runErr)
 	tr.mu.Lock()
@@ -622,49 +620,18 @@ func (tr *TestRunner) safeCloseOutCh(ss *stepState) {
 	close(ss.outCh)
 }
 
-// safeCloseErrCh closes error channel safely, even if it has already been closed.
-func (tr *TestRunner) safeCloseErrCh(ss *stepState) {
-	defer func() {
-		if r := recover(); r != nil {
-			ss.setErr(&tr.mu, &cerrors.ErrTestStepClosedChannels{StepName: ss.sb.TestStepLabel})
-		}
-	}()
-	close(ss.errCh)
-}
-
 // stepReader receives results from the step's output channel and forwards them to the appropriate target handlers.
 func (tr *TestRunner) stepReader(ss *stepState) {
 	ss.ctx.Debugf("%s: step reader active", ss)
 	var err error
-	outCh := ss.outCh
 	cancelCh := ss.ctx.Done()
 	var shutdownTimeoutCh <-chan time.Time
 loop:
 	for {
 		select {
-		case tgt, ok := <-outCh:
+		case res, ok := <-ss.outCh:
 			if !ok {
 				ss.ctx.Debugf("%s: out chan closed", ss)
-				// At this point we may still have an error to report,
-				// wait until error channel is emptied too.
-				outCh = nil
-				tr.safeCloseErrCh(ss)
-				continue loop
-			}
-			if err = tr.reportTargetResult(ss, tgt, nil); err != nil {
-				break loop
-			}
-		case res, ok := <-ss.errCh:
-			if !ok {
-				tr.mu.Lock()
-				if ss.stepRunning {
-					// Error channel is always closed after the output,
-					// which is only closed after runner goroutine has exited.
-					// If we got here, it means that the plugin closed the error channel.
-					ss.setErrLocked(&cerrors.ErrTestStepClosedChannels{StepName: ss.sb.TestStepLabel})
-				}
-				tr.mu.Unlock()
-				ss.ctx.Debugf("%s: err chan closed", ss)
 				break loop
 			}
 			if err = tr.reportTargetResult(ss, res.Target, res.Err); err != nil {
