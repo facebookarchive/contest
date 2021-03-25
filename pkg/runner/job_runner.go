@@ -330,9 +330,9 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 			jobCtx.Warnf("Final reporter failed while calculating test results, proceeding anyway: %v", err)
 		} else {
 			if success {
-				jobCtx.Infof("Job %d (%d runs out of %d desired) considered successful", j.ID, runID, j.Runs)
+				jobCtx.Infof("Job %d (%d runs out of %d desired) considered successful", j.ID, runID-1, j.Runs)
 			} else {
-				jobCtx.Errorf("Job %d (%d runs out of %d desired) considered failed", j.ID, runID, j.Runs)
+				jobCtx.Errorf("Job %d (%d runs out of %d desired) considered failed", j.ID, runID-1, j.Runs)
 			}
 		}
 		r := job.Report{Success: success, ReporterName: bundle.Reporter.Name(), ReportTime: time.Now(), Data: data}
