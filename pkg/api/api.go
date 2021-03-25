@@ -11,7 +11,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/facebookincubator/contest/pkg/job"
+	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/storage/limits"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
@@ -263,7 +263,7 @@ func (a *API) Retry(ctx xcontext.Context, requestor EventRequestor, jobID types.
 }
 
 // List will list jobs matching the specified criteria.
-func (a *API) List(ctx xcontext.Context, requestor EventRequestor, states []job.State, tags []string) (Response, error) {
+func (a *API) List(ctx xcontext.Context, requestor EventRequestor, query *storage.JobQuery) (Response, error) {
 	resp := a.newResponse(ResponseTypeList)
 	ev := &Event{
 		Context:  ctx.WithTag("api_method", "list"),
@@ -271,8 +271,7 @@ func (a *API) List(ctx xcontext.Context, requestor EventRequestor, states []job.
 		ServerID: resp.ServerID,
 		Msg: EventListMsg{
 			requestor: requestor,
-			States:    states,
-			Tags:      tags,
+			Query:     query,
 		},
 		RespCh: make(chan *EventResponse, 1),
 	}

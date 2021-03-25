@@ -7,6 +7,7 @@ package api
 
 import (
 	"github.com/facebookincubator/contest/pkg/job"
+	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 )
@@ -117,8 +118,7 @@ type EventResponse struct {
 // EventListMsg contains the arguments for an event of type List.
 type EventListMsg struct {
 	requestor EventRequestor
-	States    []job.State
-	Tags      []string
+	Query     *storage.JobQuery
 }
 
 // Requestor returns the requestor of the API call as reported by the client.
