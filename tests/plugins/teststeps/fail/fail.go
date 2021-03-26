@@ -33,11 +33,14 @@ func (ts *fail) Name() string {
 func (ts *fail) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	for {
 		select {
-		case target := <-ch.In:
-			if target == nil {
+		case target, ok := <-ch.In:
+			if !ok {
 				return nil
 			}
-			ch.Err <- cerrors.TargetError{Target: target, Err: fmt.Errorf("Integration test failure for %v", target)}
+			ch.Out <- test.TestStepResult{
+				Target: target,
+				Err:    fmt.Errorf("Integration test failure for %v", target),
+			}
 		case <-ctx.Done():
 			return nil
 		}

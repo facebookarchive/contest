@@ -30,11 +30,10 @@ func (ts *channels) Name() string {
 // Run executes a step that runs fine but closes its output channels on exit.
 func (ts *channels) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	for target := range ch.In {
-		ch.Out <- target
+		ch.Out <- test.TestStepResult{Target: target}
 	}
 	// This is bad, do not do this.
 	close(ch.Out)
-	close(ch.Err)
 	return nil
 }
 

@@ -49,6 +49,7 @@ type Target struct {
 	PrimaryIPv6 net.IP `json:"PrimaryIPv6,omitempty"`
 }
 
+// String produces a string representation for a Target.
 func (t *Target) String() string {
 	if t == nil {
 		return "(*Target)(nil)"

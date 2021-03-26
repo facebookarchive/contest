@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -92,12 +91,19 @@ type TestStepBundle struct {
 	AllowedEvents map[event.Name]bool
 }
 
+// TestStepResult is used by TestSteps to report result for a particular target.
+// Empty Err means success, non-empty indicates failure.
+// Failed targets do not proceed to further steps in this run.
+type TestStepResult struct {
+	Target *target.Target
+	Err    error
+}
+
 // TestStepChannels represents the input and output  channels used by a TestStep
 // to communicate with the TestRunner
 type TestStepChannels struct {
 	In  <-chan *target.Target
-	Out chan<- *target.Target
-	Err chan<- cerrors.TargetError
+	Out chan<- TestStepResult
 }
 
 // TestStep is the interface that all steps need to implement to be executed

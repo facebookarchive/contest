@@ -31,12 +31,12 @@ func (ts *noop) Name() string {
 func (ts *noop) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	for {
 		select {
-		case target := <-ch.In:
-			if target == nil {
+		case target, ok := <-ch.In:
+			if !ok {
 				return nil
 			}
-			ch.Out <- target
-		case <-ctx.Until(nil):
+			ch.Out <- test.TestStepResult{Target: target}
+		case <-ctx.Done():
 			return nil
 		}
 	}

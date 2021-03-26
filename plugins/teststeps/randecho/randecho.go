@@ -13,8 +13,10 @@ import (
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
+	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/xcontext"
+	"github.com/facebookincubator/contest/plugins/teststeps"
 )
 
 // Name is the name used to look this plugin up.
@@ -53,13 +55,8 @@ func (e Step) Name() string {
 
 // Run executes the step
 func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
-	for {
-		select {
-		case target := <-ch.In:
-			if target == nil {
-				// no more targets incoming
-				return nil
-			}
+	return teststeps.ForEachTarget(Name, ctx, ch,
+		func(ctx xcontext.Context, target *target.Target) error {
 			r := rand.Intn(2)
 			if r == 0 {
 				evData := testevent.Data{
@@ -69,7 +66,7 @@ func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.Te
 				}
 				_ = ev.Emit(ctx, evData)
 				ctx.Infof("Run: target %s succeeded: %s", target, params.GetOne("text"))
-				ch.Out <- target
+				return nil
 			} else {
 				evData := testevent.Data{
 					EventName: event.Name("TargetFailed"),
@@ -78,12 +75,10 @@ func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.Te
 				}
 				_ = ev.Emit(ctx, evData)
 				ctx.Infof("Run: target %s failed: %s", target, params.GetOne("text"))
-				ch.Err <- cerrors.TargetError{Target: target, Err: fmt.Errorf("target randomly failed")}
+				return fmt.Errorf("target randomly failed")
 			}
-		case <-ctx.Done():
-			return nil
-		}
-	}
+		},
+	)
 }
 
 // CanResume tells whether this step is able to resume.

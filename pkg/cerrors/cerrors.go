@@ -8,17 +8,7 @@ package cerrors
 import (
 	"fmt"
 	"strings"
-
-	"github.com/facebookincubator/contest/pkg/target"
 )
-
-// TargetError is used by TestSteps to indicate that a Target encountered
-// an error while running the test. A Target that encounters a TargetError
-// does not proceed further in the test run.
-type TargetError struct {
-	Target *target.Target
-	Err    error
-}
 
 // ErrResumeNotSupported indicates that a test step cannot resume. This can
 // be checked explicitly by the framework

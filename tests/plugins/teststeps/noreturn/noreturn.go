@@ -30,7 +30,7 @@ func (ts *noreturnStep) Name() string {
 // Run executes a step that never returns.
 func (ts *noreturnStep) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	for target := range ch.In {
-		ch.Out <- target
+		ch.Out <- test.TestStepResult{Target: target}
 	}
 	channel := make(chan struct{})
 	<-channel

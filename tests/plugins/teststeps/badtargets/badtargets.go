@@ -45,30 +45,30 @@ func (ts *badTargets) Run(ctx xcontext.Context, ch test.TestStepChannels, params
 				// We should not depend on pointer matching, so emit a copy.
 				tgt2 := *tgt
 				select {
-				case ch.Out <- &tgt2:
+				case ch.Out <- test.TestStepResult{Target: &tgt2}:
 				case <-ctx.Done():
 					return xcontext.ErrCanceled
 				}
 			case "TDup":
 				select {
-				case ch.Out <- tgt:
+				case ch.Out <- test.TestStepResult{Target: tgt}:
 				case <-ctx.Done():
 					return xcontext.ErrCanceled
 				}
 				select {
-				case ch.Out <- tgt:
+				case ch.Out <- test.TestStepResult{Target: tgt}:
 				case <-ctx.Done():
 					return xcontext.ErrCanceled
 				}
 			case "TExtra":
 				tgt2 := &target.Target{ID: "TExtra2"}
 				select {
-				case ch.Out <- tgt:
+				case ch.Out <- test.TestStepResult{Target: tgt}:
 				case <-ctx.Done():
 					return xcontext.ErrCanceled
 				}
 				select {
-				case ch.Out <- tgt2:
+				case ch.Out <- test.TestStepResult{Target: tgt2}:
 				case <-ctx.Done():
 					return xcontext.ErrCanceled
 				}
@@ -76,7 +76,7 @@ func (ts *badTargets) Run(ctx xcontext.Context, ch test.TestStepChannels, params
 				// Mangle the returned target name.
 				tgt2 := &target.Target{ID: tgt.ID + "XXX"}
 				select {
-				case ch.Out <- tgt2:
+				case ch.Out <- test.TestStepResult{Target: tgt2}:
 				case <-ctx.Done():
 					return xcontext.ErrCanceled
 				}

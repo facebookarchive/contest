@@ -53,13 +53,12 @@ func (e Step) Name() string {
 func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
 	for {
 		select {
-		case target := <-ch.In:
-			if target == nil {
-				// no more targets incoming
+		case target, ok := <-ch.In:
+			if !ok {
 				return nil
 			}
 			ctx.Infof("Running on target %s with text '%s'", target, params.GetOne("text"))
-			ch.Out <- target
+			ch.Out <- test.TestStepResult{Target: target}
 		case <-ctx.Done():
 			return nil
 		}
