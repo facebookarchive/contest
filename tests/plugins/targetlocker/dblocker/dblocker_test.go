@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/benbjohnson/clock"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/facebookincubator/contest/pkg/target"
@@ -45,6 +46,9 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	tl = locker.(*dblocker.DBLocker)
+	tl.Clock = clock.NewMock()
+	// mysql doesn't like epoch, so jump forward a bit
+	tl.Clock.(*clock.Mock).Add(1 * time.Hour)
 	os.Exit(m.Run())
 }
 
@@ -240,7 +244,7 @@ func TestLockExpiry(t *testing.T) {
 	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, twoTargets))
 	// getting them immediately fails for other owner
 	assert.Error(t, tl.Lock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, twoTargets))
-	time.Sleep(3 * time.Second)
+	tl.Clock.(*clock.Mock).Add(3 * time.Second)
 	// expired, now it should work
 	assert.NoError(t, tl.Lock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, twoTargets))
 }
@@ -250,10 +254,10 @@ func TestRefreshMultiple(t *testing.T) {
 	tl.ResetAllLocks(ctx)
 	// now for the actual test
 	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, twoTargets))
-	time.Sleep(1500 * time.Millisecond)
+	tl.Clock.(*clock.Mock).Add(1500 * time.Millisecond)
 	// they are not expired yet, extend both
 	assert.NoError(t, tl.RefreshLocks(ctx, jobID, twoTargets))
-	time.Sleep(1 * time.Second)
+	tl.Clock.(*clock.Mock).Add(1 * time.Second)
 	// if they were refreshed properly, they are still valid and attempts to get them must fail
 	assert.Error(t, tl.Lock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, []*target.Target{&targetOne}))
 	assert.Error(t, tl.Lock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, []*target.Target{&targetTwo}))

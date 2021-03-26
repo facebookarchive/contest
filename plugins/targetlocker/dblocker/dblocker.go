@@ -18,6 +18,7 @@ import (
 
 	// this blank import registers the mysql driver
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/benbjohnson/clock"
 )
 
 // Name is the plugin name.
@@ -69,6 +70,8 @@ func listQueryString(length uint) string {
 type DBLocker struct {
 	driverName string
 	db         *sql.DB
+	// clock is used for measuring time
+	Clock clock.Clock
 }
 
 // lockDBRows locks the rows for the given targets in the database
@@ -119,7 +122,7 @@ func (d *DBLocker) queryLocks(tx *sql.Tx, targets []string) (map[string]dblock, 
 // handleLock does the real locking, it assumes the jobID is valid
 func (d *DBLocker) handleLock(ctx xcontext.Context, jobID int64, targets []string, limit uint, timeout time.Duration, allowConflicts bool) ([]string, error) {
 	// everything operates on this frozen time
-	now := time.Now()
+	now := d.Clock.Now()
 	expires := now.Add(timeout)
 
 	tx, err := d.db.Begin()
@@ -198,7 +201,7 @@ func (d *DBLocker) handleLock(ctx xcontext.Context, jobID int64, targets []strin
 // handleUnlock does the real unlocking, it assumes the jobID is valid
 func (d *DBLocker) handleUnlock(ctx xcontext.Context, jobID int64, targets []string) error {
 	// everything operates on this frozen time
-	now := time.Now()
+	now := d.Clock.Now()
 	// unlocking is all or nothing in one transaction
 	tx, err := d.db.Begin()
 	if err != nil {
@@ -347,7 +350,9 @@ func DriverName(name string) Opt {
 
 // New initializes and returns a new DBLocker target locker.
 func New(dbURI string, opts ...Opt) (target.Locker, error) {
-	res := &DBLocker{}
+	res := &DBLocker{
+		Clock:          clock.New(),
+	}
 
 	for _, Opt := range opts {
 		Opt(res)
