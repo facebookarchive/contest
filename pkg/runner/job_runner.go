@@ -58,7 +58,7 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 	runID := types.RunID(1)
 	var delay time.Duration
 
-	jobCtx := ctx.WithFields(xcontext.Fields{"jobid": j.ID})
+	jobCtx := ctx.WithField("job_id", j.ID)
 
 	if resumeState != nil {
 		runID = resumeState.RunID
@@ -84,7 +84,7 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 	)
 
 	for ; runID <= types.RunID(j.Runs) || j.Runs == 0; runID++ {
-		runCtx := ctx.WithFields(xcontext.Fields{"runid": runID})
+		runCtx := ctx.WithField("run_id", runID)
 		if delay > 0 {
 			nextRun := time.Now().Add(delay)
 			runCtx.Infof("Sleeping %s before the next run...", delay)
