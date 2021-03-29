@@ -187,15 +187,29 @@ type Metrics = metrics.Metrics
 
 var _ context.Context = &ctxValue{}
 
-type ctxValue struct {
-	mutationSyncer  sync.Once
-	traceIDValue    TraceID
-	loggerInstance  *Logger
-	metricsInstance *Metrics
-	tracerInstance  *Tracer
+type debugTools struct {
+	loggerInstance  Logger
+	metricsInstance Metrics
+	tracerInstance  Tracer
 	pendingFields   fields.PendingFields
 	pendingTags     fields.PendingFields
+}
 
+func (tools *debugTools) Clone() *debugTools {
+	return &debugTools{
+		loggerInstance:  tools.loggerInstance,
+		metricsInstance: tools.metricsInstance,
+		tracerInstance:  tools.tracerInstance,
+		pendingFields:   tools.pendingFields.Clone(),
+		pendingTags:     tools.pendingTags.Clone(),
+	}
+}
+
+type ctxValue struct {
+	mutationSyncer sync.Once
+	traceIDValue   TraceID
+
+	debugTools *debugTools
 	valuesHandler
 	*eventHandler
 
@@ -249,10 +263,12 @@ func NewContext(
 	}
 
 	ctx := &ctxValue{
-		traceIDValue:    traceID,
-		loggerInstance:  &loggerInstance,
-		metricsInstance: &metrics,
-		tracerInstance:  &tracer,
+		traceIDValue: traceID,
+		debugTools: &debugTools{
+			loggerInstance:  loggerInstance,
+			metricsInstance: metrics,
+			tracerInstance:  tracer,
+		},
 	}
 
 	if stdCtx != nil && stdCtx != context.Background() {
@@ -278,7 +294,7 @@ func NewContext(
 		}
 	}
 	if len(tags) > 0 {
-		ctx.pendingTags.AddMultiple(tags)
+		ctx.debugTools.pendingTags.AddMultiple(tags)
 	}
 
 	if fields == nil {
@@ -287,7 +303,7 @@ func NewContext(
 	if DefaultLogTraceID {
 		fields["traceID"] = traceID
 	}
-	ctx.pendingFields.AddMultiple(fields)
+	ctx.debugTools.pendingFields.AddMultiple(fields)
 
 	return ctx
 }
@@ -296,15 +312,11 @@ type CancelFunc = context.CancelFunc
 
 func (ctx *ctxValue) clone() *ctxValue {
 	return &ctxValue{
-		traceIDValue:    ctx.traceIDValue,
-		loggerInstance:  ctx.loadLoggerInstance(),
-		metricsInstance: ctx.loadMetricsInstance(),
-		tracerInstance:  ctx.loadTracerInstance(),
-		pendingFields:   ctx.pendingFields.Clone(),
-		pendingTags:     ctx.pendingTags.Clone(),
-		valuesHandler:   ctx.valuesHandler,
-		eventHandler:    ctx.eventHandler,
-		parent:          ctx,
+		traceIDValue:  ctx.traceIDValue,
+		debugTools:    ctx.loadDebugTools().Clone(),
+		valuesHandler: ctx.valuesHandler,
+		eventHandler:  ctx.eventHandler,
+		parent:        ctx,
 	}
 }
 
@@ -329,40 +341,64 @@ func (ctx *ctxValue) WithTraceID(traceID TraceID) Context {
 }
 
 func (ctx *ctxValue) considerPendingTags() {
-	if ctx.pendingTags.Slice == nil {
+	oldDebugTools := ctx.loadDebugTools()
+	if oldDebugTools.pendingTags.Slice == nil {
 		return
 	}
 
-	pendingTags := ctx.pendingTags.Compile()
-	ctx.pendingTags.Slice = nil
-	ctx.pendingTags.IsReadOnly = false
+	// considerPendingTags could be called simultaneously with
+	// pendingTags.Clone.
+	//
+	// Therefore storePendingTags is in the bottom.
 
-	if loggerInstance := *ctx.loadLoggerInstance(); loggerInstance != nil {
-		ctx.storeLoggerInstance(loggerInstance.WithFields(pendingTags))
+	pendingTags := oldDebugTools.pendingTags.Compile()
+
+	newDebugTools := *oldDebugTools
+
+	if oldDebugTools.loggerInstance != nil {
+		newDebugTools.loggerInstance = oldDebugTools.loggerInstance.WithFields(pendingTags)
 	}
-	if tracerInstance := *ctx.loadTracerInstance(); tracerInstance != nil {
-		ctx.storeTracerInstance(tracerInstance.WithFields(pendingTags))
+	if oldDebugTools.tracerInstance != nil {
+		newDebugTools.tracerInstance = oldDebugTools.tracerInstance.WithFields(pendingTags)
 	}
-	if metricsInstance := *ctx.loadMetricsInstance(); metricsInstance != nil {
-		ctx.storeMetricsInstance(metricsInstance.WithTags(pendingTags))
+	if oldDebugTools.metricsInstance != nil {
+		newDebugTools.metricsInstance = oldDebugTools.metricsInstance.WithTags(pendingTags)
 	}
+
+	// reset pending tags
+	newDebugTools.pendingTags = fields.PendingFields{}
+
+	// store
+	ctx.storeDebugTools(&newDebugTools)
 }
 
 func (ctx *ctxValue) considerPendingFields() {
-	if ctx.pendingFields.Slice == nil {
+	oldDebugTools := ctx.loadDebugTools()
+	if oldDebugTools.pendingFields.Slice == nil {
 		return
 	}
 
-	pendingFields := ctx.pendingFields.Compile()
-	ctx.pendingFields.Slice = nil
-	ctx.pendingFields.IsReadOnly = false
+	// considerPendingFields could be called simultaneously with
+	// pendingFields.Clone.
+	//
+	// Therefore storePendingFields is in the bottom.
 
-	if loggerInstance := *ctx.loadLoggerInstance(); loggerInstance != nil {
-		ctx.storeLoggerInstance(loggerInstance.WithFields(pendingFields))
+	pendingFields := oldDebugTools.pendingFields.Compile()
+
+	newDebugTools := *oldDebugTools
+
+	if oldDebugTools.loggerInstance != nil {
+		newDebugTools.loggerInstance = oldDebugTools.loggerInstance.WithFields(pendingFields)
 	}
-	if tracerInstance := *ctx.loadTracerInstance(); tracerInstance != nil {
-		ctx.storeTracerInstance(tracerInstance.WithFields(pendingFields))
+	if oldDebugTools.tracerInstance != nil {
+		newDebugTools.tracerInstance = oldDebugTools.tracerInstance.WithFields(pendingFields)
 	}
+
+	// reset pending fields
+	newDebugTools.pendingFields = fields.PendingFields{}
+
+	// store
+	ctx.storeDebugTools(&newDebugTools)
 }
 
 func (ctx *ctxValue) considerPending() {
@@ -372,13 +408,13 @@ func (ctx *ctxValue) considerPending() {
 
 // Logger returns a Logger.
 func (ctx *ctxValue) Logger() Logger {
-	loggerInstance := *ctx.loadLoggerInstance()
+	loggerInstance := ctx.loadDebugTools().loggerInstance
 	if loggerInstance == nil {
 		return nil
 	}
 	ctx.mutationSyncer.Do(func() {
 		ctx.considerPending()
-		loggerInstance = *ctx.loadLoggerInstance()
+		loggerInstance = ctx.loadDebugTools().loggerInstance
 	})
 	return loggerInstance
 }
@@ -387,19 +423,19 @@ func (ctx *ctxValue) Logger() Logger {
 // the passed one.
 func (ctx *ctxValue) WithLogger(logger Logger) Context {
 	ctxClone := ctx.clone()
-	ctxClone.loggerInstance = &logger
+	ctxClone.debugTools.loggerInstance = logger
 	return ctxClone
 }
 
 // Metrics returns a Metrics handler.
 func (ctx *ctxValue) Metrics() Metrics {
-	metricsInstance := *ctx.loadMetricsInstance()
+	metricsInstance := ctx.loadDebugTools().metricsInstance
 	if metricsInstance == nil {
 		return nil
 	}
 	ctx.mutationSyncer.Do(func() {
 		ctx.considerPending()
-		metricsInstance = *ctx.loadMetricsInstance()
+		metricsInstance = ctx.loadDebugTools().metricsInstance
 	})
 	return metricsInstance
 }
@@ -408,19 +444,19 @@ func (ctx *ctxValue) Metrics() Metrics {
 // the passed one.
 func (ctx *ctxValue) WithMetrics(metrics Metrics) Context {
 	ctxClone := ctx.clone()
-	ctxClone.metricsInstance = &metrics
+	ctxClone.debugTools.metricsInstance = metrics
 	return ctxClone
 }
 
 // Tracer returns a Tracer handler.
 func (ctx *ctxValue) Tracer() Tracer {
-	tracerInstance := *ctx.loadTracerInstance()
+	tracerInstance := ctx.loadDebugTools().tracerInstance
 	if tracerInstance == nil {
 		return dummyTracerInstance
 	}
 	ctx.mutationSyncer.Do(func() {
 		ctx.considerPending()
-		tracerInstance = *ctx.loadTracerInstance()
+		tracerInstance = ctx.loadDebugTools().tracerInstance
 	})
 	return tracerInstance
 }
@@ -429,35 +465,35 @@ func (ctx *ctxValue) Tracer() Tracer {
 // the passed one.
 func (ctx *ctxValue) WithTracer(tracer Tracer) Context {
 	ctxClone := ctx.clone()
-	ctxClone.tracerInstance = &tracer
+	ctxClone.debugTools.tracerInstance = tracer
 	return ctxClone
 }
 
 // WithTracer returns a derivative context with an added tag.
 func (ctx *ctxValue) WithTag(key string, value interface{}) Context {
 	ctxClone := ctx.clone()
-	ctxClone.pendingTags.AddOne(key, value)
+	ctxClone.debugTools.pendingTags.AddOne(key, value)
 	return ctxClone
 }
 
 // WithTracer returns a derivative context with added tags.
 func (ctx *ctxValue) WithTags(fields Fields) Context {
 	ctxClone := ctx.clone()
-	ctxClone.pendingTags.AddMultiple(fields)
+	ctxClone.debugTools.pendingTags.AddMultiple(fields)
 	return ctxClone
 }
 
 // WithTracer returns a derivative context with an added field.
 func (ctx *ctxValue) WithField(key string, value interface{}) Context {
 	ctxClone := ctx.clone()
-	ctxClone.pendingFields.AddOne(key, value)
+	ctxClone.debugTools.pendingFields.AddOne(key, value)
 	return ctxClone
 }
 
 // WithTracer returns a derivative context with added fields.
 func (ctx *ctxValue) WithFields(fields Fields) Context {
 	ctxClone := ctx.clone()
-	ctxClone.pendingFields.AddMultiple(fields)
+	ctxClone.debugTools.pendingFields.AddMultiple(fields)
 	return ctxClone
 }
 

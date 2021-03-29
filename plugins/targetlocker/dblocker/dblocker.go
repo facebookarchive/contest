@@ -16,9 +16,10 @@ import (
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 
+	"github.com/benbjohnson/clock"
+
 	// this blank import registers the mysql driver
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/benbjohnson/clock"
 )
 
 // Name is the plugin name.
@@ -351,7 +352,7 @@ func DriverName(name string) Opt {
 // New initializes and returns a new DBLocker target locker.
 func New(dbURI string, opts ...Opt) (target.Locker, error) {
 	res := &DBLocker{
-		Clock:          clock.New(),
+		Clock: clock.New(),
 	}
 
 	for _, Opt := range opts {
