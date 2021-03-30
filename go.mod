@@ -21,6 +21,7 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/pflag v1.0.6-0.20200504143853-81378bbcd8a1
 	github.com/stretchr/testify v1.7.0
+	github.com/u-root/u-root v7.0.0+incompatible
 	github.com/x-cray/logrus-prefixed-formatter v0.5.2 // indirect
 	go.uber.org/atomic v1.7.0
 	go.uber.org/multierr v1.6.0 // indirect
