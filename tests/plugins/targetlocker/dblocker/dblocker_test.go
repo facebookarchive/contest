@@ -24,31 +24,42 @@ import (
 )
 
 var (
+	testBatchSize = 3
+
 	ctx = logrusctx.NewContext(logger.LevelDebug)
 
 	jobID                                 = types.JobID(123)
 	defaultJobTargetManagerAcquireTimeout = 2 * time.Second
 
-	targetOne  = target.Target{ID: "001"}
-	targetTwo  = target.Target{ID: "002"}
-	oneTarget  = []*target.Target{&targetOne}
-	twoTargets = []*target.Target{&targetOne, &targetTwo}
+	allTargets = []*target.Target{
+		&target.Target{ID: "001"},
+		&target.Target{ID: "002"},
+		&target.Target{ID: "003"},
+		&target.Target{ID: "004"},
+	}
+	oneTarget  = []*target.Target{allTargets[0]}
+	twoTargets = []*target.Target{allTargets[0], allTargets[1]}
 
 	tl *dblocker.DBLocker
+
+	tlClock = clock.NewMock()
 )
 
 func TestMain(m *testing.M) {
 	// tests reset the database, which makes the locker yell all the time,
 	// disable for the integration tests
 
-	locker, err := dblocker.New(common.GetDatabaseURI())
+	var err error
+	tl, err = dblocker.New(
+		common.GetDatabaseURI(),
+		dblocker.WithClock(tlClock),
+		dblocker.WithMaxBatchSize(testBatchSize),
+	)
 	if err != nil {
 		panic(err)
 	}
-	tl = locker.(*dblocker.DBLocker)
-	tl.Clock = clock.NewMock()
 	// mysql doesn't like epoch, so jump forward a bit
-	tl.Clock.(*clock.Mock).Add(1 * time.Hour)
+	tlClock.Add(1 * time.Hour)
 	os.Exit(m.Run())
 }
 
@@ -95,16 +106,18 @@ func TestLockValidJobIDAndTwoTargets(t *testing.T) {
 
 func TestLockReentrantLock(t *testing.T) {
 	tl.ResetAllLocks(ctx)
-	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, twoTargets))
+	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, allTargets))
 	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, oneTarget))
-	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, twoTargets))
+	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, allTargets))
 }
 
 func TestLockReentrantLockDifferentJobID(t *testing.T) {
 	tl.ResetAllLocks(ctx)
-	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, twoTargets))
-	assert.Error(t, tl.Lock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, twoTargets))
+	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, allTargets))
 	assert.Error(t, tl.Lock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, oneTarget))
+	assert.Error(t, tl.Lock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, twoTargets))
+	assert.Error(t, tl.Lock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, allTargets))
+	assert.Error(t, tl.Lock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, []*target.Target{allTargets[3]}))
 }
 
 func TestUnlockInvalidJobIDAndNoTargets(t *testing.T) {
@@ -134,15 +147,15 @@ func TestUnlockValidJobIDAndTwoTargets(t *testing.T) {
 
 func TestLockUnlockSameJobID(t *testing.T) {
 	tl.ResetAllLocks(ctx)
-	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, twoTargets))
-	assert.NoError(t, tl.Unlock(ctx, jobID, twoTargets))
+	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, allTargets))
+	assert.NoError(t, tl.Unlock(ctx, jobID, allTargets))
 }
 
 func TestLockUnlockDifferentJobID(t *testing.T) {
 	tl.ResetAllLocks(ctx)
-	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, twoTargets))
+	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, allTargets))
 	// this does not error, but will also not release the lock...
-	assert.NoError(t, tl.Unlock(ctx, jobID+1, twoTargets))
+	assert.NoError(t, tl.Unlock(ctx, jobID+1, allTargets))
 	// ... so it cannot be acquired by job+1
 	assert.Error(t, tl.Lock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, twoTargets))
 }
@@ -161,6 +174,30 @@ func TestTryLockTwo(t *testing.T) {
 	// order is not guaranteed
 	assert.Contains(t, res, twoTargets[0].ID)
 	assert.Contains(t, res, twoTargets[1].ID)
+}
+
+func TestTryLockSome(t *testing.T) {
+	tl.ResetAllLocks(ctx)
+	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, twoTargets))
+	res, err := tl.TryLock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, allTargets, uint(len(allTargets)))
+	assert.NoError(t, err)
+	// asked for all, got some
+	assert.Equal(t, 2, len(res))
+	assert.Contains(t, res, allTargets[2].ID)
+	assert.Contains(t, res, allTargets[3].ID)
+}
+
+func TestTryLockSameJob(t *testing.T) {
+	tl.ResetAllLocks(ctx)
+	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, twoTargets))
+	// job is the same, so we get all 4
+	res, err := tl.TryLock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, allTargets, uint(len(allTargets)))
+	assert.NoError(t, err)
+	assert.Equal(t, 4, len(res))
+	assert.Contains(t, res, allTargets[0].ID)
+	assert.Contains(t, res, allTargets[1].ID)
+	assert.Contains(t, res, allTargets[2].ID)
+	assert.Contains(t, res, allTargets[3].ID)
 }
 
 func TestInMemoryTryLockZeroLimited(t *testing.T) {
@@ -244,7 +281,7 @@ func TestLockExpiry(t *testing.T) {
 	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, twoTargets))
 	// getting them immediately fails for other owner
 	assert.Error(t, tl.Lock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, twoTargets))
-	tl.Clock.(*clock.Mock).Add(3 * time.Second)
+	tlClock.Add(3 * time.Second)
 	// expired, now it should work
 	assert.NoError(t, tl.Lock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, twoTargets))
 }
@@ -254,22 +291,22 @@ func TestRefreshMultiple(t *testing.T) {
 	tl.ResetAllLocks(ctx)
 	// now for the actual test
 	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, twoTargets))
-	tl.Clock.(*clock.Mock).Add(1500 * time.Millisecond)
+	tlClock.Add(1500 * time.Millisecond)
 	// they are not expired yet, extend both
 	assert.NoError(t, tl.RefreshLocks(ctx, jobID, twoTargets))
-	tl.Clock.(*clock.Mock).Add(1 * time.Second)
+	tlClock.Add(1 * time.Second)
 	// if they were refreshed properly, they are still valid and attempts to get them must fail
-	assert.Error(t, tl.Lock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, []*target.Target{&targetOne}))
-	assert.Error(t, tl.Lock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, []*target.Target{&targetTwo}))
+	assert.Error(t, tl.Lock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, []*target.Target{allTargets[0]}))
+	assert.Error(t, tl.Lock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, []*target.Target{allTargets[1]}))
 }
 
 func TestLockingTransactional(t *testing.T) {
 	tl.ResetAllLocks(ctx)
 	// lock the second target
-	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, []*target.Target{&targetTwo}))
+	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, []*target.Target{allTargets[1]}))
 	// try to lock both with another owner (this fails as expected)
 	assert.Error(t, tl.Lock(ctx, jobID+1, defaultJobTargetManagerAcquireTimeout, twoTargets))
 	// API says target one should remain unlocked because Lock() is transactional
 	// this means it can be locked by the first owner
-	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, []*target.Target{&targetOne}))
+	assert.NoError(t, tl.Lock(ctx, jobID, defaultJobTargetManagerAcquireTimeout, []*target.Target{allTargets[0]}))
 }
