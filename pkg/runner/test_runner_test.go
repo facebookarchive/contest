@@ -314,6 +314,7 @@ func TestNoReturnStepWithCorrectTargetForwarding(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.IsType(t, &cerrors.ErrTestStepsNeverReturned{}, err)
+	require.Contains(t, getStepEvents("Step 1"), "step [Step 1] did not return")
 }
 
 // A misbehaving step that panics.
