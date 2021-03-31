@@ -55,7 +55,8 @@ type TestRunner struct {
 
 // stepState contains state associated with one state of the pipeline:
 type stepState struct {
-	ctx xcontext.Context
+	ctx    xcontext.Context
+	cancel xcontext.CancelFunc
 
 	stepIndex int                 // Index of this step in the pipeline.
 	sb        test.TestStepBundle // The test bundle.
@@ -136,15 +137,17 @@ func (tr *TestRunner) run(
 ) (json.RawMessage, error) {
 
 	// Peel off contexts used for steps and target handlers.
-	stepCtx, stepCancel := xcontext.WithCancel(ctx)
-	defer stepCancel()
-	targetCtx, targetCancel := xcontext.WithCancel(ctx)
-	defer targetCancel()
+	stepsCtx, stepsCancel := xcontext.WithCancel(ctx)
+	defer stepsCancel()
+	targetsCtx, targetsCancel := xcontext.WithCancel(ctx)
+	defer targetsCancel()
 
 	// Set up the pipeline
 	for i, sb := range t.TestStepsBundles {
+		stepCtx, stepCancel := xcontext.WithCancel(stepsCtx)
 		tr.steps = append(tr.steps, &stepState{
 			ctx:       stepCtx,
+			cancel:    stepCancel,
 			stepIndex: i,
 			sb:        sb,
 			inCh:      make(chan *target.Target),
@@ -197,7 +200,7 @@ func (tr *TestRunner) run(
 		tr.mu.Unlock()
 		tr.targetsWg.Add(1)
 		go func() {
-			tr.targetHandler(targetCtx, tgs)
+			tr.targetHandler(targetsCtx, tgs)
 			tr.targetsWg.Done()
 		}()
 	}
@@ -206,7 +209,7 @@ func (tr *TestRunner) run(
 	runErr := tr.runMonitor(ctx)
 	if runErr != nil {
 		ctx.Errorf("monitor returned error: %q, canceling", runErr)
-		stepCancel()
+		stepsCancel()
 	}
 
 	// Wait for step runners and readers to exit.
@@ -218,7 +221,7 @@ func (tr *TestRunner) run(
 
 	// There will be no more results, reel in all the target handlers (if any).
 	ctx.Debugf("waiting for target handlers to finish")
-	targetCancel()
+	targetsCancel()
 	tr.targetsWg.Wait()
 
 	// Has the run been canceled? If so, ignore whatever happened, it doesn't matter.
@@ -339,14 +342,13 @@ func (tr *TestRunner) waitStepRunners(ctx xcontext.Context) error {
 			if ss.stepRunning {
 				ss.setErrLocked(&cerrors.ErrTestStepsNeverReturned{StepNames: []string{ss.sb.TestStepLabel}})
 				nrerr.StepNames = append(nrerr.StepNames, ss.sb.TestStepLabel)
-				// We cannot make the step itself return but we can at least release the reader.
-				tr.safeCloseOutCh(ss)
+				// Cancel this step's context, this will help release the reader.
+				ss.cancel()
 			}
 		}
 	}
 	// Emit step error events.
 	for _, ss := range tr.steps {
-		ctx.Debugf("%s %v", ss, ss.runErr)
 		if ss.runErr != nil && ss.runErr != xcontext.ErrPaused && ss.runErr != xcontext.ErrCanceled {
 			if err := ss.emitEvent(ctx, EventTestError, nil, ss.runErr.Error()); err != nil {
 				ctx.Errorf("failed to emit event: %s", err)
@@ -632,6 +634,12 @@ loop:
 		case res, ok := <-ss.outCh:
 			if !ok {
 				ss.ctx.Debugf("%s: out chan closed", ss)
+				tr.mu.Lock()
+				if ss.stepRunning {
+					// This means that plugin closed its channels before leaving.
+					err = &cerrors.ErrTestStepClosedChannels{StepName: ss.sb.TestStepLabel}
+				}
+				tr.mu.Unlock()
 				break loop
 			}
 			if err = tr.reportTargetResult(ss, res.Target, res.Err); err != nil {
@@ -643,16 +651,13 @@ loop:
 			cancelCh = nil
 			shutdownTimeoutCh = time.After(tr.shutdownTimeout)
 		case <-shutdownTimeoutCh:
-			ss.setErr(&tr.mu, &cerrors.ErrTestStepsNeverReturned{})
+			err = &cerrors.ErrTestStepsNeverReturned{StepNames: []string{ss.sb.TestStepLabel}}
+			break loop
 		}
 	}
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 	ss.setErrLocked(err)
-	if ss.stepRunning && ss.runErr == nil {
-		// This means that plugin closed its channels before leaving.
-		ss.setErrLocked(&cerrors.ErrTestStepClosedChannels{StepName: ss.sb.TestStepLabel})
-	}
 	ss.readerRunning = false
 	ss.ctx.Debugf("%s: step reader finished, %t %t %v", ss, ss.stepRunning, ss.readerRunning, ss.runErr)
 	tr.cond.Signal()
