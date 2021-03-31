@@ -58,7 +58,7 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 	runID := types.RunID(1)
 	var delay time.Duration
 
-	jobCtx := ctx.WithField("job_id", j.ID)
+	ctx = ctx.WithField("job_id", j.ID)
 
 	if resumeState != nil {
 		runID = resumeState.RunID
@@ -291,19 +291,19 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 
 		runReports = make([]*job.Report, 0, len(j.RunReporterBundles))
 		for _, bundle := range j.RunReporterBundles {
-			runStatus, err := jr.BuildRunStatus(jobCtx, runCoordinates, j)
+			runStatus, err := jr.BuildRunStatus(ctx, runCoordinates, j)
 			if err != nil {
-				jobCtx.Warnf("could not build run status for job %d: %v. Run report will not execute", j.ID, err)
+				ctx.Warnf("could not build run status for job %d: %v. Run report will not execute", j.ID, err)
 				continue
 			}
 			success, data, err := bundle.Reporter.RunReport(ctx, bundle.Parameters, runStatus, ev)
 			if err != nil {
-				jobCtx.Warnf("Run reporter failed while calculating run results, proceeding anyway: %v", err)
+				ctx.Warnf("Run reporter failed while calculating run results, proceeding anyway: %v", err)
 			} else {
 				if success {
-					jobCtx.Infof("Run #%d of job %d considered successful according to %s", runID, j.ID, bundle.Reporter.Name())
+					ctx.Infof("Run #%d of job %d considered successful according to %s", runID, j.ID, bundle.Reporter.Name())
 				} else {
-					jobCtx.Errorf("Run #%d of job %d considered failed according to %s", runID, j.ID, bundle.Reporter.Name())
+					ctx.Errorf("Run #%d of job %d considered failed according to %s", runID, j.ID, bundle.Reporter.Name())
 				}
 			}
 			// TODO run report must be sent to the storage layer as soon as it's
@@ -319,20 +319,20 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 	for _, bundle := range j.FinalReporterBundles {
 		// Build a RunStatus object for each run that we executed. We need to check if we interrupted
 		// execution early and we did not perform all runs
-		runStatuses, err := jr.BuildRunStatuses(jobCtx, j)
+		runStatuses, err := jr.BuildRunStatuses(ctx, j)
 		if err != nil {
-			jobCtx.Warnf("could not calculate run statuses: %v. Run report will not execute", err)
+			ctx.Warnf("could not calculate run statuses: %v. Run report will not execute", err)
 			continue
 		}
 
 		success, data, err := bundle.Reporter.FinalReport(ctx, bundle.Parameters, runStatuses, ev)
 		if err != nil {
-			jobCtx.Warnf("Final reporter failed while calculating test results, proceeding anyway: %v", err)
+			ctx.Warnf("Final reporter failed while calculating test results, proceeding anyway: %v", err)
 		} else {
 			if success {
-				jobCtx.Infof("Job %d (%d runs out of %d desired) considered successful", j.ID, runID-1, j.Runs)
+				ctx.Infof("Job %d (%d runs out of %d desired) considered successful", j.ID, runID-1, j.Runs)
 			} else {
-				jobCtx.Errorf("Job %d (%d runs out of %d desired) considered failed", j.ID, runID-1, j.Runs)
+				ctx.Errorf("Job %d (%d runs out of %d desired) considered failed", j.ID, runID-1, j.Runs)
 			}
 		}
 		r := job.Report{Success: success, ReporterName: bundle.Reporter.Name(), ReportTime: time.Now(), Data: data}

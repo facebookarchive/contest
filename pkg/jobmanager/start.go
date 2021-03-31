@@ -75,9 +75,9 @@ func (jm *JobManager) startJob(ctx xcontext.Context, j *job.Job, resumeState *jo
 	jm.jobsMu.Lock()
 	defer jm.jobsMu.Unlock()
 	jobCtx, jobCancel := xcontext.WithCancel(ctx)
-	jobCtx2, jobPause := xcontext.WithNotify(jobCtx, xcontext.ErrPaused)
+	jobCtx, jobPause := xcontext.WithNotify(jobCtx, xcontext.ErrPaused)
 	jm.jobs[j.ID] = &jobInfo{job: j, pause: jobPause, cancel: jobCancel}
-	go jm.runJob(jobCtx2, j, resumeState)
+	go jm.runJob(jobCtx, j, resumeState)
 }
 
 func (jm *JobManager) runJob(ctx xcontext.Context, j *job.Job, resumeState *job.PauseEventPayload) {
@@ -86,6 +86,8 @@ func (jm *JobManager) runJob(ctx xcontext.Context, j *job.Job, resumeState *job.
 		delete(jm.jobs, j.ID)
 		jm.jobsMu.Unlock()
 	}()
+
+	ctx = ctx.WithField("job_id", j.ID)
 
 	if err := jm.emitEvent(ctx, j.ID, job.EventJobStarted); err != nil {
 		ctx.Errorf("failed to emit event: %v", err)
