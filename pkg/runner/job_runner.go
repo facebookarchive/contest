@@ -356,6 +356,7 @@ func (jr *JobRunner) emitTargetEvents(ctx xcontext.Context, emitter testevent.Em
 }
 
 // GetCurrentRun returns the run which is currently being executed
+// Returns 0 if there are no runs
 func (jr *JobRunner) GetCurrentRun(ctx xcontext.Context, jobID types.JobID) (types.RunID, error) {
 
 	var runID types.RunID
@@ -366,6 +367,11 @@ func (jr *JobRunner) GetCurrentRun(ctx xcontext.Context, jobID types.JobID) (typ
 	)
 	if err != nil {
 		return runID, fmt.Errorf("could not fetch last run id for job %d: %v", jobID, err)
+	}
+
+	if len(runEvents) == 0 {
+		// no runs yet
+		return 0, nil
 	}
 
 	lastEvent := runEvents[len(runEvents)-1]
