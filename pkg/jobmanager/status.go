@@ -133,13 +133,20 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 		evResp.Err = fmt.Errorf("could not determine the current run id being executed: %v", err)
 		return &evResp
 	}
+	if runID == 0 {
+		// no runs
+		jobStatus.RunStatus = nil
+		evResp.Status = &jobStatus
+		evResp.Err = nil
+		return &evResp
+	}
 	runCoordinates := job.RunCoordinates{JobID: jobID, RunID: runID}
 	runStatus, err := jm.jobRunner.BuildRunStatus(ctx, runCoordinates, currentJob)
 	if err != nil {
 		evResp.Err = fmt.Errorf("could not rebuild the status of the job: %v", err)
 		return &evResp
 	}
-	jobStatus.RunStatus = *runStatus
+	jobStatus.RunStatus = runStatus
 	evResp.Status = &jobStatus
 	evResp.Err = nil
 	return &evResp
