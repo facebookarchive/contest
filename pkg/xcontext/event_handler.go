@@ -124,6 +124,12 @@ func (ctx *ctxValue) cloneWithStdContext(stdCtx context.Context) Context {
 }
 
 type eventHandler struct {
+	// cancelSignal is closed when a new cancel signal is arrived
+	cancelSignal chan struct{}
+
+	// children is all eventHandlers derived from this one. And for example
+	// if this one will receive a close signal, then all children will
+	// also receive a close signal.
 	children map[*eventHandler]struct{}
 
 	// locker is used exclude concurrent access to any data below (in this
@@ -139,9 +145,6 @@ type eventHandler struct {
 
 	// receivedCancels is only the cancel signals received by this node.
 	receivedCancels []error
-
-	// cancelSignal is closed when a new cancel signal is arrived
-	cancelSignal chan struct{}
 
 	// receivedNotifications same as receivedCancels, but for notification signals.
 	receivedNotifications []error
