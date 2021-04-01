@@ -48,3 +48,17 @@ func TestGoroutineLeak(t *testing.T) {
 	stack = stack[:n]
 	require.GreaterOrEqual(t, old, runtime.NumGoroutine(), fmt.Sprintf("%s", stack))
 }
+
+func TestStdCtxUntil(t *testing.T) {
+	ctx, pauseFn := WithNotify(nil, ErrPaused)
+	stdCtx := ctx.StdCtxUntil(nil)
+
+	select {
+	case <-stdCtx.Done():
+		t.Fatal("stdCtx should not be Done by now")
+	default:
+	}
+
+	pauseFn()
+	<-stdCtx.Done()
+}
