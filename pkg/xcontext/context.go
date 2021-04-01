@@ -535,7 +535,7 @@ func LoggerFrom(stdCtx context.Context) Logger {
 	return ctx.Logger()
 }
 
-// StdCtxWaitFor is the same as Until, but returns a standard context
+// StdCtxUntil is the same as Until, but returns a standard context
 // instead of a channel.
 func (ctx *ctxValue) StdCtxUntil(err error) context.Context {
 	child := ctx.clone()
@@ -543,11 +543,29 @@ func (ctx *ctxValue) StdCtxUntil(err error) context.Context {
 		return child
 	}
 
+	// Chain of thoughts:
+	// * Implement resulting context.Context through an xcontext instance.
+	// * It will require to wait until ctx.Until(err), but it will require
+	//   an additional routine.
+	// * We do not want to leak routines, therefore we cancel the routine
+	//   if resulting ctx.Done() is not reachable anymore (GC-ed). Thus
+	//   we exploit SetFinalizer.
+	// * To make SetFinalizer work we need to have different cancelSignal-s
+	//   in the waiting routine and in the finalizer, otherwise the SetFinalizer
+	//   will wait for a cancelSignal which will be always reachable from the
+	//   goroutine.
+	// * To make different cancelSignals we create two eventHandlers: one
+	//   will be monitored by SetFinalizer (childHandler), the other will be
+	//   cancelled by the goroutine (parentHandler). And we will return
+	//   the childHandler.
+
 	child.eventHandler = nil
-	h := child.addEventHandler()
+	parentHandler := child.addEventHandler()
+
+	childHandler := child.addEventHandler()
 
 	garbageCollected := make(chan struct{})
-	runtime.SetFinalizer(&child.cancelSignal, func(*ctxValue) {
+	runtime.SetFinalizer(&childHandler.cancelSignal, func(*chan struct{}) {
 		close(garbageCollected)
 	})
 
@@ -556,7 +574,7 @@ func (ctx *ctxValue) StdCtxUntil(err error) context.Context {
 		case <-garbageCollected:
 			return
 		case <-ctx.Until(err):
-			h.cancel(ErrCanceled)
+			parentHandler.cancel(ErrCanceled)
 		}
 	}()
 

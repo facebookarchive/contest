@@ -21,21 +21,27 @@ func tryLeak() {
 	ctx.Until(nil)
 	ctx = WithResetSignalers(ctx)
 	ctx = WithStdContext(ctx, context.Background())
+	ctx.StdCtxUntil(nil)
 	_ = ctx
 }
 
+func gc() {
+	// GC in Go is very tricky, and to be sure everything
+	// is cleaned up, we call it few times.
+	for i := 0; i < 3; i++ {
+		runtime.GC()
+		runtime.Gosched()
+	}
+}
+
 func TestGoroutineLeak(t *testing.T) {
-	runtime.GC()
-	runtime.Gosched()
-	runtime.GC()
-	runtime.Gosched()
+	gc()
 	old := runtime.NumGoroutine()
 
-	tryLeak()
-	runtime.GC()
-	runtime.Gosched()
-	runtime.GC()
-	runtime.Gosched()
+	for i := 0; i < 3; i++ {
+		tryLeak()
+		gc()
+	}
 
 	stack := make([]byte, 65536)
 	n := runtime.Stack(stack, true)
