@@ -413,7 +413,7 @@ func (suite *TestJobManagerSuite) testExit(
 }
 
 func (suite *TestJobManagerSuite) TestCancelAndExit() {
-	suite.testExit(suite.jmCancel, job.EventJobCancelled, 1*time.Second)
+	suite.testExit(suite.jmCancel, job.EventJobCancelled, 2*time.Second)
 	// Targets must be released when job is canceled.
 	suite.verifyTargetLockStatus([]string{"id1", "id2"}, false)
 }
