@@ -181,12 +181,14 @@ loop:
 	// Stop the API (if not already)
 	jm.StopAPI()
 	// Wait for jobs to complete or for cancellation signal.
+	doneCh := ctx.Done()
 	for !jm.checkIdle(ctx) {
 		select {
-		case <-ctx.Done():
+		case <-doneCh:
 			ctx.Infof("Canceled")
 			jm.CancelAll(ctx)
 			// Note that we do not break out of the loop here, we expect runner to wind down and exit.
+			doneCh = nil
 		case <-time.After(1 * time.Second):
 		}
 	}
