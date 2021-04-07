@@ -11,15 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/facebookincubator/contest/pkg/config"
+	"github.com/benbjohnson/clock"
+	// this blank import registers the mysql driver
+	_ "github.com/go-sql-driver/mysql"
+
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
-
-	"github.com/benbjohnson/clock"
-
-	// this blank import registers the mysql driver
-	_ "github.com/go-sql-driver/mysql"
 )
 
 // Name is the plugin name.
@@ -111,7 +109,7 @@ func (d *DBLocker) queryLocks(tx *sql.Tx, targets []string) (map[string]dblock, 
 }
 
 // handleLock does the real locking, it assumes the jobID is valid
-func (d *DBLocker) handleLock(ctx xcontext.Context, jobID int64, targets []string, limit uint, timeout time.Duration, allowConflicts bool) ([]string, error) {
+func (d *DBLocker) handleLock(ctx xcontext.Context, jobID int64, targets []string, limit uint, timeout time.Duration, requireLocked bool, allowConflicts bool) ([]string, error) {
 	// everything operates on this frozen time
 	now := d.clock.Now()
 	expiresAt := now.Add(timeout)
@@ -138,11 +136,21 @@ func (d *DBLocker) handleLock(ctx xcontext.Context, jobID int64, targets []strin
 	for _, targetID := range targets {
 		lock, ok := locks[targetID]
 		switch {
-		case !ok:
+		case !ok: // nonexistent lock
+			if requireLocked {
+				return nil, fmt.Errorf("target %q must be locked but isn't", targetID)
+			}
 			toInsert = append(toInsert, targetID)
-		case lock.jobID == jobID || lock.expiresAt.Before(now):
+		case lock.jobID == jobID: // our lock, possibly expired
 			toDelete = append(toDelete, lock)
 			toInsert = append(toInsert, targetID)
+		case lock.expiresAt.Before(now): // other job's expired lock
+			if !requireLocked {
+				toDelete = append(toDelete, lock)
+				toInsert = append(toInsert, targetID)
+			} else {
+				return nil, fmt.Errorf("target %q must be locked by %d but was locked by %d", targetID, jobID, lock.jobID)
+			}
 		default:
 			conflicts = append(conflicts, lock)
 		}
@@ -209,6 +217,30 @@ func (d *DBLocker) handleLock(ctx xcontext.Context, jobID int64, targets []strin
 
 // handleUnlock does the real unlocking, it assumes the jobID is valid
 func (d *DBLocker) handleUnlock(ctx xcontext.Context, jobID int64, targets []string) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return fmt.Errorf("unable to start database transaction: %w", err)
+	}
+	defer func() {
+		// this always fails if tx.Commit() was called before, ignore error
+		_ = tx.Rollback()
+	}()
+
+	// check lock states: must own locks for all targets (expired is ok too).
+	locks, err := d.queryLocks(tx, targets)
+	if err != nil {
+		return err
+	}
+	for _, t := range targets {
+		l, ok := locks[t]
+		if !ok {
+			return fmt.Errorf("target %q is not locked", t)
+		}
+		if l.jobID != jobID {
+			return fmt.Errorf("unlock request: target %q is locked by %q, not by %q", t, l.jobID, jobID)
+		}
+	}
+
 	// drop non-conflicting locks
 	del := "DELETE FROM locks WHERE job_id = ? AND target_id IN " + listQueryString(uint(len(targets)))
 	queryList := make([]interface{}, 0, len(targets)+1)
@@ -216,13 +248,16 @@ func (d *DBLocker) handleUnlock(ctx xcontext.Context, jobID int64, targets []str
 	for _, targetID := range targets {
 		queryList = append(queryList, targetID)
 	}
-	if _, err := d.db.Exec(del, queryList...); err != nil {
+	if _, err := tx.Exec(del, queryList...); err != nil {
 		return fmt.Errorf("unable to unlock targets %v, owner %d: %w", targets, jobID, err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 func validateTargets(targets []*target.Target) error {
+	if len(targets) == 0 {
+		return fmt.Errorf("no target specified")
+	}
 	for _, target := range targets {
 		if target.ID == "" {
 			return fmt.Errorf("target list cannot contain empty target ID. Full list: %v", targets)
@@ -240,11 +275,8 @@ func (d *DBLocker) Lock(ctx xcontext.Context, jobID types.JobID, duration time.D
 	if err := validateTargets(targets); err != nil {
 		return fmt.Errorf("invalid lock request: %w", err)
 	}
-	ctx.Debugf("Requested to lock %d targets for job ID %d: %v", len(targets), jobID, targets)
-	if len(targets) == 0 {
-		return nil
-	}
-	_, err := d.handleLock(ctx, int64(jobID), targetIDList(targets), uint(len(targets)), duration, false)
+	_, err := d.handleLock(ctx, int64(jobID), targetIDList(targets), uint(len(targets)), duration, false /* requireLocked */, false /* allowConflicts */)
+	ctx.Debugf("Lock %d targets for job %d for %s: %v", len(targets), jobID, duration, err)
 	return err
 }
 
@@ -257,11 +289,12 @@ func (d *DBLocker) TryLock(ctx xcontext.Context, jobID types.JobID, duration tim
 	if err := validateTargets(targets); err != nil {
 		return nil, fmt.Errorf("invalid tryLock request: %w", err)
 	}
-	ctx.Debugf("Requested to tryLock up to %d of %d targets for job ID %d: %v", limit, len(targets), jobID, targets)
-	if len(targets) == 0 || limit == 0 {
+	if limit == 0 {
 		return nil, nil
 	}
-	return d.handleLock(ctx, int64(jobID), targetIDList(targets), limit, duration, true)
+	res, err := d.handleLock(ctx, int64(jobID), targetIDList(targets), limit, duration, false /* requireLocked */, true /* allowConflicts */)
+	ctx.Debugf("TryLock %d targets for job %d for %s: %d %v", len(targets), jobID, duration, len(res), err)
+	return res, err
 }
 
 // Unlock unlocks the given targets.
@@ -273,28 +306,28 @@ func (d *DBLocker) Unlock(ctx xcontext.Context, jobID types.JobID, targets []*ta
 	if err := validateTargets(targets); err != nil {
 		return fmt.Errorf("invalid unlock request: %w", err)
 	}
-	ctx.Debugf("Requested to unlock %d targets for job ID %d: %v", len(targets), jobID, targets)
-	if len(targets) == 0 {
-		return nil
-	}
-	return d.handleUnlock(ctx, int64(jobID), targetIDList(targets))
+	err := d.handleUnlock(ctx, int64(jobID), targetIDList(targets))
+	ctx.Debugf("Unlock %d targets for job %d: %v", len(targets), jobID, err)
+	return err
 }
 
-// RefreshLocks refreshes (or locks!) the given targets.
+// RefreshLocks refreshes the locks on the given targets.
 // See target.Locker for API details
-func (d *DBLocker) RefreshLocks(ctx xcontext.Context, jobID types.JobID, targets []*target.Target) error {
+func (d *DBLocker) RefreshLocks(ctx xcontext.Context, jobID types.JobID, duration time.Duration, targets []*target.Target) error {
 	if jobID == 0 {
 		return fmt.Errorf("invalid refresh request, jobID cannot be zero (targets: %v)", targets)
 	}
 	if err := validateTargets(targets); err != nil {
 		return fmt.Errorf("invalid refresh request: %w", err)
 	}
-	ctx.Debugf("Requested to refresh %d targets for job ID %d: %v", len(targets), jobID, targets)
-	if len(targets) == 0 {
-		return nil
-	}
-	_, err := d.handleLock(ctx, int64(jobID), targetIDList(targets), uint(len(targets)), config.LockRefreshTimeout, false)
+	_, err := d.handleLock(ctx, int64(jobID), targetIDList(targets), uint(len(targets)), duration, true /* requireLocked */, false /* allowConflicts */)
+	ctx.Debugf("RefreshLocks on %d targets for job %d for %s: %v", len(targets), jobID, duration, err)
 	return err
+}
+
+// Close closes the DB connection and releases resources.
+func (d *DBLocker) Close() error {
+	return d.db.Close()
 }
 
 // ResetAllLocks resets the database and clears all locks, regardless of who owns them.

@@ -34,6 +34,7 @@ type Locker interface {
 	// Locks are reentrant, locking existing locks (with the same owner)
 	// extends the deadline.
 	Lock(ctx xcontext.Context, jobID types.JobID, duration time.Duration, targets []*Target) error
+
 	// TryLock attempts to lock up to limit of the given targets.
 	// The job ID is the owner of the lock.
 	// This function attempts to lock up to limit of the given targets,
@@ -42,23 +43,29 @@ type Locker interface {
 	// Locks are reentrant, locking existing locks (with the same owner)
 	// extends the deadline.
 	TryLock(ctx xcontext.Context, jobID types.JobID, duration time.Duration, targets []*Target, limit uint) ([]string, error)
+
 	// Unlock unlocks the specificied targets if they are held by the given owner.
 	// Unlock silently skips expired locks and targets that are not locked at all.
 	// Unlock does not fail if a valid lock is held on one of the targets.
 	// In these cases, a warning is printed, the foreign lock is left intact and
 	// no error is returned.
-	Unlock(xcontext.Context, types.JobID, []*Target) error
-	// RefreshLocks locks or extends existing locks on the given targets.
-	// This function offers the same behavior and guarantees as Lock,
-	// except it uses a different timeout.
-	// Note this means calling RefreshLocks on unlocked targets is allowed and
-	// will (re-)acquire the lock.
-	RefreshLocks(xcontext.Context, types.JobID, []*Target) error
+	Unlock(ctx xcontext.Context, jobID types.JobID, targets []*Target) error
+
+	// RefreshLocks extends existing locks on the given targets for the specified duration.
+	// This call will fail if even a single target is not currently locked by the specified job.
+	RefreshLocks(ctx xcontext.Context, jobID types.JobID, duration time.Duration, targets []*Target) error
+
+	// Close finalizes the locker and releases resources.
+	// No API calls must be in flight when this is invoked or afterwards.
+	Close() error
 }
 
 // SetLocker sets the desired lock engine for targets.
-func SetLocker(targetLocker Locker) {
-	locker = targetLocker
+func SetLocker(newLocker Locker) {
+	if locker != nil {
+		locker.Close()
+	}
+	locker = newLocker
 }
 
 // GetLocker gets the desired lock engine for targets.

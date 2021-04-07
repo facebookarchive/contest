@@ -57,6 +57,8 @@ type JobManager struct {
 	pluginRegistry *pluginregistry.PluginRegistry
 
 	apiCancel xcontext.CancelFunc
+
+	msgCounter int
 }
 
 type jobInfo struct {
@@ -93,7 +95,7 @@ func New(l api.Listener, pr *pluginregistry.PluginRegistry, opts ...Option) (*Jo
 		frameworkEvManager: frameworkEvManager,
 		testEvManager:      testEvManager,
 	}
-	jm.jobRunner = runner.NewJobRunner()
+	jm.jobRunner = runner.NewJobRunner(cfg.clock, cfg.targetLockDuration)
 	return &jm, nil
 }
 
@@ -189,7 +191,7 @@ loop:
 			jm.CancelAll(ctx)
 			// Note that we do not break out of the loop here, we expect runner to wind down and exit.
 			doneCh = nil
-		case <-time.After(1 * time.Second):
+		case <-time.After(50 * time.Millisecond):
 		}
 	}
 	return nil
@@ -201,7 +203,10 @@ func (jm *JobManager) checkIdle(ctx xcontext.Context) bool {
 	if len(jm.jobs) == 0 {
 		return true
 	}
-	ctx.Infof("Waiting for %d jobs", len(jm.jobs))
+	if jm.msgCounter%20 == 0 {
+		ctx.Infof("Waiting for %d jobs", len(jm.jobs))
+	}
+	jm.msgCounter++
 	return false
 }
 

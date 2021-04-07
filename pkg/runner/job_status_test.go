@@ -67,7 +67,6 @@ func TestBuildRunStatuses(t *testing.T) {
 	ctx := xcontext.Background()
 	jr := &JobRunner{
 		targetMap:             nil,
-		targetLock:            nil,
 		frameworkEventManager: dummyFrameworkEventManager{t: t},
 		testEvManager:         nil,
 	}

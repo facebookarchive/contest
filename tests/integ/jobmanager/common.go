@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/benbjohnson/clock"
+
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
@@ -152,6 +154,10 @@ func pollForEvent(eventManager frameworkevent.EmitterFetcher, ev event.Name, job
 type TestJobManagerSuite struct {
 	suite.Suite
 
+	// TODO(rojer): use mock clock here.
+	// clock *clock.Mock
+	clock clock.Clock
+
 	// storage is the storage engine initially configured by the upper level TestSuite,
 	// which either configures a memory or a rdbms storage backend.
 	storage storage.Storage
@@ -265,6 +271,12 @@ func (suite *TestJobManagerSuite) SetupTest() {
 	jsm := storage.NewJobStorageManager()
 	eventManager := storage.NewFrameworkEventEmitterFetcher()
 
+	// TODO(rojer): Use mock clock to speed up the tests.
+	// suite.clock = clock.NewMock()
+	// suite.clock.Add(1 * time.Hour) // start at 01:00
+	suite.clock = clock.New()
+	slowecho.Clock = suite.clock
+
 	suite.jsm = jsm
 	suite.eventManager = eventManager
 
@@ -283,7 +295,7 @@ func (suite *TestJobManagerSuite) SetupTest() {
 	require.NoError(suite.T(), storage.SetStorage(suite.txStorage))
 	require.NoError(suite.T(), storage.SetAsyncStorage(suite.txStorage))
 
-	suite.targetLocker = inmemory.New()
+	suite.targetLocker = inmemory.New(suite.clock)
 	target.SetLocker(suite.targetLocker)
 
 	suite.initJobManager("")
@@ -292,7 +304,7 @@ func (suite *TestJobManagerSuite) SetupTest() {
 func (suite *TestJobManagerSuite) initJobManager(instanceTag string) {
 	suite.listener = &TestListener{commandCh: make(chan command), responseCh: make(chan api.Response), errorCh: make(chan error)}
 	suite.jobManagerCh = make(chan struct{})
-	var opts []jobmanager.Option
+	opts := []jobmanager.Option{jobmanager.OptionClock(suite.clock)}
 	if instanceTag != "" {
 		opts = append(opts, jobmanager.OptionInstanceTag(instanceTag))
 	}
@@ -321,12 +333,13 @@ func (suite *TestJobManagerSuite) TearDownTest() {
 	testsIntegCommon.FinalizeStorage(suite.txStorage)
 	storage.SetStorage(suite.storage)
 	storage.SetAsyncStorage(suite.storage)
+	target.SetLocker(nil)
+	slowecho.Clock = nil
 }
 
 func (suite *TestJobManagerSuite) TearDownSuite() {
 	time.Sleep(20 * time.Millisecond)
 	if err := goroutine_leak_check.CheckLeakedGoRoutines(
-		"github.com/facebookincubator/contest/plugins/targetlocker/inmemory.broker",
 		"github.com/facebookincubator/contest/plugins/storage/rdbms.(*RDBMS).init.*",
 		"github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.*",
 	); err != nil {
@@ -396,6 +409,7 @@ func (suite *TestJobManagerSuite) testExit(
 
 	select {
 	case <-suite.jobManagerCh:
+		suite.jmCtx.Infof("jm finished")
 	case <-time.After(exitTimeout):
 		suite.T().Errorf("JobManager should return within the timeout")
 	}
