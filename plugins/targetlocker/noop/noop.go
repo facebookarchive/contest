@@ -45,8 +45,12 @@ func (tl Noop) Unlock(ctx xcontext.Context, _ types.JobID, targets []*target.Tar
 
 // RefreshLocks refreshes all the locks by the internal (non-existing) timeout,
 // by flawlessly doing nothing.
-func (tl Noop) RefreshLocks(ctx xcontext.Context, jobID types.JobID, targets []*target.Target) error {
+func (tl Noop) RefreshLocks(ctx xcontext.Context, jobID types.JobID, _ time.Duration, targets []*target.Target) error {
 	ctx.Infof("All %d target locks are refreshed, since I had to do nothing", len(targets))
+	return nil
+}
+
+func (tl Noop) Close() error {
 	return nil
 }
 

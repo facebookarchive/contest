@@ -6,13 +6,14 @@
 package runner
 
 import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
-	"github.com/stretchr/testify/require"
-	"sync"
-	"testing"
 )
 
 // emptyFrameworkEventManager does not emit or fetch anything
@@ -32,7 +33,6 @@ func (fem emptyFrameworkEventManager) FetchAsync(ctx xcontext.Context, fields ..
 func TestGetCurrentRunNoEvents(t *testing.T) {
 	mockRunner := JobRunner{
 		targetMap:             nil,
-		targetLock:            &sync.RWMutex{},
 		frameworkEventManager: emptyFrameworkEventManager{},
 		testEvManager:         storage.TestEventFetcher{},
 	}

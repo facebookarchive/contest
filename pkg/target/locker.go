@@ -33,7 +33,9 @@ type Locker interface {
 	// leaves the existing locks untouched in case of conflicts.
 	// Locks are reentrant, locking existing locks (with the same owner)
 	// extends the deadline.
+	// Passing empty list of targets is allowed and is a no-op.
 	Lock(ctx xcontext.Context, jobID types.JobID, duration time.Duration, targets []*Target) error
+
 	// TryLock attempts to lock up to limit of the given targets.
 	// The job ID is the owner of the lock.
 	// This function attempts to lock up to limit of the given targets,
@@ -41,24 +43,31 @@ type Locker interface {
 	// This function does not return an error if it was not able to lock any targets.
 	// Locks are reentrant, locking existing locks (with the same owner)
 	// extends the deadline.
+	// Passing empty list of targets is allowed and is a no-op.
 	TryLock(ctx xcontext.Context, jobID types.JobID, duration time.Duration, targets []*Target, limit uint) ([]string, error)
+
 	// Unlock unlocks the specificied targets if they are held by the given owner.
-	// Unlock silently skips expired locks and targets that are not locked at all.
-	// Unlock does not fail if a valid lock is held on one of the targets.
-	// In these cases, a warning is printed, the foreign lock is left intact and
-	// no error is returned.
-	Unlock(xcontext.Context, types.JobID, []*Target) error
-	// RefreshLocks locks or extends existing locks on the given targets.
-	// This function offers the same behavior and guarantees as Lock,
-	// except it uses a different timeout.
-	// Note this means calling RefreshLocks on unlocked targets is allowed and
-	// will (re-)acquire the lock.
-	RefreshLocks(xcontext.Context, types.JobID, []*Target) error
+	// Unlock allows expired locks by the same owner but unlocking a target that wasn't locked
+	// or that is now or has since been locked by a different owner is a failure.
+	// Passing empty list of targets is allowed and is a no-op.
+	Unlock(ctx xcontext.Context, jobID types.JobID, targets []*Target) error
+
+	// RefreshLocks extends existing locks on the given targets for the specified duration.
+	// This call will fail if even a single target is not currently locked by the specified job.
+	// Passing empty list of targets is allowed and is a no-op.
+	RefreshLocks(ctx xcontext.Context, jobID types.JobID, duration time.Duration, targets []*Target) error
+
+	// Close finalizes the locker and releases resources.
+	// No API calls must be in flight when this is invoked or afterwards.
+	Close() error
 }
 
 // SetLocker sets the desired lock engine for targets.
-func SetLocker(targetLocker Locker) {
-	locker = targetLocker
+func SetLocker(newLocker Locker) {
+	if locker != nil {
+		locker.Close()
+	}
+	locker = newLocker
 }
 
 // GetLocker gets the desired lock engine for targets.

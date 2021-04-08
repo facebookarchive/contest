@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/benbjohnson/clock"
+
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -23,6 +25,8 @@ var Name = "SlowEcho"
 
 // Events defines the events that a TestStep is allow to emit
 var Events = []event.Name{}
+
+var Clock clock.Clock
 
 // Step implements an echo-style printing plugin.
 type Step struct {
@@ -80,10 +84,14 @@ func (e *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.T
 	if err != nil {
 		return err
 	}
+	clk := Clock
+	if clk == nil {
+		clk = clock.New()
+	}
 	f := func(ctx xcontext.Context, t *target.Target) error {
 		ctx.Infof("Waiting %v for target %s", sleep, t.ID)
 		select {
-		case <-time.After(sleep):
+		case <-clk.After(sleep):
 		case <-ctx.Done():
 			ctx.Infof("Returning because cancellation is requested")
 			return xcontext.ErrCanceled

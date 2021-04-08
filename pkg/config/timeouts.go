@@ -41,6 +41,6 @@ var TestRunnerShutdownTimeout = 30 * time.Second
 // doesn't reset when a TestStep returns.
 var TestRunnerStepShutdownTimeout = 5 * time.Second
 
-// LockRefreshTimeout is the amount of time by which a target lock is extended
-// periodically while a job is running.
-var LockRefreshTimeout = 1 * time.Minute
+// DefaultTargetLockDuration is the default value for -targetLockDuration.
+// It is the amount of time target lock is extended by while the job is running.
+const DefaultTargetLockDuration = 10 * time.Minute

@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/benbjohnson/clock"
+
 	"github.com/facebookincubator/contest/cmds/plugins"
 	"github.com/facebookincubator/contest/pkg/api"
 	"github.com/facebookincubator/contest/pkg/config"
@@ -31,14 +33,17 @@ import (
 )
 
 var (
-	flagDBURI          = flag.String("dbURI", config.DefaultDBURI, "Database URI")
-	flagServerID       = flag.String("serverID", "", "Set a static server ID, e.g. the host name or another unique identifier. If unset, will use the listener's default")
-	flagProcessTimeout = flag.Duration("processTimeout", api.DefaultEventTimeout, "API request processing timeout")
-	flagTargetLocker   = flag.String("targetLocker", inmemory.Name, "Target locker implementation to use")
-	flagInstanceTag    = flag.String("instanceTag", "", "A tag for this instance. Server will only operate on jobs with this tag and will add this tag to the jobs it creates.")
-	flagLogLevel       = flag.String("logLevel", "debug", "A log level, possible values: debug, info, warning, error, panic, fatal")
-	flagPauseTimeout   = flag.Int("pauseTimeout", 0, "SIGINT/SIGTERM shutdown timeout (seconds), after which pause will be escalated to cancellaton; -1 - no escalation, 0 - do not pause, cancel immediately")
-	flagResumeJobs     = flag.Bool("resumeJobs", false, "Attempt to resume paused jobs")
+	flagDBURI              = flag.String("dbURI", config.DefaultDBURI, "Database URI")
+	flagServerID           = flag.String("serverID", "", "Set a static server ID, e.g. the host name or another unique identifier. If unset, will use the listener's default")
+	flagProcessTimeout     = flag.Duration("processTimeout", api.DefaultEventTimeout, "API request processing timeout")
+	flagTargetLocker       = flag.String("targetLocker", inmemory.Name, "Target locker implementation to use")
+	flagInstanceTag        = flag.String("instanceTag", "", "A tag for this instance. Server will only operate on jobs with this tag and will add this tag to the jobs it creates.")
+	flagLogLevel           = flag.String("logLevel", "debug", "A log level, possible values: debug, info, warning, error, panic, fatal")
+	flagPauseTimeout       = flag.Duration("pauseTimeout", 0, "SIGINT/SIGTERM shutdown timeout (seconds), after which pause will be escalated to cancellaton; -1 - no escalation, 0 - do not pause, cancel immediately")
+	flagResumeJobs         = flag.Bool("resumeJobs", false, "Attempt to resume paused jobs")
+	flagTargetLockDuration = flag.Duration("targetLockDuration", config.DefaultTargetLockDuration,
+		"The amount of time target lock is extended by while the job is running. "+
+			"This is the maximum amount of time a job can stay paused safely.")
 )
 
 func main() {
@@ -47,6 +52,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	clk := clock.New()
 
 	ctx, cancel := xcontext.WithCancel(logrusctx.NewContext(logLevel, logging.DefaultOptions()...))
 	ctx, pause := xcontext.WithNotify(ctx, xcontext.ErrPaused)
@@ -114,9 +121,9 @@ func main() {
 	// set Locker engine
 	switch *flagTargetLocker {
 	case inmemory.Name:
-		target.SetLocker(inmemory.New())
+		target.SetLocker(inmemory.New(clk))
 	case dblocker.Name:
-		if l, err := dblocker.New(*flagDBURI); err == nil {
+		if l, err := dblocker.New(*flagDBURI, dblocker.WithClock(clk)); err == nil {
 			target.SetLocker(l)
 		} else {
 			log.Fatalf("Failed to create locker %q: %v", *flagTargetLocker, err)
@@ -138,6 +145,9 @@ func main() {
 	}
 	if *flagInstanceTag != "" {
 		opts = append(opts, jobmanager.OptionInstanceTag(*flagInstanceTag))
+	}
+	if *flagTargetLockDuration != 0 {
+		opts = append(opts, jobmanager.OptionTargetLockDuration(*flagTargetLockDuration))
 	}
 
 	jm, err := jobmanager.New(listener, pluginRegistry, opts...)
@@ -175,7 +185,7 @@ func main() {
 						go func() {
 							select {
 							case <-ctx.Done():
-							case <-time.After(time.Duration(*flagPauseTimeout) * time.Second):
+							case <-time.After(*flagPauseTimeout):
 								log.Errorf("Timed out waiting for jobs to pause, canceling")
 								cancel()
 							}
