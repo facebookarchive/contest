@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -196,17 +195,6 @@ func (ts *Cmd) validateAndPopulate(params test.TestStepParameters) error {
 // ValidateParameters validates the parameters associated to the TestStep
 func (ts *Cmd) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	return ts.validateAndPopulate(params)
-}
-
-// Resume tries to resume a previously interrupted test step. Cmd cannot
-// resume.
-func (ts *Cmd) Resume(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
-	return &cerrors.ErrResumeNotSupported{StepName: Name}
-}
-
-// CanResume tells whether this step is able to resume.
-func (ts *Cmd) CanResume() bool {
-	return false
 }
 
 // New initializes and returns a new Cmd test step.

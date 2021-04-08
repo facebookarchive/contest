@@ -8,7 +8,6 @@ package echo
 import (
 	"errors"
 
-	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/test"
@@ -63,15 +62,4 @@ func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.Te
 			return nil
 		}
 	}
-}
-
-// CanResume tells whether this step is able to resume.
-func (e Step) CanResume() bool {
-	return false
-}
-
-// Resume tries to resume a previously interrupted test step. EchoStep cannot
-// resume.
-func (e Step) Resume(ctx xcontext.Context, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
-	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }

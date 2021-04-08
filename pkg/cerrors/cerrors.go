@@ -10,17 +10,6 @@ import (
 	"strings"
 )
 
-// ErrResumeNotSupported indicates that a test step cannot resume. This can
-// be checked explicitly by the framework
-type ErrResumeNotSupported struct {
-	StepName string
-}
-
-// Error returns the error string associated with the error
-func (e *ErrResumeNotSupported) Error() string {
-	return fmt.Sprintf("test step %s does not support resume", e.StepName)
-}
-
 // ErrTestStepsNeverReturned indicates that one or multiple TestSteps
 //  did not complete when the test terminated or when the pipeline
 // received a cancellation or pause signal

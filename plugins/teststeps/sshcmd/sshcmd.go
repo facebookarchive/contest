@@ -29,7 +29,6 @@ import (
 	"github.com/kballard/go-shellquote"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -326,17 +325,6 @@ func (ts *SSHCmd) validateAndPopulate(params test.TestStepParameters) error {
 func (ts *SSHCmd) ValidateParameters(ctx xcontext.Context, params test.TestStepParameters) error {
 	ctx.Debugf("Params %+v", params)
 	return ts.validateAndPopulate(params)
-}
-
-// Resume tries to resume a previously interrupted test step. SSHCmd cannot
-// resume.
-func (ts *SSHCmd) Resume(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
-	return &cerrors.ErrResumeNotSupported{StepName: Name}
-}
-
-// CanResume tells whether this step is able to resume.
-func (ts *SSHCmd) CanResume() bool {
-	return false
 }
 
 // New initializes and returns a new SSHCmd test step.
