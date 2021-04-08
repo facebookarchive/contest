@@ -113,12 +113,6 @@ type TestStep interface {
 	Name() string
 	// Run runs the test step. The test step is expected to be synchronous.
 	Run(ctx xcontext.Context, ch TestStepChannels, params TestStepParameters, ev testevent.Emitter) error
-	// CanResume signals whether a test step can be resumed.
-	CanResume() bool
-	// Resume is called if a test step resume is requested, and CanResume
-	// returns true. If resume is not supported, this method should return
-	// ErrResumeNotSupported.
-	Resume(ctx xcontext.Context, ch TestStepChannels, params TestStepParameters, ev testevent.EmitterFetcher) error
 	// ValidateParameters checks that the parameters are correct before passing
 	// them to Run.
 	ValidateParameters(ctx xcontext.Context, params TestStepParameters) error

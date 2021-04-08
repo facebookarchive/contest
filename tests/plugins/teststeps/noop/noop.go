@@ -6,7 +6,6 @@
 package noop
 
 import (
-	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/test"
@@ -45,17 +44,6 @@ func (ts *noop) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.
 // ValidateParameters validates the parameters associated to the TestStep
 func (ts *noop) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	return nil
-}
-
-// Resume tries to resume a previously interrupted test step. ExampleTestStep
-// cannot resume.
-func (ts *noop) Resume(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
-	return &cerrors.ErrResumeNotSupported{StepName: Name}
-}
-
-// CanResume tells whether this step is able to resume.
-func (ts *noop) CanResume() bool {
-	return false
 }
 
 // New creates a new noop step
