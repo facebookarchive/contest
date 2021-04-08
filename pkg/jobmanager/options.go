@@ -50,14 +50,13 @@ func (opt OptionInstanceTag) apply(config *config) {
 	config.instanceTag = string(opt)
 }
 
-// OptionTargetLockDuration wraps a string to be used as instance tag.
+// OptionTargetLockDuration wraps time.Duration to be used as an option.
 type OptionTargetLockDuration time.Duration
 
 func (opt OptionTargetLockDuration) apply(config *config) {
 	config.targetLockDuration = time.Duration(opt)
 }
 
-// OptionClock wraps a string to be used as instance tag.
 type optionClock struct {
 	clock clock.Clock
 }
@@ -66,6 +65,7 @@ func (opt optionClock) apply(config *config) {
 	config.clock = opt.clock
 }
 
+// OptionClock wraps clock.Clock to be used as an option.
 func OptionClock(clk clock.Clock) Option {
 	return optionClock{clock: clk}
 }

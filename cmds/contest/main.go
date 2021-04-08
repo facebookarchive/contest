@@ -41,7 +41,9 @@ var (
 	flagLogLevel           = flag.String("logLevel", "debug", "A log level, possible values: debug, info, warning, error, panic, fatal")
 	flagPauseTimeout       = flag.Duration("pauseTimeout", 0, "SIGINT/SIGTERM shutdown timeout (seconds), after which pause will be escalated to cancellaton; -1 - no escalation, 0 - do not pause, cancel immediately")
 	flagResumeJobs         = flag.Bool("resumeJobs", false, "Attempt to resume paused jobs")
-	flagTargetLockDuration = flag.Duration("targetLockDuration", config.DefaultTargetLockDuration, "The amount of time target lock is extended by while the job is running.")
+	flagTargetLockDuration = flag.Duration("targetLockDuration", config.DefaultTargetLockDuration,
+		"The amount of time target lock is extended by while the job is running. "+
+			"This is the maximum amount of time a job can stay paused safely.")
 )
 
 func main() {

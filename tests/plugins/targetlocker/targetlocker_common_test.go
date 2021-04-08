@@ -54,11 +54,8 @@ func (ts *TargetLockerTestSuite) TestLockInvalidJobIDAndNoTargets() {
 }
 
 func (ts *TargetLockerTestSuite) TestLockValidJobIDAndNoTargets() {
-	require.Error(ts.T(), ts.tl.Lock(ctx, job1, defaultTimeout, nil))
-}
-
-func (ts *TargetLockerTestSuite) TestLockValidJobIDAndNoTargets2() {
-	require.Error(ts.T(), ts.tl.Lock(ctx, job1, defaultTimeout, []*target.Target{}))
+	require.NoError(ts.T(), ts.tl.Lock(ctx, job1, defaultTimeout, nil))
+	require.NoError(ts.T(), ts.tl.Lock(ctx, job1, defaultTimeout, []*target.Target{}))
 }
 
 func (ts *TargetLockerTestSuite) TestLockInvalidJobIDAndOneTarget() {
@@ -176,11 +173,13 @@ func (ts *TargetLockerTestSuite) TestTryLockNoneOfTwo() {
 }
 
 func (ts *TargetLockerTestSuite) TestUnlockInvalidJobIDAndNoTargets() {
-	require.Error(ts.T(), ts.tl.Unlock(ctx, job1, nil))
+	require.Error(ts.T(), ts.tl.Unlock(ctx, 0, nil))
+	require.Error(ts.T(), ts.tl.Unlock(ctx, 0, []*target.Target{}))
 }
 
 func (ts *TargetLockerTestSuite) TestUnlockValidJobIDAndNoTargets() {
-	require.Error(ts.T(), ts.tl.Unlock(ctx, job1, nil))
+	require.NoError(ts.T(), ts.tl.Unlock(ctx, job1, nil))
+	require.NoError(ts.T(), ts.tl.Unlock(ctx, job1, []*target.Target{}))
 }
 
 func (ts *TargetLockerTestSuite) TestUnlockInvalidJobIDAndOneTarget() {
@@ -233,6 +232,11 @@ func (ts *TargetLockerTestSuite) TestLockUnlockDifferentJobID() {
 	// targets remain locked by job1
 	require.Error(ts.T(), ts.tl.Lock(ctx, job2, defaultTimeout, twoTargets))
 	require.NoError(ts.T(), ts.tl.Lock(ctx, job1, defaultTimeout, twoTargets))
+}
+
+func (ts *TargetLockerTestSuite) TestRefreshValidJobIDAndNoTargets() {
+	require.NoError(ts.T(), ts.tl.RefreshLocks(ctx, job1, defaultTimeout, nil))
+	require.NoError(ts.T(), ts.tl.RefreshLocks(ctx, job1, defaultTimeout, []*target.Target{}))
 }
 
 func (ts *TargetLockerTestSuite) TestRefreshNonexistentLocks() {

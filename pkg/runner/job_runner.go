@@ -245,7 +245,7 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 					close(stopRefresh)
 					<-stoppedRefresh
 					// Refresh one last time.
-					if err2 := tl.Lock(runCtx, j.ID, jr.targetLockDuration, targets); err2 != nil {
+					if err2 := tl.RefreshLocks(runCtx, j.ID, jr.targetLockDuration, targets); err2 != nil {
 						runCtx.Errorf("Failed to refresh %d locks for job ID %d: %v", len(targets), j.ID, err2)
 						resumeState = nil
 						err = err2

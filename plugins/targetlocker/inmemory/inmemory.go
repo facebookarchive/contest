@@ -60,9 +60,6 @@ func validateRequest(req *request) error {
 	if req.owner == 0 {
 		return fmt.Errorf("owner cannot be zero")
 	}
-	if len(req.targets) == 0 {
-		return fmt.Errorf("no target specified")
-	}
 	for _, target := range req.targets {
 		if target.ID == "" {
 			return fmt.Errorf("target list cannot contain empty target ID. Full list: %v", req.targets)
@@ -203,7 +200,7 @@ func (tl *InMemory) Lock(ctx xcontext.Context, jobID types.JobID, duration time.
 	req.limit = uint(len(targets))
 	tl.lockRequests <- &req
 	err := <-req.err
-	ctx.Debugf("Lock %d targets for job %d for %s: %v", len(targets), jobID, duration, err)
+	ctx.Debugf("Lock %d targets for %s: %v", len(targets), duration, err)
 	return err
 }
 
@@ -217,7 +214,7 @@ func (tl *InMemory) TryLock(ctx xcontext.Context, jobID types.JobID, duration ti
 	tl.lockRequests <- &req
 	// wait for result
 	err := <-req.err
-	ctx.Debugf("TryLock %d targets for job %d for %s: %d %v", len(targets), jobID, duration, req.locked, err)
+	ctx.Debugf("TryLock %d targets for %s: %d %v", len(targets), duration, req.locked, err)
 	return req.locked, err
 }
 
@@ -226,7 +223,7 @@ func (tl *InMemory) Unlock(ctx xcontext.Context, jobID types.JobID, targets []*t
 	req := newReq(ctx, jobID, targets)
 	tl.unlockRequests <- &req
 	err := <-req.err
-	ctx.Debugf("Unlock %d targets for job %d: %v", len(targets), jobID, err)
+	ctx.Debugf("Unlock %d targets: %v", len(targets), err)
 	return err
 }
 
@@ -242,7 +239,7 @@ func (tl *InMemory) RefreshLocks(ctx xcontext.Context, jobID types.JobID, durati
 	// duration.
 	tl.lockRequests <- &req
 	err := <-req.err
-	ctx.Debugf("RefreshLocks on %d targets for job %d for %s: %v", len(targets), jobID, duration, err)
+	ctx.Debugf("RefreshLocks on %d targets for %s: %v", len(targets), duration, err)
 	return err
 }
 
