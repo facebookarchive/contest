@@ -214,7 +214,7 @@ func (tl *InMemory) TryLock(ctx xcontext.Context, jobID types.JobID, duration ti
 	tl.lockRequests <- &req
 	// wait for result
 	err := <-req.err
-	ctx.Debugf("TryLock %d targets for %s: %d %v", len(targets), duration, req.locked, err)
+	ctx.Debugf("TryLock %d targets for %s: %d %v", len(targets), duration, len(req.locked), err)
 	return req.locked, err
 }
 

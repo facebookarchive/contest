@@ -21,7 +21,7 @@ type JobStorage interface {
 	GetJobRequest(ctx xcontext.Context, jobID types.JobID) (*job.Request, error)
 
 	// Job report interface
-	StoreJobReport(ctx xcontext.Context, report *job.JobReport) error
+	StoreReport(ctx xcontext.Context, report *job.Report) error
 	GetJobReport(ctx xcontext.Context, jobID types.JobID) (*job.JobReport, error)
 
 	// Job enumeration interface
@@ -51,9 +51,9 @@ func (jsm JobStorageManager) GetJobRequestAsync(ctx xcontext.Context, jobID type
 	return request, nil
 }
 
-// StoreJobReport submits a job report to the storage layer
-func (jsm JobStorageManager) StoreJobReport(ctx xcontext.Context, report *job.JobReport) error {
-	return storage.StoreJobReport(ctx, report)
+// StoreReport submits a job run or final report to the storage layer
+func (jsm JobStorageManager) StoreReport(ctx xcontext.Context, report *job.Report) error {
+	return storage.StoreReport(ctx, report)
 }
 
 // GetJobReport fetches a job report from the storage layer

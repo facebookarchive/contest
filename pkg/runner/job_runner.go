@@ -31,6 +31,9 @@ type JobRunner struct {
 	// targetLock protects the access to targetMap
 	targetLock sync.RWMutex
 
+	// jobStorage is used to store job reports
+	jobStorage storage.JobStorage
+
 	// frameworkEventManager is used by the JobRunner to emit framework events
 	frameworkEventManager frameworkevent.EmitterFetcher
 
@@ -64,7 +67,7 @@ func (jr *JobRunner) GetTargets(jobID types.JobID) []*target.Target {
 //                   last
 // * []job.Report:   all the final reports
 // * error:          an error, if any
-func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.PauseEventPayload) ([][]*job.Report, []*job.Report, *job.PauseEventPayload, error) {
+func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.PauseEventPayload) (*job.PauseEventPayload, error) {
 	runID := types.RunID(1)
 	var delay time.Duration
 
@@ -86,12 +89,7 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 	tl := target.GetLocker()
 	ev := storage.NewTestEventFetcher()
 
-	var (
-		runReports      []*job.Report
-		allRunReports   [][]*job.Report
-		allFinalReports []*job.Report
-		runErr          error
-	)
+	var runErr error
 
 	for ; runID <= types.RunID(j.Runs) || j.Runs == 0; runID++ {
 		runCtx := ctx.WithField("run_id", runID)
@@ -108,9 +106,9 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 					StartAt: &nextRun,
 				}
 				runCtx.Infof("Job paused with %s left until next run", nextRun.Sub(jr.clock.Now()))
-				return nil, nil, resumeState, xcontext.ErrPaused
+				return resumeState, xcontext.ErrPaused
 			case <-ctx.Done():
-				return nil, nil, nil, xcontext.ErrCanceled
+				return nil, xcontext.ErrCanceled
 			}
 		}
 
@@ -169,7 +167,7 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 				if err != nil {
 					err = fmt.Errorf("run #%d: cannot fetch targets for test '%s': %v", runID, t.Name, err)
 					runCtx.Errorf(err.Error())
-					return nil, nil, nil, err
+					return nil, err
 				}
 				// Associate the targets with the job for later retrievel
 				jr.targetLock.Lock()
@@ -177,7 +175,7 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 				jr.targetLock.Unlock()
 
 			case <-jr.clock.After(j.TargetManagerAcquireTimeout):
-				return nil, nil, nil, fmt.Errorf("target manager acquire timed out after %s", j.TargetManagerAcquireTimeout)
+				return nil, fmt.Errorf("target manager acquire timed out after %s", j.TargetManagerAcquireTimeout)
 			case <-ctx.Until(xcontext.ErrPaused):
 				runCtx.Infof("pause requested for job ID %v", j.ID)
 				resumeState = &job.PauseEventPayload{
@@ -185,10 +183,10 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 					JobID:   j.ID,
 					RunID:   runID,
 				}
-				return nil, nil, resumeState, xcontext.ErrPaused
+				return resumeState, xcontext.ErrPaused
 			case <-ctx.Done():
 				runCtx.Infof("cancellation requested for job ID %v", j.ID)
-				return nil, nil, nil, xcontext.ErrCanceled
+				return nil, xcontext.ErrCanceled
 			}
 
 			// refresh the target locks periodically, by extending their
@@ -251,7 +249,7 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 						err = err2
 					}
 					// Return without releasing targets.
-					return nil, nil, resumeState, err
+					return resumeState, err
 				} else {
 					runErr = err
 				}
@@ -281,10 +279,10 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 				if err != nil {
 					errRelease := fmt.Sprintf("Failed to release targets: %v", err)
 					runCtx.Errorf(errRelease)
-					return nil, nil, nil, fmt.Errorf(errRelease)
+					return nil, fmt.Errorf(errRelease)
 				}
 			case <-jr.clock.After(j.TargetManagerReleaseTimeout):
-				return nil, nil, nil, fmt.Errorf("target manager release timed out after %s", j.TargetManagerReleaseTimeout)
+				return nil, fmt.Errorf("target manager release timed out after %s", j.TargetManagerReleaseTimeout)
 				// Ignore cancellation here, we want release and unlock to happen in that case.
 			}
 			// return the Run error only after releasing the targets, and only
@@ -292,21 +290,12 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 			// is considered a fatal condition and will cause the termination of the
 			// whole job.
 			if runErr != nil {
-				return nil, nil, nil, runErr
+				return nil, runErr
 			}
 		}
 
-		delay = j.RunInterval
-		resumeState = nil
-	}
-
-	// Prepare reports.
-
-	for runID = 1; runID <= types.RunID(j.Runs); runID++ {
 		// Calculate results for this run via the registered run reporters reporters
 		runCoordinates := job.RunCoordinates{JobID: j.ID, RunID: runID}
-
-		runReports = make([]*job.Report, 0, len(j.RunReporterBundles))
 		for _, bundle := range j.RunReporterBundles {
 			runStatus, err := jr.BuildRunStatus(ctx, runCoordinates, j)
 			if err != nil {
@@ -323,15 +312,24 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 					ctx.Errorf("Run #%d of job %d considered failed according to %s", runID, j.ID, bundle.Reporter.Name())
 				}
 			}
-			// TODO run report must be sent to the storage layer as soon as it's
-			//      ready, not at the end of the job. This requires a change in
-			//      how we store and expose reports, because this will require
-			//      one DB entry per run report rather than one for all of them.
-			r := job.Report{Success: success, Data: data, ReporterName: bundle.Reporter.Name(), ReportTime: jr.clock.Now()}
-			runReports = append(runReports, &r)
+			report := &job.Report{
+				JobID:        j.ID,
+				RunID:        runID,
+				ReporterName: bundle.Reporter.Name(),
+				ReportTime:   jr.clock.Now(),
+				Success:      success,
+				Data:         data,
+			}
+			if err := jr.jobStorage.StoreReport(ctx, report); err != nil {
+				ctx.Warnf("Could not store job run report: %v", err)
+			}
 		}
-		allRunReports = append(allRunReports, runReports)
+
+		delay = j.RunInterval
+		resumeState = nil
 	}
+
+	// Prepare final reports.
 
 	for _, bundle := range j.FinalReporterBundles {
 		// Build a RunStatus object for each run that we executed. We need to check if we interrupted
@@ -352,11 +350,20 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 				ctx.Errorf("Job %d (%d runs out of %d desired) considered failed", j.ID, runID-1, j.Runs)
 			}
 		}
-		r := job.Report{Success: success, ReporterName: bundle.Reporter.Name(), ReportTime: jr.clock.Now(), Data: data}
-		allFinalReports = append(allFinalReports, &r)
+		report := &job.Report{
+			JobID:        j.ID,
+			RunID:        0,
+			ReporterName: bundle.Reporter.Name(),
+			ReportTime:   jr.clock.Now(),
+			Success:      success,
+			Data:         data,
+		}
+		if err := jr.jobStorage.StoreReport(ctx, report); err != nil {
+			ctx.Warnf("Could not store job run report: %v", err)
+		}
 	}
 
-	return allRunReports, allFinalReports, nil, nil
+	return nil, nil
 }
 
 // emitTargetEvents emits test events to keep track of Target acquisition and release
@@ -417,9 +424,10 @@ func (jr *JobRunner) emitEvent(ctx xcontext.Context, jobID types.JobID, eventNam
 }
 
 // NewJobRunner returns a new JobRunner, which holds an empty registry of jobs
-func NewJobRunner(clk clock.Clock, lockDuration time.Duration) *JobRunner {
+func NewJobRunner(js storage.JobStorage, clk clock.Clock, lockDuration time.Duration) *JobRunner {
 	jr := JobRunner{
 		targetMap:             make(map[types.JobID][]*target.Target),
+		jobStorage:            js,
 		frameworkEventManager: storage.NewFrameworkEventEmitterFetcher(),
 		testEvManager:         storage.NewTestEventFetcher(),
 		targetLockDuration:    lockDuration,

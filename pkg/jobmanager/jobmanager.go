@@ -95,7 +95,7 @@ func New(l api.Listener, pr *pluginregistry.PluginRegistry, opts ...Option) (*Jo
 		frameworkEvManager: frameworkEvManager,
 		testEvManager:      testEvManager,
 	}
-	jm.jobRunner = runner.NewJobRunner(cfg.clock, cfg.targetLockDuration)
+	jm.jobRunner = runner.NewJobRunner(jsm, cfg.clock, cfg.targetLockDuration)
 	return &jm, nil
 }
 
