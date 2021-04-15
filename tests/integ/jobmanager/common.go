@@ -439,7 +439,7 @@ func (suite *TestJobManagerSuite) TestPauseAndExit() {
 }
 
 func (suite *TestJobManagerSuite) testPauseAndResume(
-	pauseAfter time.Duration, lockedAfterPause bool, mutator func(),
+	pauseAfter time.Duration, lockedAfterPause bool, mutator func(jobID types.JobID),
 	finalState event.Name, lockedAfterResume bool) {
 	var jobID types.JobID
 
@@ -484,7 +484,7 @@ func (suite *TestJobManagerSuite) testPauseAndResume(
 
 	// If there is a state mutator to run, do it now.
 	if mutator != nil {
-		mutator()
+		mutator(jobID)
 	}
 
 	// Create a new JobManager instance.
@@ -534,7 +534,13 @@ func (suite *TestJobManagerSuite) TestPauseAndResumeDuringRun1() {
 
 func (suite *TestJobManagerSuite) TestPauseAndResumeBetweenRuns() {
 	// Pause between runs. Targets should not be locked in this case.
-	suite.testPauseAndResume(750*time.Millisecond, false, nil, job.EventJobCompleted, false)
+	suite.testPauseAndResume(750*time.Millisecond, false, func(jobID types.JobID) {
+		// Report for the completed run must be persisted already.
+		jobReport, err := suite.jsm.GetJobReport(suite.jmCtx, jobID)
+		require.NoError(suite.T(), err)
+		require.Equal(suite.T(), 1, len(jobReport.RunReports))
+		require.Equal(suite.T(), 0, len(jobReport.FinalReports))
+	}, job.EventJobCompleted, false)
 }
 
 func (suite *TestJobManagerSuite) TestPauseAndResumeDuringRun2() {
@@ -545,7 +551,7 @@ func (suite *TestJobManagerSuite) TestPauseAndResumeDuringRun2() {
 func (suite *TestJobManagerSuite) TestPauseAndFailToResume() {
 	v := job.CurrentPauseEventPayloadVersion
 	defer func() { job.CurrentPauseEventPayloadVersion = v }()
-	suite.testPauseAndResume(1250*time.Millisecond, true, func() {
+	suite.testPauseAndResume(1250*time.Millisecond, true, func(_ types.JobID) {
 		job.CurrentPauseEventPayloadVersion = -1 // Resume will fail due to incompatible version
 	}, job.EventJobFailed,
 		// Targets remain locked because we were unable to deserialize the state.

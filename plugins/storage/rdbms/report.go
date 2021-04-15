@@ -15,37 +15,28 @@ import (
 	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
-// StoreJobReport persists the job report on the internal storage.
-func (r *RDBMS) StoreJobReport(_ xcontext.Context, jobReport *job.JobReport) error {
+// StoreReport persists a run or final report in the internal storage.
+func (r *RDBMS) StoreReport(_ xcontext.Context, report *job.Report) error {
+
+	reportJSON, err := report.ToJSON()
+	if err != nil {
+		return fmt.Errorf("could not serialize final report for job %v: %v", report.JobID, err)
+	}
 
 	r.lockTx()
 	defer r.unlockTx()
 
-	for runID, runReports := range jobReport.RunReports {
-		for _, report := range runReports {
-			insertStatement := "insert into run_reports (job_id, run_id, reporter_name, success, report_time, data) values (?, ?, ?, ?, ?, ?)"
-			reportJSON, err := report.ToJSON()
-			if err != nil {
-				return fmt.Errorf("could not serialize run report for job %v: %v", jobReport.JobID, err)
-			}
-			// note: run ID is a zero-based index, while the run number starts
-			// at 1 (hence the +1). We store the run number, not the run ID. A
-			// zero value means that something is wrong.
-			if _, err := r.db.Exec(insertStatement, jobReport.JobID, runID+1, report.ReporterName, report.Success, report.ReportTime, reportJSON); err != nil {
-				return fmt.Errorf("could not store run report for job %v: %v", jobReport.JobID, err)
-			}
+	if report.RunID > 0 {
+		if _, err := r.db.Exec(
+			"insert into run_reports (job_id, run_id, reporter_name, success, report_time, data) values (?, ?, ?, ?, ?, ?)",
+			report.JobID, report.RunID, report.ReporterName, report.Success, report.ReportTime, reportJSON); err != nil {
+			return fmt.Errorf("could not store run report for job %v: %v", report.JobID, err)
 		}
-	}
-	for _, report := range jobReport.FinalReports {
-		insertStatement := "insert into final_reports (job_id, reporter_name, success, report_time, data) values (?, ?, ?, ?, ?)"
-		reportJSON, err := report.ToJSON()
-		if err != nil {
-			return fmt.Errorf("could not serialize final report for job %v: %v", jobReport.JobID, err)
-		}
-		// note: run ID is a zero-based index, while the run number starts
-		// at 1 (hence the +1). We store the run number, not the run ID.
-		if _, err := r.db.Exec(insertStatement, jobReport.JobID, report.ReporterName, report.Success, report.ReportTime, reportJSON); err != nil {
-			return fmt.Errorf("could not store final report for job %v: %v", jobReport.JobID, err)
+	} else {
+		if _, err := r.db.Exec(
+			"insert into final_reports (job_id, reporter_name, success, report_time, data) values (?, ?, ?, ?, ?)",
+			report.JobID, report.ReporterName, report.Success, report.ReportTime, reportJSON); err != nil {
+			return fmt.Errorf("could not store final report for job %v: %v", report.JobID, err)
 		}
 	}
 	return nil
@@ -65,7 +56,7 @@ func (r *RDBMS) GetJobReport(ctx xcontext.Context, jobID types.JobID) (*job.JobR
 
 	// get run reports. Don't change the order by asc, because
 	// the code below assumes sorted results by ascending run number.
-	selectStatement := "select success, report_time, reporter_name, run_id, data from run_reports where job_id = ? order by run_id asc"
+	selectStatement := "select success, report_time, reporter_name, run_id, data from run_reports where job_id = ? order by run_id asc, reporter_name asc"
 	ctx.Debugf("Executing query: %s", selectStatement)
 	rows, err := r.db.Query(selectStatement, jobID)
 	if err != nil {
@@ -119,6 +110,9 @@ func (r *RDBMS) GetJobReport(ctx xcontext.Context, jobID types.JobID) (*job.JobR
 			}
 			lastRunID = currentRunID
 		}
+		// These struct fields were added later, populate them from columns.
+		report.JobID = jobID
+		report.RunID = types.RunID(currentRunID)
 		currentRunReports = append(currentRunReports, &report)
 	}
 	if len(currentRunReports) > 0 {
@@ -126,7 +120,7 @@ func (r *RDBMS) GetJobReport(ctx xcontext.Context, jobID types.JobID) (*job.JobR
 	}
 
 	// get final reports
-	selectStatement = "select success, report_time, reporter_name, data from final_reports where job_id = ?"
+	selectStatement = "select success, report_time, reporter_name, data from final_reports where job_id = ? order by reporter_name asc"
 	ctx.Debugf("Executing query: %s", selectStatement)
 	rows2, err := r.db.Query(selectStatement, jobID)
 	if err != nil {
@@ -157,6 +151,9 @@ func (r *RDBMS) GetJobReport(ctx xcontext.Context, jobID types.JobID) (*job.JobR
 		if err := json.Unmarshal([]byte(data), &report.Data); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal final report JSON data: %v", err)
 		}
+		// These struct fields were added later, populate them from columns.
+		report.JobID = jobID
+		report.RunID = 0
 		finalReports = append(finalReports, &report)
 	}
 	return &job.JobReport{

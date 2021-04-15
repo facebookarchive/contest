@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,13 +36,12 @@ type Memory struct {
 type jobInfo struct {
 	request *job.Request
 	desc    *job.Descriptor
-	report  *job.JobReport
 	state   job.State
+	reports []*job.Report
 }
 
 func emptyEventQuery(eventQuery *event.Query) bool {
 	return eventQuery.JobID == 0 && len(eventQuery.EventNames) == 0 && eventQuery.EmittedStartTime.IsZero() && eventQuery.EmittedEndTime.IsZero()
-
 }
 
 // emptyFrameworkEventQuery returns whether the Query contains only default values
@@ -184,32 +184,57 @@ func (m *Memory) GetJobRequest(_ xcontext.Context, jobID types.JobID) (*job.Requ
 	return v.request, nil
 }
 
-// StoreJobReport stores a report associated to a job. Returns an error if there is
-// already a report associated to the job
-func (m *Memory) StoreJobReport(_ xcontext.Context, report *job.JobReport) error {
+// StoreReport stores a report associated to a job. Returns an error if there is
+// already a report associated with this run.
+func (m *Memory) StoreReport(_ xcontext.Context, report *job.Report) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	v := m.jobInfo[report.JobID]
-	if v == nil {
+	ji := m.jobInfo[report.JobID]
+	if ji == nil {
 		return fmt.Errorf("could not find job with id %v", report.JobID)
 	}
-	if v.report != nil {
-		return fmt.Errorf("job report already present for job id %v", report.JobID)
+	for _, r := range ji.reports {
+		if r.JobID == report.JobID && r.RunID == report.RunID && r.ReporterName == report.ReporterName {
+			return fmt.Errorf("duplicate report %d/%d/%s", r.JobID, r.RunID, r.ReporterName)
+		}
 	}
-	v.report = report
+	ji.reports = append(ji.reports, report)
 	return nil
 }
 
 // GetJobReport returns the report associated to a given job
-func (m *Memory) GetJobReport(_ xcontext.Context, jobID types.JobID) (*job.JobReport, error) {
+func (m *Memory) GetJobReport(ctx xcontext.Context, jobID types.JobID) (*job.JobReport, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	v := m.jobInfo[jobID]
-	if v == nil || v.report == nil {
+	jr := &job.JobReport{JobID: jobID}
+	ji := m.jobInfo[jobID]
+	if ji == nil {
 		// return a job report with no results
-		return &job.JobReport{JobID: jobID}, nil
+		return jr, nil
 	}
-	return v.report, nil
+	// Sort reports by run id and reporter name
+	sort.Slice(ji.reports, func(i, j int) bool {
+		if ji.reports[i].RunID < ji.reports[j].RunID {
+			return true
+		}
+		return strings.Compare(ji.reports[i].ReporterName, ji.reports[i].ReporterName) < 0
+	})
+	for _, r := range ji.reports {
+		if r.RunID == 0 {
+			jr.FinalReports = append(jr.FinalReports, r)
+		} else {
+			i := int(r.RunID) - 1
+			if i > len(jr.RunReports) {
+				ctx.Errorf("Incomplete set of run reports for job %d", jobID)
+				break
+			}
+			if i == len(jr.RunReports) {
+				jr.RunReports = append(jr.RunReports, nil)
+			}
+			jr.RunReports[i] = append(jr.RunReports[i], r)
+		}
+	}
+	return jr, nil
 }
 
 func (m *Memory) ListJobs(_ xcontext.Context, query *storage.JobQuery) ([]types.JobID, error) {

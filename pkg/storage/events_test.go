@@ -51,7 +51,7 @@ func (n *nullStorage) StoreJobRequest(ctx xcontext.Context, request *job.Request
 func (n *nullStorage) GetJobRequest(ctx xcontext.Context, jobID types.JobID) (*job.Request, error) {
 	return nil, nil
 }
-func (n *nullStorage) StoreJobReport(ctx xcontext.Context, report *job.JobReport) error { return nil }
+func (n *nullStorage) StoreReport(ctx xcontext.Context, report *job.Report) error { return nil }
 func (n *nullStorage) GetJobReport(ctx xcontext.Context, jobID types.JobID) (*job.JobReport, error) {
 	return nil, nil
 }

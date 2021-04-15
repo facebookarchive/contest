@@ -95,7 +95,7 @@ func (jm *JobManager) runJob(ctx xcontext.Context, j *job.Job, resumeState *job.
 	}
 
 	start := time.Now()
-	runReports, finalReports, resumeState, err := jm.jobRunner.Run(ctx, j, resumeState)
+	resumeState, err := jm.jobRunner.Run(ctx, j, resumeState)
 	duration := time.Since(start)
 	ctx.Debugf("Job %d: runner finished, err %v", j.ID, err)
 	switch err {
@@ -121,18 +121,6 @@ func (jm *JobManager) runJob(ctx xcontext.Context, j *job.Job, resumeState *job.
 	default:
 	}
 	ctx.Infof("Job %d finished", j.ID)
-
-	// store job report before emitting the job status event, to avoid a
-	// race condition when waiting on a job status where the event is marked
-	// as completed but no report exists.
-	jobReport := job.JobReport{
-		JobID:        j.ID,
-		RunReports:   runReports,
-		FinalReports: finalReports,
-	}
-	if storageErr := jm.jsm.StoreJobReport(ctx, &jobReport); storageErr != nil {
-		ctx.Warnf("Could not emit job report: %v", storageErr)
-	}
 	// at this point it is safe to emit the job status event. Note: this is
 	// checking `err` from the `jm.jobRunner.Run()` call above.
 	if err != nil {
