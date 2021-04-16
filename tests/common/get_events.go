@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/storage"
+	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
@@ -19,10 +21,18 @@ func eventToStringNoTime(ev testevent.Event) string {
 	return fmt.Sprintf("{%s%s}", ev.Header, ev.Data)
 }
 
-// GetTestEventsAsString queries storage for particular test's events,
-// further filtering by target ID and/or step label.
-func GetTestEventsAsString(ctx xcontext.Context, st storage.EventStorage, testName string, targetID, stepLabel *string) string {
-	q, _ := testevent.BuildQuery(testevent.QueryTestName(testName))
+func getEventsAsString(ctx xcontext.Context, st storage.EventStorage, jobID types.JobID, testName string, eventNames []event.Name, targetID, stepLabel *string) string {
+	var qp []testevent.QueryField
+	if jobID != 0 {
+		qp = append(qp, testevent.QueryJobID(jobID))
+	}
+	if testName != "" {
+		qp = append(qp, testevent.QueryTestName(testName))
+	}
+	if len(eventNames) > 0 {
+		qp = append(qp, testevent.QueryEventNames(eventNames))
+	}
+	q, _ := testevent.BuildQuery(qp...)
 	results, _ := st.GetTestEvents(ctx, q)
 	var resultsForTarget []string
 	for _, r := range results {
@@ -45,4 +55,16 @@ func GetTestEventsAsString(ctx xcontext.Context, st storage.EventStorage, testNa
 		resultsForTarget = append(resultsForTarget, eventToStringNoTime(r))
 	}
 	return "\n" + strings.Join(resultsForTarget, "\n") + "\n"
+}
+
+// GetJobEventsAsString queries storage for particular test's events,
+// further filtering by target ID and/or step label.
+func GetJobEventsAsString(ctx xcontext.Context, st storage.EventStorage, jobID types.JobID, eventNames []event.Name) string {
+	return getEventsAsString(ctx, st, jobID, "", eventNames, nil, nil)
+}
+
+// GetTestEventsAsString queries storage for particular test's events,
+// further filtering by target ID and/or step label.
+func GetTestEventsAsString(ctx xcontext.Context, st storage.EventStorage, testName string, targetID, stepLabel *string) string {
+	return getEventsAsString(ctx, st, 0, testName, nil, targetID, stepLabel)
 }

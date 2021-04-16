@@ -156,6 +156,7 @@ func (jm *JobManager) Run(ctx xcontext.Context, resumeJobs bool) error {
 		lErr := jm.apiListener.Serve(apiCtx, a)
 		ctx.Infof("Listener shut down successfully.")
 		errCh <- lErr
+		close(errCh)
 	}()
 
 loop:
@@ -182,6 +183,7 @@ loop:
 	}
 	// Stop the API (if not already)
 	jm.StopAPI()
+	<-errCh
 	// Wait for jobs to complete or for cancellation signal.
 	doneCh := ctx.Done()
 	for !jm.checkIdle(ctx) {

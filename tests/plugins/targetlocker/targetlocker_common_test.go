@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
@@ -32,7 +33,7 @@ var (
 	twoTargets = []*target.Target{target1[0], target2[0]}
 	allTargets = []*target.Target{target1[0], target2[0], &target.Target{ID: "003"}, &target.Target{ID: "004"}}
 
-	ctx = logrusctx.NewContext(logger.LevelDebug)
+	ctx = logrusctx.NewContext(logger.LevelDebug, logging.DefaultOptions()...)
 )
 
 type TargetLockerTestSuite struct {

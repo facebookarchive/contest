@@ -1,6 +1,9 @@
-JobName: A job to test resumption
+JobName: A simple test job
 Runs: 2
-RunInterval: 10s
+RunInterval: 1s
+Tags:
+  - test
+  - simple
 TestDescriptors:
     - TargetManagerName: TargetList
       TargetManagerAcquireParameters:
@@ -21,15 +24,8 @@ TestDescriptors:
               - name: cmd
                 label: Test 1 Step 2
                 parameters:
-                    executable: [sleep]
-                    args: [5]
-                    emit_stdout: [true]
-                    emit_stderr: [true]
-              - name: cmd
-                label: Test 1 Step 3
-                parameters:
                     executable: [echo]
-                    args: ["Test 1, Step 3, target {{ .ID }}"]
+                    args: ["Test 1, Step 2, target {{ .ID }}"]
                     emit_stdout: [true]
                     emit_stderr: [true]
     - TargetManagerName: TargetList
@@ -51,15 +47,8 @@ TestDescriptors:
               - name: cmd
                 label: Test 2 Step 2
                 parameters:
-                    executable: [sleep]
-                    args: [5]
-                    emit_stdout: [true]
-                    emit_stderr: [true]
-              - name: cmd
-                label: Test 2 Step 3
-                parameters:
                     executable: [echo]
-                    args: ["Test 2, Step 3, target {{ .ID }}"]
+                    args: ["Test 2, Step 2, target {{ .ID }}"]
                     emit_stdout: [true]
                     emit_stderr: [true]
 Reporting:
@@ -67,6 +56,5 @@ Reporting:
         - name: TargetSuccess
           parameters:
               SuccessExpression: "=100%"
-        - name: noop
     FinalReporters:
         - name: noop

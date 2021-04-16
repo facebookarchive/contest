@@ -1,4 +1,4 @@
 cmds/contest/contest
-cmds/clients/contestcli-http/contestcli-http
+cmds/clients/contestcli/contestcli
 .*.swp
 profile.out

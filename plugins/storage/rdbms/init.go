@@ -124,6 +124,16 @@ func (r *RDBMS) Version() (uint64, error) {
 	return migrationlib.DBVersion(r.db)
 }
 
+// Reset wipes entire database contents. Used in tests.
+func (r *RDBMS) Reset() error {
+	for _, t := range []string{"jobs", "job_tags", "run_reports", "final_reports", "test_events", "framework_events"} {
+		if _, err := r.db.Exec(fmt.Sprintf("TRUNCATE TABLE %s", t)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (r *RDBMS) init() error {
 
 	driverName := "mysql"
