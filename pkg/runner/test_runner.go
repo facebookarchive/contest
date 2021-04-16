@@ -90,19 +90,19 @@ type targetState struct {
 	tgt *target.Target
 
 	// This part of state gets serialized into JSON for resumption.
-	CurStep  int             `json:"cs"`            // Current step number.
-	CurPhase targetStepPhase `json:"cp"`            // Current phase of step execution.
-	Res      *xjson.Error    `json:"res,omitempty"` // Final result, if reached the end state.
+	CurStep  int             `json:"S,omitempty"` // Current step number.
+	CurPhase targetStepPhase `json:"P,omitempty"` // Current phase of step execution.
+	Res      *xjson.Error    `json:"R,omitempty"` // Final result, if reached the end state.
 
 	resCh chan error // Channel used to communicate result by the step runner.
 }
 
 // resumeStateStruct is used to serialize runner state to be resumed in the future.
 type resumeStateStruct struct {
-	Version int                     `json:"v"`
-	JobID   types.JobID             `json:"job_id"`
-	RunID   types.RunID             `json:"run_id"`
-	Targets map[string]*targetState `json:"targets"`
+	Version int                     `json:"V"`
+	JobID   types.JobID             `json:"J"`
+	RunID   types.RunID             `json:"R"`
+	Targets map[string]*targetState `json:"T"`
 }
 
 // Resume state version we are compatible with.

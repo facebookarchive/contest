@@ -84,14 +84,25 @@ func EventNameToJobState(ev event.Name) (State, error) {
 // PauseEventPayload is the payload of the JobStatePaused event.
 // It is persisted in the database and used to resume jobs.
 type PauseEventPayload struct {
-	Version int         `json:"v"`
-	JobID   types.JobID `json:"job_id"`
-	RunID   types.RunID `json:"run_id"`
+	Version int         `json:"V"`
+	JobID   types.JobID `json:"J"`
+	RunID   types.RunID `json:"R"`
+	TestID  int         `json:"T,omitempty"`
 	// If we are sleeping before the run, this will specify when the run should begin.
-	StartAt *time.Time `json:"start_at,omitempty"`
+	StartAt *time.Time `json:"S,omitempty"`
 	// Otherwise, if test execution is in progress targets and runner state will be populated.
-	Targets         []*target.Target `json:"targets,omitempty"`
-	TestRunnerState json.RawMessage  `json:"trs,omitempty"`
+	Targets         []*target.Target `json:"TT,omitempty"`
+	TestRunnerState json.RawMessage  `json:"TRS,omitempty"`
+}
+
+func (pp *PauseEventPayload) String() string {
+	var sts int64
+	if pp.StartAt != nil {
+		sts = pp.StartAt.Unix()
+	}
+	return fmt.Sprintf("[V:%d J:%d R:%d T:%d ST:%d TT:%v TRS:%s]",
+		pp.Version, pp.JobID, pp.RunID, pp.TestID, sts, pp.Targets, pp.TestRunnerState,
+	)
 }
 
 // Currently supported version of the pause state.
