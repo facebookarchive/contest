@@ -503,7 +503,7 @@ func TestPauseResumeSimple(t *testing.T) {
 		tr := newTestRunner()
 		ctx, cancel := xcontext.WithCancel(ctx)
 		defer cancel()
-		resumeState2 := strings.Replace(string(resumeState), `"v"`, `"Xv"`, 1)
+		resumeState2 := strings.Replace(string(resumeState), `"V"`, `"XV"`, 1)
 		_, err := runWithTimeout(
 			t, tr, ctx, []byte(resumeState2), 3, 2*time.Second, targets, steps)
 		require.Error(t, err)
@@ -513,7 +513,7 @@ func TestPauseResumeSimple(t *testing.T) {
 		tr := newTestRunner()
 		ctx, cancel := xcontext.WithCancel(ctx)
 		defer cancel()
-		resumeState2 := strings.Replace(string(resumeState), `"job_id":1`, `"job_id":2`, 1)
+		resumeState2 := strings.Replace(string(resumeState), `"J":1`, `"J":2`, 1)
 		_, err := runWithTimeout(
 			t, tr, ctx, []byte(resumeState2), 4, 2*time.Second, targets, steps)
 		require.Error(t, err)

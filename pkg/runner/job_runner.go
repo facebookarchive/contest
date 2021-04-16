@@ -68,13 +68,17 @@ func (jr *JobRunner) GetTargets(jobID types.JobID) []*target.Target {
 // * []job.Report:   all the final reports
 // * error:          an error, if any
 func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.PauseEventPayload) (*job.PauseEventPayload, error) {
-	runID := types.RunID(1)
 	var delay time.Duration
+	runID := types.RunID(1)
+	testID := 1
 
 	ctx = ctx.WithField("job_id", j.ID)
 
 	if resumeState != nil {
 		runID = resumeState.RunID
+		if resumeState.TestID > 0 {
+			testID = resumeState.TestID
+		}
 		if resumeState.StartAt != nil {
 			// This may get negative. It's fine.
 			delay = resumeState.StartAt.Sub(jr.clock.Now())
@@ -82,9 +86,9 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 	}
 
 	if j.Runs == 0 {
-		ctx.Infof("Running job '%s' (id %v) indefinitely, current run #%d", j.Name, j.ID, runID)
+		ctx.Infof("Running job '%s' (id %v) indefinitely, current run #%d test #%d", j.Name, j.ID, runID, testID)
 	} else {
-		ctx.Infof("Running job '%s' %d times, starting at #%d", j.Name, j.Runs, runID)
+		ctx.Infof("Running job '%s' %d times, starting at #%d test #%d", j.Name, j.Runs, runID, testID)
 	}
 	tl := target.GetLocker()
 	ev := storage.NewTestEventFetcher()
@@ -120,7 +124,8 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 			runCtx.Warnf("Could not emit event run (run %d) start for job %d: %v", runID, j.ID, err)
 		}
 
-		for idx, t := range j.Tests {
+		for ; testID <= len(j.Tests); testID++ {
+			t := j.Tests[testID-1]
 			runCtx.Infof("Run #%d: fetching targets for test '%s'", runID, t.Name)
 			bundle := t.TargetManagerBundle
 			var (
@@ -224,7 +229,7 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 
 			if runErr == nil {
 				runCtx.Infof("Run #%d: running test #%d for job '%s' (job ID: %d) on %d targets",
-					runID, idx, j.Name, j.ID, len(targets))
+					runID, testID, j.Name, j.ID, len(targets))
 				testRunner := NewTestRunner()
 				var testRunnerState json.RawMessage
 				if resumeState != nil {
@@ -236,6 +241,7 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 						Version:         job.CurrentPauseEventPayloadVersion,
 						JobID:           j.ID,
 						RunID:           runID,
+						TestID:          testID,
 						Targets:         targets,
 						TestRunnerState: testRunnerState,
 					}
@@ -292,9 +298,11 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 			if runErr != nil {
 				return nil, runErr
 			}
+
+			resumeState = nil
 		}
 
-		// Calculate results for this run via the registered run reporters reporters
+		// Calculate results for this run via the registered run reporters
 		runCoordinates := job.RunCoordinates{JobID: j.ID, RunID: runID}
 		for _, bundle := range j.RunReporterBundles {
 			runStatus, err := jr.BuildRunStatus(ctx, runCoordinates, j)
@@ -325,8 +333,8 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 			}
 		}
 
+		testID = 1
 		delay = j.RunInterval
-		resumeState = nil
 	}
 
 	// Prepare final reports.
