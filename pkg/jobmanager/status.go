@@ -128,7 +128,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 	}
 
 	// Fetch the ID of the last run that was started
-	runID, err := jm.jobRunner.GetCurrentRun(ev.Context, jobID)
+	runID, err := jm.jobRunner.GetCurrentRunAsync(ev.Context, jobID)
 	if err != nil {
 		evResp.Err = fmt.Errorf("could not determine the current run id being executed: %v", err)
 		return &evResp

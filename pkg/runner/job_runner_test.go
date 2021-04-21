@@ -37,7 +37,7 @@ func TestGetCurrentRunNoEvents(t *testing.T) {
 		testEvManager:         storage.TestEventFetcher{},
 	}
 	// request a job that does not have any events at all
-	runID, err := mockRunner.GetCurrentRun(xcontext.Background(), 1)
+	runID, err := mockRunner.GetCurrentRunAsync(xcontext.Background(), 1)
 	require.NoError(t, err)
 	require.Equal(t, types.RunID(0), runID)
 }

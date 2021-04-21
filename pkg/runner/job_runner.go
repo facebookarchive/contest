@@ -388,12 +388,13 @@ func (jr *JobRunner) emitTargetEvents(ctx xcontext.Context, emitter testevent.Em
 }
 
 // GetCurrentRun returns the run which is currently being executed
+// Queries read-only storage, which does not offer strict read-after-write guarantees.
 // Returns 0 if there are no runs
-func (jr *JobRunner) GetCurrentRun(ctx xcontext.Context, jobID types.JobID) (types.RunID, error) {
+func (jr *JobRunner) GetCurrentRunAsync(ctx xcontext.Context, jobID types.JobID) (types.RunID, error) {
 
 	var runID types.RunID
 
-	runEvents, err := jr.frameworkEventManager.Fetch(ctx,
+	runEvents, err := jr.frameworkEventManager.FetchAsync(ctx,
 		frameworkevent.QueryJobID(jobID),
 		frameworkevent.QueryEventName(EventRunStarted),
 	)
