@@ -21,6 +21,9 @@ type Storage interface {
 	JobStorage
 	EventStorage
 
+	// Close flushes and releases resources associated with the storage engine.
+	Close() error
+
 	// Version returns the version of the storage being used
 	Version() (uint64, error)
 }
@@ -44,15 +47,14 @@ type ResettableStorage interface {
 // storage engine implies garbage collecting the old one, with possible loss of
 // pending events if not flushed correctly
 func SetStorage(storageEngine Storage) error {
-	if storageEngine == nil {
-		return fmt.Errorf("cannot configure a nil storage engine")
-	}
-	v, err := storageEngine.Version()
-	if err != nil {
-		return fmt.Errorf("could not determine storage version: %w", err)
-	}
-	if v < config.MinStorageVersion {
-		return fmt.Errorf("could not configure storage of type %T (minimum storage version: %d, current storage version: %d)", storageEngine, config.MinStorageVersion, v)
+	if storageEngine != nil {
+		v, err := storageEngine.Version()
+		if err != nil {
+			return fmt.Errorf("could not determine storage version: %w", err)
+		}
+		if v < config.MinStorageVersion {
+			return fmt.Errorf("could not configure storage of type %T (minimum storage version: %d, current storage version: %d)", storageEngine, config.MinStorageVersion, v)
+		}
 	}
 	storage = storageEngine
 	return nil
@@ -70,15 +72,14 @@ func GetStorage() (Storage, error) {
 // storage engine implies garbage collecting the old one, with possible loss of
 // pending events if not flushed correctly
 func SetAsyncStorage(storageEngine Storage) error {
-	if storageEngine == nil {
-		return fmt.Errorf("cannot configure a nil storage engine")
-	}
-	v, err := storageEngine.Version()
-	if err != nil {
-		return fmt.Errorf("could not determine storage version: %w", err)
-	}
-	if v < config.MinStorageVersion {
-		return fmt.Errorf("could not configure storage of type %T (minimum storage version: %d, current storage version: %d)", storageEngine, config.MinStorageVersion, v)
+	if storageEngine != nil {
+		v, err := storageEngine.Version()
+		if err != nil {
+			return fmt.Errorf("could not determine storage version: %w", err)
+		}
+		if v < config.MinStorageVersion {
+			return fmt.Errorf("could not configure storage of type %T (minimum storage version: %d, current storage version: %d)", storageEngine, config.MinStorageVersion, v)
+		}
 	}
 	storageAsync = storageEngine
 	return nil

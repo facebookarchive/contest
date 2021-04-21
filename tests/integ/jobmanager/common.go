@@ -331,18 +331,18 @@ func (suite *TestJobManagerSuite) stopJobManager() {
 func (suite *TestJobManagerSuite) TearDownTest() {
 	suite.stopJobManager()
 	testsIntegCommon.FinalizeStorage(suite.txStorage)
-	storage.SetStorage(suite.storage)
-	storage.SetAsyncStorage(suite.storage)
+	storage.SetStorage(nil)
+	storage.SetAsyncStorage(nil)
 	target.SetLocker(nil)
 	slowecho.Clock = nil
 }
 
 func (suite *TestJobManagerSuite) TearDownSuite() {
+	if err := suite.storage.Close(); err != nil {
+		panic("Failed to close storage")
+	}
 	time.Sleep(20 * time.Millisecond)
-	if err := goroutine_leak_check.CheckLeakedGoRoutines(
-		"github.com/facebookincubator/contest/plugins/storage/rdbms.(*RDBMS).init.*",
-		"github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.*",
-	); err != nil {
+	if err := goroutine_leak_check.CheckLeakedGoRoutines(); err != nil {
 		panic(fmt.Sprintf("%s", err))
 	}
 }

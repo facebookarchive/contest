@@ -81,15 +81,24 @@ func ServerMain(cmd string, args []string, sigs <-chan os.Signal) error {
 
 	pluginRegistry := pluginregistry.NewPluginRegistry(ctx)
 
+	var storageInstances []storage.Storage
+	defer func() {
+		for i, s := range storageInstances {
+			if err := s.Close(); err != nil {
+				log.Errorf("Failed to close storage %d: %v", i, err)
+			}
+		}
+	}()
+
 	// primary storage initialization
 	if *flagDBURI != "" {
-		log.Infof("Using database URI for primary storage: %s", *flagDBURI)
-
 		primaryDBURI := *flagDBURI
+		log.Infof("Using database URI for primary storage: %s", primaryDBURI)
 		s, err := rdbms.New(primaryDBURI)
 		if err != nil {
 			log.Fatalf("Could not initialize database: %v", err)
 		}
+		storageInstances = append(storageInstances, s)
 		if err := storage.SetStorage(s); err != nil {
 			log.Fatalf("Could not set storage: %v", err)
 		}
@@ -102,14 +111,14 @@ func ServerMain(cmd string, args []string, sigs <-chan os.Signal) error {
 		}
 
 		// replica storage initialization
-		log.Infof("Using database URI for replica storage: %s", *flagDBURI)
-
 		// pointing to main database for now but can be used to point to replica
 		replicaDBURI := *flagDBURI
+		log.Infof("Using database URI for replica storage: %s", replicaDBURI)
 		r, err := rdbms.New(replicaDBURI)
 		if err != nil {
 			log.Fatalf("Could not initialize replica database: %v", err)
 		}
+		storageInstances = append(storageInstances, r)
 		if err := storage.SetAsyncStorage(r); err != nil {
 			log.Fatalf("Could not set replica storage: %v", err)
 		}
@@ -127,6 +136,7 @@ func ServerMain(cmd string, args []string, sigs <-chan os.Signal) error {
 	} else {
 		log.Warnf("Using in-memory storage")
 		if ms, err := memory.New(); err == nil {
+			storageInstances = append(storageInstances, ms)
 			if err := storage.SetStorage(ms); err != nil {
 				log.Fatalf("Could not set storage: %v", err)
 			}
@@ -220,6 +230,10 @@ func ServerMain(cmd string, args []string, sigs <-chan os.Signal) error {
 	}()
 
 	err = jm.Run(ctx, *flagResumeJobs)
+
+	target.SetLocker(nil)
+	_ = storage.SetStorage(nil)
+	_ = storage.SetAsyncStorage(nil)
 
 	log.Infof("Exiting, %v", err)
 
