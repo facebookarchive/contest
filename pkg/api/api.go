@@ -144,7 +144,7 @@ func (a *API) SendReceiveEvent(ev *Event, timeout *time.Duration) (*EventRespons
 	case resp = <-ev.RespCh:
 		return resp, nil
 	case <-time.After(to):
-		return nil, fmt.Errorf("time out waiting for response after %v", timeout)
+		return nil, fmt.Errorf("time out waiting for response after %v", to)
 	}
 }
 
