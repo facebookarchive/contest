@@ -206,7 +206,7 @@ func (tf *CSVFileTargetManager) Acquire(ctx xcontext.Context, jobID types.JobID,
 }
 
 // Release releases the acquired resources.
-func (tf *CSVFileTargetManager) Release(ctx xcontext.Context, jobID types.JobID, params interface{}) error {
+func (tf *CSVFileTargetManager) Release(ctx xcontext.Context, jobID types.JobID, targets []*target.Target, params interface{}) error {
 	return nil
 }
 

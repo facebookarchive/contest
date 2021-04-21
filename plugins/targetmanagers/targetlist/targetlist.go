@@ -98,7 +98,7 @@ func (t *TargetList) Acquire(ctx xcontext.Context, jobID types.JobID, jobTargetM
 }
 
 // Release releases the acquired resources.
-func (t *TargetList) Release(ctx xcontext.Context, jobID types.JobID, params interface{}) error {
+func (t *TargetList) Release(ctx xcontext.Context, jobID types.JobID, targets []*target.Target, params interface{}) error {
 	ctx.Infof("Released %d targets", len(t.targets))
 	return nil
 }

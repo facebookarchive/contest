@@ -26,7 +26,7 @@ type TargetManager interface {
 	ValidateAcquireParameters([]byte) (interface{}, error)
 	ValidateReleaseParameters([]byte) (interface{}, error)
 	Acquire(ctx xcontext.Context, jobID types.JobID, jobTargetManagerAcquireTimeout time.Duration, parameters interface{}, tl Locker) ([]*Target, error)
-	Release(ctx xcontext.Context, jobID types.JobID, parameters interface{}) error
+	Release(ctx xcontext.Context, jobID types.JobID, targets []*Target, parameters interface{}) error
 }
 
 // TargetManagerBundle bundles the selected TargetManager together with its

@@ -267,7 +267,7 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 				// is simpler on the user's side. We run it in a goroutine in
 				// order to use a timeout for target acquisition. If Release fails, whether
 				// due to an error or for a timeout, the whole Job is considered failed
-				err := bundle.TargetManager.Release(ctx, j.ID, bundle.ReleaseParameters)
+				err := bundle.TargetManager.Release(ctx, j.ID, targets, bundle.ReleaseParameters)
 				// Announce that targets have been released
 				_ = jr.emitTargetEvents(runCtx, testEventEmitter, targets, target.EventTargetReleased)
 				// signal that we are done to the goroutine that refreshes the locks.
