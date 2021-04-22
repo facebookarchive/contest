@@ -159,14 +159,18 @@ func (jm *JobManager) Run(ctx xcontext.Context, resumeJobs bool) error {
 		close(errCh)
 	}()
 
+	var handlerWg sync.WaitGroup
 loop:
 	for {
 		select {
 		// handle events from the API
 		case ev := <-a.Events:
 			ctx.Debugf("Handling event %+v", ev)
-			// send the response, and wait for the given timeout
-			jm.handleEvent(ctx, ev)
+			handlerWg.Add(1)
+			go func() {
+				defer handlerWg.Done()
+				jm.handleEvent(ctx, ev)
+			}()
 		// check for errors or premature termination from the listener.
 		case err := <-errCh:
 			if err != nil {
@@ -184,6 +188,8 @@ loop:
 	// Stop the API (if not already)
 	jm.StopAPI()
 	<-errCh
+	// Wait for event handler completion
+	handlerWg.Wait()
 	// Wait for jobs to complete or for cancellation signal.
 	doneCh := ctx.Done()
 	for !jm.checkIdle(ctx) {
