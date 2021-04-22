@@ -188,14 +188,14 @@ func (r *RDBMS) StoreTestEvent(_ xcontext.Context, event testevent.Event) error 
 
 	r.buffTestEvents = append(r.buffTestEvents, event)
 	if len(r.buffTestEvents) >= r.testEventsFlushSize {
-		return r.flushTestEvents()
+		return r.flushTestEventsLocked()
 	}
 	return nil
 }
 
-// flushTestEvents forces a flush of the pending test events to the database.
+// flushTestEventsLocked forces a flush of the pending test events to the database.
 // Requires that the caller has already locked the corresponding buffer.
-func (r *RDBMS) flushTestEvents() error {
+func (r *RDBMS) flushTestEventsLocked() error {
 
 	r.lockTx()
 	defer r.unlockTx()
@@ -221,13 +221,18 @@ func (r *RDBMS) flushTestEvents() error {
 	return nil
 }
 
+// flushTestEvents forces a flush of the pending test events to the database.
+func (r *RDBMS) flushTestEvents() error {
+	r.testEventsLock.Lock()
+	defer r.testEventsLock.Unlock()
+	return r.flushTestEventsLocked()
+}
+
 // GetTestEvents retrieves test events matching the query fields provided
 func (r *RDBMS) GetTestEvents(ctx xcontext.Context, eventQuery *testevent.Query) ([]testevent.Event, error) {
 
 	// Flush pending events before Get operations
-	r.testEventsLock.Lock()
 	err := r.flushTestEvents()
-	r.testEventsLock.Unlock()
 
 	if err != nil {
 		return nil, fmt.Errorf("could not flush events before reading events: %v", err)
@@ -330,7 +335,7 @@ func (r *RDBMS) StoreFrameworkEvent(ctx xcontext.Context, event frameworkevent.E
 
 	r.buffFrameworkEvents = append(r.buffFrameworkEvents, event)
 	if len(r.buffFrameworkEvents) >= r.frameworkEventsFlushSize {
-		return r.flushFrameworkEvents()
+		return r.flushFrameworkEventsLocked()
 	}
 
 	return nil
@@ -341,9 +346,9 @@ const (
 	updateJobStateStmt = "UPDATE jobs SET state = ? WHERE job_id = ?"
 )
 
-// FlushFrameworkEvents forces a flush of the pending frameworks events to the database
-// Requires that the caller has already locked the corresponding buffer
-func (r *RDBMS) flushFrameworkEvents() error {
+// flushFrameworkEventsLocked forces a flush of the pending frameworks events to the database
+// Requires that the caller has already locked the corresponding buffer.
+func (r *RDBMS) flushFrameworkEventsLocked() error {
 	r.lockTx()
 	defer r.unlockTx()
 
@@ -372,13 +377,18 @@ func (r *RDBMS) flushFrameworkEvents() error {
 	return nil
 }
 
+// flushFrameworkEvents forces a flush of the pending frameworks events to the database
+func (r *RDBMS) flushFrameworkEvents() error {
+	r.frameworkEventsLock.Lock()
+	defer r.frameworkEventsLock.Unlock()
+	return r.flushFrameworkEventsLocked()
+}
+
 // GetFrameworkEvent retrieves framework events matching the query fields provided
 func (r *RDBMS) GetFrameworkEvent(ctx xcontext.Context, eventQuery *frameworkevent.Query) ([]frameworkevent.Event, error) {
 
 	// Flush pending events before Get operations
-	r.frameworkEventsLock.Lock()
 	err := r.flushFrameworkEvents()
-	r.frameworkEventsLock.Unlock()
 	if err != nil {
 		return nil, fmt.Errorf("could not flush events before reading events: %v", err)
 	}

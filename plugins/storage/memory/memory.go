@@ -26,7 +26,7 @@ import (
 // storage engine is very inefficient and should be used only for testing
 // purposes.
 type Memory struct {
-	lock            *sync.Mutex
+	lock            sync.Mutex
 	testEvents      []testevent.Event
 	frameworkEvents []frameworkevent.Event
 	jobIDCounter    types.JobID
@@ -320,6 +320,17 @@ func (m *Memory) GetFrameworkEvent(_ xcontext.Context, eventQuery *frameworkeven
 	return matchingFrameworkEvents, nil
 }
 
+// Close flushes pending events and closes the database connection.
+func (m *Memory) Close() error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	// Invalidate internal state.
+	m.testEvents = nil
+	m.frameworkEvents = nil
+	m.jobInfo = nil
+	return nil
+}
+
 // Version returns the version of the memory storage layer.
 func (m *Memory) Version() (uint64, error) {
 	return 0, nil
@@ -327,8 +338,9 @@ func (m *Memory) Version() (uint64, error) {
 
 // New create a new Memory events storage backend
 func New() (storage.ResettableStorage, error) {
-	m := Memory{lock: &sync.Mutex{}}
-	m.jobInfo = make(map[types.JobID]*jobInfo)
-	m.jobIDCounter = 1
-	return &m, nil
+	m := &Memory{
+		jobInfo:      make(map[types.JobID]*jobInfo),
+		jobIDCounter: 1,
+	}
+	return m, nil
 }

@@ -69,6 +69,10 @@ func (n *nullStorage) GetFrameworkEvent(ctx xcontext.Context, eventQuery *framew
 	return nil, nil
 }
 
+func (n *nullStorage) Close() error {
+	return nil
+}
+
 func (n *nullStorage) Version() (uint64, error) {
 	return 0, nil
 }

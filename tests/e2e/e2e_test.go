@@ -71,8 +71,8 @@ func (ts *E2ETestSuite) TearDownSuite() {
 	ctx.Infof("Teardown")
 	time.Sleep(20 * time.Millisecond)
 	if err := goroutine_leak_check.CheckLeakedGoRoutines(
-		// TODO(rojer): shut storage down properly
-		"github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.*",
+	// TODO(rojer): shut storage down properly
+	//"github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.*",
 	); err != nil {
 		panic(fmt.Sprintf("%s", err))
 	}
@@ -87,7 +87,12 @@ func (ts *E2ETestSuite) SetupTest() {
 	tl, err := dblocker.New(common.GetDatabaseURI())
 	require.NoError(ts.T(), err)
 	tl.ResetAllLocks(ctx)
+	tl.Close()
 	ts.st = st
+}
+
+func (ts *E2ETestSuite) TearDownTest() {
+	ts.st.Close()
 }
 
 func (ts *E2ETestSuite) startServer(extraArgs ...string) {
@@ -208,6 +213,7 @@ func (ts *E2ETestSuite) TestSimple() {
 			time.Sleep(1 * time.Second)
 			stdout, err := ts.runClient(&resp, "status", fmt.Sprintf("%d", jobID))
 			require.NoError(ts.T(), err)
+			require.Nil(ts.T(), resp.Err, "error: %s", resp.Err)
 			ctx.Infof("Job %d state %s", jobID, resp.Data.Status.State)
 			if resp.Data.Status.State == string(job.EventJobCompleted) {
 				ctx.Debugf("Job %d status: %s", jobID, stdout)
@@ -263,6 +269,7 @@ func (ts *E2ETestSuite) TestPauseResume() {
 			time.Sleep(1 * time.Second)
 			_, err := ts.runClient(&resp, "status", fmt.Sprintf("%d", jobID))
 			require.NoError(ts.T(), err)
+			require.Nil(ts.T(), resp.Err, "error: %s", resp.Err)
 			ctx.Infof("Job %d state %s", jobID, resp.Data.Status.State)
 			if resp.Data.Status.State == string(job.EventJobCompleted) {
 				ctx.Debugf("Job %d completed after %d restarts", jobID, i)
