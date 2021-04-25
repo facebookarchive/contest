@@ -16,6 +16,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+var (
+	// DefaultGlobalRegister defines if it is required to register
+	// metrics in the standard global prometheus register.
+	DefaultGlobalRegister = true
+)
+
 var _ metrics.Metrics = &Metrics{}
 
 type Fields = fields.Fields
@@ -26,10 +32,11 @@ type metricKey struct {
 }
 
 type storage struct {
-	locker   sync.Mutex
-	count    map[metricKey]*prometheus.CounterVec
-	gauge    map[metricKey]*prometheus.GaugeVec
-	intGauge map[metricKey]*prometheus.GaugeVec
+	locker         sync.Mutex
+	GlobalRegister bool
+	count          map[metricKey]*prometheus.CounterVec
+	gauge          map[metricKey]*prometheus.GaugeVec
+	intGauge       map[metricKey]*prometheus.GaugeVec
 }
 
 // Metrics implements a wrapper of prometheus metrics to implement
@@ -51,9 +58,10 @@ type Metrics struct {
 func New() *Metrics {
 	m := &Metrics{
 		storage: &storage{
-			count:    map[metricKey]*prometheus.CounterVec{},
-			gauge:    map[metricKey]*prometheus.GaugeVec{},
-			intGauge: map[metricKey]*prometheus.GaugeVec{},
+			GlobalRegister: DefaultGlobalRegister,
+			count:          map[metricKey]*prometheus.CounterVec{},
+			gauge:          map[metricKey]*prometheus.GaugeVec{},
+			intGauge:       map[metricKey]*prometheus.GaugeVec{},
 		},
 	}
 	return m
@@ -68,8 +76,16 @@ func (m *Metrics) Count(key string) metrics.Count {
 	m.locker.Lock()
 	counterVer := m.count[k]
 	if counterVer == nil {
-		counterVer = prometheus.NewCounterVec(prometheus.CounterOpts{}, m.labelNames)
+		counterVer = prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: key,
+		}, m.labelNames)
 		m.count[k] = counterVer
+		if m.GlobalRegister {
+			err := prometheus.DefaultRegisterer.Register(counterVer)
+			if err != nil {
+				panic(err)
+			}
+		}
 	}
 	m.locker.Unlock()
 
@@ -85,8 +101,16 @@ func (m *Metrics) Gauge(key string) metrics.Gauge {
 	m.locker.Lock()
 	gaugeVer := m.gauge[k]
 	if gaugeVer == nil {
-		gaugeVer = prometheus.NewGaugeVec(prometheus.GaugeOpts{}, m.labelNames)
+		gaugeVer = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: key,
+		}, m.labelNames)
 		m.gauge[k] = gaugeVer
+		if m.GlobalRegister {
+			err := prometheus.DefaultRegisterer.Register(gaugeVer)
+			if err != nil {
+				panic(err)
+			}
+		}
 	}
 	m.locker.Unlock()
 
@@ -102,8 +126,16 @@ func (m *Metrics) IntGauge(key string) metrics.IntGauge {
 	m.locker.Lock()
 	gaugeVer := m.intGauge[k]
 	if gaugeVer == nil {
-		gaugeVer = prometheus.NewGaugeVec(prometheus.GaugeOpts{}, m.labelNames)
+		gaugeVer = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: key,
+		}, m.labelNames)
 		m.intGauge[k] = gaugeVer
+		if m.GlobalRegister {
+			err := prometheus.DefaultRegisterer.Register(gaugeVer)
+			if err != nil {
+				panic(err)
+			}
+		}
 	}
 	m.locker.Unlock()
 
