@@ -17,7 +17,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/xcontext/bundles"
 	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	logrusadapter "github.com/facebookincubator/contest/pkg/xcontext/logger/logadapter/logrus"
-	"github.com/facebookincubator/contest/pkg/xcontext/metrics"
+	"github.com/facebookincubator/contest/pkg/xcontext/metrics/prometheus"
 )
 
 // NewContext is a simple-to-use function to create a context.Context
@@ -77,7 +77,7 @@ func NewContext(logLevel logger.Level, opts ...bundles.Option) xcontext.Context 
 	}
 	ctx := xcontext.NewContext(
 		context.Background(), "",
-		logrusadapter.Adapter.Convert(entry), metrics.NewSimpleMetrics(), cfg.Tracer,
+		logrusadapter.Adapter.Convert(entry), prometheus.New(), cfg.Tracer,
 		nil, nil)
 	return ctx
 }

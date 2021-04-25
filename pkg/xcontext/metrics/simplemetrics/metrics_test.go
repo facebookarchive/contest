@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
-package metrics
+package simplemetrics
 
 import (
 	"testing"
@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSimpleMetrics(t *testing.T) {
-	metrics := NewSimpleMetrics()
+func TestMetrics(t *testing.T) {
+	metrics := New()
 	metrics.WithTags(Fields{
 		"testField": "testValue",
 	}).Count("test").Add(1)
