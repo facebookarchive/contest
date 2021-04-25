@@ -45,8 +45,10 @@ func (h *HTTP) Version(ctx context.Context, requestor string) (*api.VersionRespo
 		return nil, err
 	}
 	data := api.ResponseDataVersion{}
-	if err := json.Unmarshal([]byte(resp.Data), &data); err != nil {
-		return nil, fmt.Errorf("cannot decode json response: %v", err)
+	if string(resp.Data) != "" {
+		if err := json.Unmarshal([]byte(resp.Data), &data); err != nil {
+			return nil, fmt.Errorf("cannot decode json response: %v", err)
+		}
 	}
 	return &api.VersionResponse{ServerID: resp.ServerID, Data: data, Err: resp.Error}, nil
 }
@@ -59,8 +61,10 @@ func (h *HTTP) Start(ctx context.Context, requestor string, jobDescriptor string
 		return nil, err
 	}
 	data := api.ResponseDataStart{}
-	if err := json.Unmarshal([]byte(resp.Data), &data); err != nil {
-		return nil, fmt.Errorf("cannot decode json response: %v", err)
+	if string(resp.Data) != "" {
+		if err := json.Unmarshal([]byte(resp.Data), &data); err != nil {
+			return nil, fmt.Errorf("cannot decode json response: %v", err)
+		}
 	}
 	return &api.StartResponse{ServerID: resp.ServerID, Data: data, Err: resp.Error}, nil
 }
@@ -73,8 +77,10 @@ func (h *HTTP) Stop(ctx context.Context, requestor string, jobID types.JobID) (*
 		return nil, err
 	}
 	data := api.ResponseDataStop{}
-	if err := json.Unmarshal([]byte(resp.Data), &data); err != nil {
-		return nil, fmt.Errorf("cannot decode json response: %v", err)
+	if string(resp.Data) != "" {
+		if err := json.Unmarshal([]byte(resp.Data), &data); err != nil {
+			return nil, fmt.Errorf("cannot decode json response: %v", err)
+		}
 	}
 	return &api.StopResponse{ServerID: resp.ServerID, Data: data, Err: resp.Error}, nil
 }
@@ -87,8 +93,10 @@ func (h *HTTP) Status(ctx context.Context, requestor string, jobID types.JobID) 
 		return nil, err
 	}
 	data := api.ResponseDataStatus{}
-	if err := json.Unmarshal([]byte(resp.Data), &data); err != nil {
-		return nil, fmt.Errorf("cannot decode json response: %v", err)
+	if string(resp.Data) != "" {
+		if err := json.Unmarshal([]byte(resp.Data), &data); err != nil {
+			return nil, fmt.Errorf("cannot decode json response: %v", err)
+		}
 	}
 	return &api.StatusResponse{ServerID: resp.ServerID, Data: data, Err: resp.Error}, nil
 }
@@ -101,8 +109,10 @@ func (h *HTTP) Retry(ctx context.Context, requestor string, jobID types.JobID) (
 		return nil, err
 	}
 	data := api.ResponseDataRetry{}
-	if err := json.Unmarshal([]byte(resp.Data), &data); err != nil {
-		return nil, fmt.Errorf("cannot decode json response: %v", err)
+	if string(resp.Data) != "" {
+		if err := json.Unmarshal([]byte(resp.Data), &data); err != nil {
+			return nil, fmt.Errorf("cannot decode json response: %v", err)
+		}
 	}
 	return &api.RetryResponse{ServerID: resp.ServerID, Data: data, Err: resp.Error}, nil
 }
@@ -124,8 +134,10 @@ func (h *HTTP) List(ctx context.Context, requestor string, states []job.State, t
 		return nil, err
 	}
 	var data api.ResponseDataList
-	if err := json.Unmarshal([]byte(resp.Data), &data); err != nil {
-		return nil, fmt.Errorf("cannot decode json response: %v", err)
+	if string(resp.Data) != "" {
+		if err := json.Unmarshal([]byte(resp.Data), &data); err != nil {
+			return nil, fmt.Errorf("cannot decode json response: %v", err)
+		}
 	}
 	return &api.ListResponse{ServerID: resp.ServerID, Data: data, Err: resp.Error}, nil
 }

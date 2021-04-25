@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/benbjohnson/clock"
+
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
@@ -152,6 +154,10 @@ func pollForEvent(eventManager frameworkevent.EmitterFetcher, ev event.Name, job
 type TestJobManagerSuite struct {
 	suite.Suite
 
+	// TODO(rojer): use mock clock here.
+	// clock *clock.Mock
+	clock clock.Clock
+
 	// storage is the storage engine initially configured by the upper level TestSuite,
 	// which either configures a memory or a rdbms storage backend.
 	storage storage.Storage
@@ -265,6 +271,12 @@ func (suite *TestJobManagerSuite) SetupTest() {
 	jsm := storage.NewJobStorageManager()
 	eventManager := storage.NewFrameworkEventEmitterFetcher()
 
+	// TODO(rojer): Use mock clock to speed up the tests.
+	// suite.clock = clock.NewMock()
+	// suite.clock.Add(1 * time.Hour) // start at 01:00
+	suite.clock = clock.New()
+	slowecho.Clock = suite.clock
+
 	suite.jsm = jsm
 	suite.eventManager = eventManager
 
@@ -283,7 +295,7 @@ func (suite *TestJobManagerSuite) SetupTest() {
 	require.NoError(suite.T(), storage.SetStorage(suite.txStorage))
 	require.NoError(suite.T(), storage.SetAsyncStorage(suite.txStorage))
 
-	suite.targetLocker = inmemory.New()
+	suite.targetLocker = inmemory.New(suite.clock)
 	target.SetLocker(suite.targetLocker)
 
 	suite.initJobManager("")
@@ -292,7 +304,7 @@ func (suite *TestJobManagerSuite) SetupTest() {
 func (suite *TestJobManagerSuite) initJobManager(instanceTag string) {
 	suite.listener = &TestListener{commandCh: make(chan command), responseCh: make(chan api.Response), errorCh: make(chan error)}
 	suite.jobManagerCh = make(chan struct{})
-	var opts []jobmanager.Option
+	opts := []jobmanager.Option{jobmanager.OptionClock(suite.clock)}
 	if instanceTag != "" {
 		opts = append(opts, jobmanager.OptionInstanceTag(instanceTag))
 	}
@@ -319,17 +331,18 @@ func (suite *TestJobManagerSuite) stopJobManager() {
 func (suite *TestJobManagerSuite) TearDownTest() {
 	suite.stopJobManager()
 	testsIntegCommon.FinalizeStorage(suite.txStorage)
-	storage.SetStorage(suite.storage)
-	storage.SetAsyncStorage(suite.storage)
+	storage.SetStorage(nil)
+	storage.SetAsyncStorage(nil)
+	target.SetLocker(nil)
+	slowecho.Clock = nil
 }
 
 func (suite *TestJobManagerSuite) TearDownSuite() {
+	if err := suite.storage.Close(); err != nil {
+		panic("Failed to close storage")
+	}
 	time.Sleep(20 * time.Millisecond)
-	if err := goroutine_leak_check.CheckLeakedGoRoutines(
-		"github.com/facebookincubator/contest/plugins/targetlocker/inmemory.broker",
-		"github.com/facebookincubator/contest/plugins/storage/rdbms.(*RDBMS).init.*",
-		"github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.*",
-	); err != nil {
+	if err := goroutine_leak_check.CheckLeakedGoRoutines(); err != nil {
 		panic(fmt.Sprintf("%s", err))
 	}
 }
@@ -396,6 +409,7 @@ func (suite *TestJobManagerSuite) testExit(
 
 	select {
 	case <-suite.jobManagerCh:
+		suite.jmCtx.Infof("jm finished")
 	case <-time.After(exitTimeout):
 		suite.T().Errorf("JobManager should return within the timeout")
 	}
@@ -413,7 +427,7 @@ func (suite *TestJobManagerSuite) testExit(
 }
 
 func (suite *TestJobManagerSuite) TestCancelAndExit() {
-	suite.testExit(suite.jmCancel, job.EventJobCancelled, 1*time.Second)
+	suite.testExit(suite.jmCancel, job.EventJobCancelled, 2*time.Second)
 	// Targets must be released when job is canceled.
 	suite.verifyTargetLockStatus([]string{"id1", "id2"}, false)
 }
@@ -425,7 +439,7 @@ func (suite *TestJobManagerSuite) TestPauseAndExit() {
 }
 
 func (suite *TestJobManagerSuite) testPauseAndResume(
-	pauseAfter time.Duration, lockedAfterPause bool, mutator func(),
+	pauseAfter time.Duration, lockedAfterPause bool, mutator func(jobID types.JobID),
 	finalState event.Name, lockedAfterResume bool) {
 	var jobID types.JobID
 
@@ -470,7 +484,7 @@ func (suite *TestJobManagerSuite) testPauseAndResume(
 
 	// If there is a state mutator to run, do it now.
 	if mutator != nil {
-		mutator()
+		mutator(jobID)
 	}
 
 	// Create a new JobManager instance.
@@ -520,7 +534,13 @@ func (suite *TestJobManagerSuite) TestPauseAndResumeDuringRun1() {
 
 func (suite *TestJobManagerSuite) TestPauseAndResumeBetweenRuns() {
 	// Pause between runs. Targets should not be locked in this case.
-	suite.testPauseAndResume(750*time.Millisecond, false, nil, job.EventJobCompleted, false)
+	suite.testPauseAndResume(750*time.Millisecond, false, func(jobID types.JobID) {
+		// Report for the completed run must be persisted already.
+		jobReport, err := suite.jsm.GetJobReport(suite.jmCtx, jobID)
+		require.NoError(suite.T(), err)
+		require.Equal(suite.T(), 1, len(jobReport.RunReports))
+		require.Equal(suite.T(), 0, len(jobReport.FinalReports))
+	}, job.EventJobCompleted, false)
 }
 
 func (suite *TestJobManagerSuite) TestPauseAndResumeDuringRun2() {
@@ -531,7 +551,7 @@ func (suite *TestJobManagerSuite) TestPauseAndResumeDuringRun2() {
 func (suite *TestJobManagerSuite) TestPauseAndFailToResume() {
 	v := job.CurrentPauseEventPayloadVersion
 	defer func() { job.CurrentPauseEventPayloadVersion = v }()
-	suite.testPauseAndResume(1250*time.Millisecond, true, func() {
+	suite.testPauseAndResume(1250*time.Millisecond, true, func(_ types.JobID) {
 		job.CurrentPauseEventPayloadVersion = -1 // Resume will fail due to incompatible version
 	}, job.EventJobFailed,
 		// Targets remain locked because we were unable to deserialize the state.

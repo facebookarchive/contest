@@ -24,10 +24,12 @@ import (
 )
 
 // HTTPListener implements the api.Listener interface.
-type HTTPListener struct{}
+type HTTPListener struct {
+	listenAddr string
+}
 
-func NewHTTPListener() *HTTPListener {
-	return &HTTPListener{}
+func NewHTTPListener(listenAddr string) *HTTPListener {
+	return &HTTPListener{listenAddr: listenAddr}
 }
 
 // HTTPAPIResponse is returned when an API method succeeds. It wraps the content
@@ -242,7 +244,7 @@ func (h *HTTPListener) Serve(ctx xcontext.Context, a *api.API) error {
 		return errors.New("API object is nil")
 	}
 	s := http.Server{
-		Addr:         ":8080",
+		Addr:         h.listenAddr,
 		Handler:      &apiHandler{ctx: ctx, api: a},
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,

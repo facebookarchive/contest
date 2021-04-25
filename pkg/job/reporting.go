@@ -62,9 +62,11 @@ type ReporterBundle struct {
 
 // Report wraps the information of a run report or a final report.
 type Report struct {
+	JobID        types.JobID
+	RunID        types.RunID `json:"RunID,omitempty"` // 0 for a final report
 	ReporterName string
-	Success      bool
 	ReportTime   time.Time
+	Success      bool
 	Data         interface{}
 }
 

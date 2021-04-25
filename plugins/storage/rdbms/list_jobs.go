@@ -25,9 +25,7 @@ func (r *RDBMS) ListJobs(_ xcontext.Context, query *storage.JobQuery) ([]types.J
 	}
 
 	// Job state is updated by framework events, ensure there aren't any pending.
-	r.frameworkEventsLock.Lock()
 	err := r.flushFrameworkEvents()
-	r.frameworkEventsLock.Unlock()
 	if err != nil {
 		return nil, fmt.Errorf("could not flush events before reading events: %v", err)
 	}

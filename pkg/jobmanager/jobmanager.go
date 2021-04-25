@@ -57,6 +57,8 @@ type JobManager struct {
 	pluginRegistry *pluginregistry.PluginRegistry
 
 	apiCancel xcontext.CancelFunc
+
+	msgCounter int
 }
 
 type jobInfo struct {
@@ -93,7 +95,7 @@ func New(l api.Listener, pr *pluginregistry.PluginRegistry, opts ...Option) (*Jo
 		frameworkEvManager: frameworkEvManager,
 		testEvManager:      testEvManager,
 	}
-	jm.jobRunner = runner.NewJobRunner()
+	jm.jobRunner = runner.NewJobRunner(jsm, cfg.clock, cfg.targetLockDuration)
 	return &jm, nil
 }
 
@@ -154,16 +156,21 @@ func (jm *JobManager) Run(ctx xcontext.Context, resumeJobs bool) error {
 		lErr := jm.apiListener.Serve(apiCtx, a)
 		ctx.Infof("Listener shut down successfully.")
 		errCh <- lErr
+		close(errCh)
 	}()
 
+	var handlerWg sync.WaitGroup
 loop:
 	for {
 		select {
 		// handle events from the API
 		case ev := <-a.Events:
 			ctx.Debugf("Handling event %+v", ev)
-			// send the response, and wait for the given timeout
-			jm.handleEvent(ctx, ev)
+			handlerWg.Add(1)
+			go func() {
+				defer handlerWg.Done()
+				jm.handleEvent(ctx, ev)
+			}()
 		// check for errors or premature termination from the listener.
 		case err := <-errCh:
 			if err != nil {
@@ -180,14 +187,19 @@ loop:
 	}
 	// Stop the API (if not already)
 	jm.StopAPI()
+	<-errCh
+	// Wait for event handler completion
+	handlerWg.Wait()
 	// Wait for jobs to complete or for cancellation signal.
+	doneCh := ctx.Done()
 	for !jm.checkIdle(ctx) {
 		select {
-		case <-ctx.Done():
+		case <-doneCh:
 			ctx.Infof("Canceled")
 			jm.CancelAll(ctx)
 			// Note that we do not break out of the loop here, we expect runner to wind down and exit.
-		case <-time.After(1 * time.Second):
+			doneCh = nil
+		case <-time.After(50 * time.Millisecond):
 		}
 	}
 	return nil
@@ -199,7 +211,10 @@ func (jm *JobManager) checkIdle(ctx xcontext.Context) bool {
 	if len(jm.jobs) == 0 {
 		return true
 	}
-	ctx.Infof("Waiting for %d jobs", len(jm.jobs))
+	if jm.msgCounter%20 == 0 {
+		ctx.Infof("Waiting for %d jobs", len(jm.jobs))
+	}
+	jm.msgCounter++
 	return false
 }
 

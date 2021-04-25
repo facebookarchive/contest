@@ -6,7 +6,6 @@
 package common
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/facebookincubator/contest/pkg/storage"
@@ -28,14 +27,10 @@ func NewStorage(opts ...rdbms.Opt) (storage.Storage, error) {
 // InitStorage initializes the storage backend with a new transaction, if supported
 func InitStorage(s storage.Storage) storage.Storage {
 	switch s := s.(type) {
-	case storage.TransactionalStorage:
-		txStorage, err := s.BeginTx()
-		if err != nil {
-			panic(fmt.Errorf("could not initiate transaction: %v", err))
-		}
-		return txStorage
 	case storage.ResettableStorage:
 		_ = s.Reset()
+	default:
+		panic("unknown storage type")
 	}
 	return s
 }
@@ -44,11 +39,6 @@ func InitStorage(s storage.Storage) storage.Storage {
 // or by resetting altogether the backend, if supported.
 func FinalizeStorage(s storage.Storage) {
 	switch s := s.(type) {
-	case storage.TransactionalStorage:
-		err := s.Rollback()
-		if err != nil {
-			panic(fmt.Errorf("could not rollback transaction: %v", err))
-		}
 	case storage.ResettableStorage:
 		_ = s.Reset()
 	default:
