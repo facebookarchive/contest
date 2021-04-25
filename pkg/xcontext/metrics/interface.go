@@ -10,7 +10,6 @@ import (
 )
 
 type Fields = fields.Fields
-type tags = fields.PendingFields
 
 // Metrics is a handler of metrics (like Prometheus, ODS)
 type Metrics interface {

@@ -73,7 +73,7 @@ func (m *Metrics) Count(key string) metrics.Count {
 		key:        key,
 		labelNames: m.labelNamesString,
 	}
-	m.locker.Lock()
+	m.storage.locker.Lock()
 	counterVer := m.count[k]
 	if counterVer == nil {
 		counterVer = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -87,7 +87,7 @@ func (m *Metrics) Count(key string) metrics.Count {
 			}
 		}
 	}
-	m.locker.Unlock()
+	m.storage.locker.Unlock()
 
 	return &Count{CounterVec: counterVer, Counter: counterVer.With(m.labels)}
 }
@@ -98,7 +98,7 @@ func (m *Metrics) Gauge(key string) metrics.Gauge {
 		key:        key,
 		labelNames: m.labelNamesString,
 	}
-	m.locker.Lock()
+	m.storage.locker.Lock()
 	gaugeVer := m.gauge[k]
 	if gaugeVer == nil {
 		gaugeVer = prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -112,7 +112,7 @@ func (m *Metrics) Gauge(key string) metrics.Gauge {
 			}
 		}
 	}
-	m.locker.Unlock()
+	m.storage.locker.Unlock()
 
 	return &Gauge{GaugeVec: gaugeVer, Gauge: gaugeVer.With(m.labels)}
 }
@@ -123,7 +123,7 @@ func (m *Metrics) IntGauge(key string) metrics.IntGauge {
 		key:        key,
 		labelNames: m.labelNamesString,
 	}
-	m.locker.Lock()
+	m.storage.locker.Lock()
 	gaugeVer := m.intGauge[k]
 	if gaugeVer == nil {
 		gaugeVer = prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -137,7 +137,7 @@ func (m *Metrics) IntGauge(key string) metrics.IntGauge {
 			}
 		}
 	}
-	m.locker.Unlock()
+	m.storage.locker.Unlock()
 
 	return &IntGauge{GaugeVec: gaugeVer, Gauge: gaugeVer.With(m.labels)}
 }

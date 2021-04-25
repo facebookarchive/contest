@@ -12,6 +12,7 @@ import (
 )
 
 func TestMetrics(t *testing.T) {
+	DefaultGlobalRegister = false
 	metrics := New()
 	metrics.WithTags(Fields{
 		"testField": "testValue",
