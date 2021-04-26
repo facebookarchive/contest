@@ -2,7 +2,7 @@ JobName: A job to test resumption
 Runs: 2
 RunInterval: 5s
 TestDescriptors:
-    - TargetManagerName: TargetList
+    - TargetManagerName: TargetListWithState
       TargetManagerAcquireParameters:
         Targets:
           - ID: T1
@@ -32,7 +32,7 @@ TestDescriptors:
                     args: ["Test 1, Step 3, target {{ .ID }}"]
                     emit_stdout: [true]
                     emit_stderr: [true]
-    - TargetManagerName: TargetList
+    - TargetManagerName: TargetListWithState
       TargetManagerAcquireParameters:
         Targets:
           - ID: T2
