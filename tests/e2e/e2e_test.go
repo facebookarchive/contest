@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/facebookincubator/contest/cmds/plugins"
 	"github.com/facebookincubator/contest/pkg/api"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/job"
@@ -36,6 +37,7 @@ import (
 	testsCommon "github.com/facebookincubator/contest/tests/common"
 	"github.com/facebookincubator/contest/tests/common/goroutine_leak_check"
 	"github.com/facebookincubator/contest/tests/integ/common"
+	"github.com/facebookincubator/contest/tests/plugins/targetlist_with_state"
 
 	"github.com/facebookincubator/contest/cmds/clients/contestcli/cli"
 	"github.com/facebookincubator/contest/cmds/contest/server"
@@ -65,6 +67,7 @@ func (ts *E2ETestSuite) SetupSuite() {
 	parts := strings.Split(ln.Addr().String(), ":")
 	ts.serverPort, _ = strconv.Atoi(parts[len(parts)-1])
 	ln.Close()
+	plugins.TargetManagers = append(plugins.TargetManagers, targetlist_with_state.Load)
 }
 
 func (ts *E2ETestSuite) TearDownSuite() {

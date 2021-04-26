@@ -6,6 +6,7 @@
 package target
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
@@ -47,6 +48,9 @@ type Target struct {
 	FQDN        string `json:"FQDN,omitempty"`
 	PrimaryIPv4 net.IP `json:"PrimaryIPv4,omitempty"`
 	PrimaryIPv6 net.IP `json:"PrimaryIPv6,omitempty"`
+	// This field is reserved for TargetManager to associate any state needed to keep track of the target between Acquire and Release.
+	// It will be serialized between server restarts. Please keep it small.
+	TargetManagerState json.RawMessage `json:"TMS,omitempty"`
 }
 
 // String produces a string representation for a Target.
@@ -65,6 +69,9 @@ func (t *Target) String() string {
 	}
 	if t.PrimaryIPv6 != nil {
 		res.WriteString(fmt.Sprintf(`, PrimaryIPv6: "%v"`, t.PrimaryIPv6))
+	}
+	if len(t.TargetManagerState) > 0 {
+		res.WriteString(fmt.Sprintf(`, TMS: "%s"`, t.TargetManagerState))
 	}
 	res.WriteString("}")
 	return res.String()

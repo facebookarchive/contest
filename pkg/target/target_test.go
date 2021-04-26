@@ -47,4 +47,9 @@ func TestTargetStringification(t *testing.T) {
 	require.Equal(t, `Target{ID: "123", FQDN: "example.com", PrimaryIPv6: "::1"}`, t4.String())
 	tj4, _ := json.Marshal(t4)
 	require.Equal(t, `{"ID":"123","FQDN":"example.com","PrimaryIPv6":"::1"}`, string(tj4))
+
+	t5 := &Target{ID: "123", TargetManagerState: json.RawMessage([]byte(`{"hello": "world"}`))}
+	require.Equal(t, `Target{ID: "123", TMS: "{"hello": "world"}"}`, t5.String())
+	tj5, _ := json.Marshal(t5)
+	require.Equal(t, `{"ID":"123","TMS":{"hello":"world"}}`, string(tj5))
 }

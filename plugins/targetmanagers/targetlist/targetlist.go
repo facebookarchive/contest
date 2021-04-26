@@ -55,7 +55,6 @@ type ReleaseParameters struct {
 
 // TargetList implements the contest.TargetManager interface.
 type TargetList struct {
-	targets []*target.Target
 }
 
 // ValidateAcquireParameters valides parameters that will be passed to Acquire.
@@ -92,14 +91,14 @@ func (t *TargetList) Acquire(ctx xcontext.Context, jobID types.JobID, jobTargetM
 		ctx.Warnf("Failed to lock %d targets: %v", len(acquireParameters.Targets), err)
 		return nil, err
 	}
-	t.targets = acquireParameters.Targets
-	ctx.Infof("Acquired %d targets", len(t.targets))
+
+	ctx.Infof("Acquired %d targets", len(acquireParameters.Targets))
 	return acquireParameters.Targets, nil
 }
 
 // Release releases the acquired resources.
 func (t *TargetList) Release(ctx xcontext.Context, jobID types.JobID, targets []*target.Target, params interface{}) error {
-	ctx.Infof("Released %d targets", len(t.targets))
+	ctx.Infof("Released %d targets", len(targets))
 	return nil
 }
 

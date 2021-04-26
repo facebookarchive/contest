@@ -30,7 +30,7 @@ import (
 	"github.com/facebookincubator/contest/plugins/teststeps/sshcmd"
 )
 
-var targetManagers = []target.TargetManagerLoader{
+var TargetManagers = []target.TargetManagerLoader{
 	csvtargetmanager.Load,
 	targetlist.Load,
 }
@@ -64,7 +64,7 @@ var testInitOnce sync.Once
 func Init(pluginRegistry *pluginregistry.PluginRegistry, log xcontext.Logger) {
 
 	// Register TargetManager plugins
-	for _, tmloader := range targetManagers {
+	for _, tmloader := range TargetManagers {
 		if err := pluginRegistry.RegisterTargetManager(tmloader()); err != nil {
 			log.Fatalf("%v", err)
 		}
