@@ -105,6 +105,9 @@ func (pendingFields *PendingFields) AddOne(key string, value interface{}) {
 
 // AddMultiple adds a set of fields.
 func (pendingFields *PendingFields) AddMultiple(fields Fields) {
+	if fields == nil {
+		return
+	}
 	if pendingFields.IsReadOnly {
 		newPendingFields := PendingFields{Slice: make([]PendingField, 1, 2)}
 		newPendingFields.Slice[0] = PendingField{parentPendingFields: pendingFields.Slice}

@@ -20,7 +20,9 @@ var (
 // Gauge is an implementation of metrics.Gauge.
 type Gauge struct {
 	sync.Mutex
-	*prometheus.GaugeVec
+	*Metrics
+	Key string
+	*GaugeVec
 	io_prometheus_client.Metric
 	prometheus.Gauge
 }
@@ -39,5 +41,10 @@ func (metric *Gauge) Add(delta float64) float64 {
 
 // WithOverriddenTags implementations metrics.Count.
 func (metric *Gauge) WithOverriddenTags(tags Fields) metrics.Gauge {
-	return &Gauge{GaugeVec: metric.GaugeVec, Gauge: metric.GaugeVec.With(tagsToLabels(tags))}
+	result, err := metric.GaugeVec.GetMetricWith(tagsToLabels(tags))
+	if err == nil {
+		return &Gauge{Metrics: metric.Metrics, Key: metric.Key, GaugeVec: metric.GaugeVec, Gauge: result}
+	}
+
+	return metric.Metrics.WithTags(nil).WithTags(tags).Gauge(metric.Key)
 }

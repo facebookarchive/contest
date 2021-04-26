@@ -30,6 +30,8 @@ type Metrics interface {
 	// WithTags returns scoped Metrics with added tags to be reported with the metrics.
 	//
 	// In terms of Prometheus the "tags" are called "labels".
+	//
+	// Value "nil" resets tags.
 	WithTags(fields Fields) Metrics
 }
 

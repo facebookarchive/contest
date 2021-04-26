@@ -20,7 +20,9 @@ var (
 // Count is an implementation of metrics.Count.
 type Count struct {
 	sync.Mutex
-	*prometheus.CounterVec
+	*Metrics
+	Key string
+	*CounterVec
 	io_prometheus_client.Metric
 	prometheus.Counter
 }
@@ -39,5 +41,10 @@ func (metric *Count) Add(delta uint64) uint64 {
 
 // WithOverriddenTags implementations metrics.Count.
 func (metric *Count) WithOverriddenTags(tags Fields) metrics.Count {
-	return &Count{CounterVec: metric.CounterVec, Counter: metric.CounterVec.With(tagsToLabels(tags))}
+	result, err := metric.CounterVec.GetMetricWith(tagsToLabels(tags))
+	if err == nil {
+		return &Count{Metrics: metric.Metrics, Key: metric.Key, CounterVec: metric.CounterVec, Counter: result}
+	}
+
+	return metric.Metrics.WithTags(nil).WithTags(tags).Count(metric.Key)
 }

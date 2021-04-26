@@ -11,13 +11,14 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 
 	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/pkg/xcontext/bundles"
 	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	logrusadapter "github.com/facebookincubator/contest/pkg/xcontext/logger/logadapter/logrus"
-	"github.com/facebookincubator/contest/pkg/xcontext/metrics/prometheus"
+	prometheusadapter "github.com/facebookincubator/contest/pkg/xcontext/metrics/prometheus"
 )
 
 // NewContext is a simple-to-use function to create a context.Context
@@ -77,7 +78,7 @@ func NewContext(logLevel logger.Level, opts ...bundles.Option) xcontext.Context 
 	}
 	ctx := xcontext.NewContext(
 		context.Background(), "",
-		logrusadapter.Adapter.Convert(entry), prometheus.New(), cfg.Tracer,
+		logrusadapter.Adapter.Convert(entry), prometheusadapter.New(prometheus.DefaultRegisterer), cfg.Tracer,
 		nil, nil)
 	return ctx
 }

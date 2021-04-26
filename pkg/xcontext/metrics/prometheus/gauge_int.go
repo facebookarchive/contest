@@ -20,7 +20,9 @@ var (
 // IntGauge is an implementation of metrics.IntGauge.
 type IntGauge struct {
 	sync.Mutex
-	*prometheus.GaugeVec
+	*Metrics
+	Key string
+	*GaugeVec
 	io_prometheus_client.Metric
 	prometheus.Gauge
 }
@@ -39,5 +41,10 @@ func (metric *IntGauge) Add(delta int64) int64 {
 
 // WithOverriddenTags implementations metrics.Count.
 func (metric *IntGauge) WithOverriddenTags(tags Fields) metrics.IntGauge {
-	return &IntGauge{GaugeVec: metric.GaugeVec, Gauge: metric.GaugeVec.With(tagsToLabels(tags))}
+	result, err := metric.GaugeVec.GetMetricWith(tagsToLabels(tags))
+	if err == nil {
+		return &IntGauge{Metrics: metric.Metrics, Key: metric.Key, GaugeVec: metric.GaugeVec, Gauge: result}
+	}
+
+	return metric.Metrics.WithTags(nil).WithTags(tags).IntGauge(metric.Key)
 }

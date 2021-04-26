@@ -8,15 +8,12 @@ package tsmetrics
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/facebookincubator/contest/pkg/xcontext/metrics"
+	metricstester "github.com/facebookincubator/contest/pkg/xcontext/metrics/test"
 )
 
 func TestMetrics(t *testing.T) {
-	metrics := New()
-	metrics.WithTags(Fields{
-		"testField": "testValue",
-	}).Count("test").Add(1)
-	require.Equal(t, uint64(1), metrics.WithTags(Fields{
-		"testField": "testValue",
-	}).Count("test").Add(0))
+	metricstester.TestMetrics(t, func() metrics.Metrics {
+		return New()
+	})
 }

@@ -138,7 +138,9 @@ func (metrics *Metrics) IntGauge(key string) metrics.IntGauge {
 //
 // This method implements Metrics.
 func (metrics Metrics) WithTag(key string, value interface{}) metrics.Metrics {
-	metrics.currentTags.IsReadOnly = true
+	if metrics.currentTags.Slice != nil {
+		metrics.currentTags.IsReadOnly = true
+	}
 	metrics.currentTags.AddOne(key, value)
 	return &metrics
 }
@@ -147,7 +149,14 @@ func (metrics Metrics) WithTag(key string, value interface{}) metrics.Metrics {
 //
 // This method implements Metrics.
 func (metrics Metrics) WithTags(tags Fields) metrics.Metrics {
-	metrics.currentTags.IsReadOnly = true
+	if tags == nil {
+		metrics.currentTags.IsReadOnly = false
+		metrics.currentTags.Slice = nil
+		return &metrics
+	}
+	if metrics.currentTags.Slice != nil {
+		metrics.currentTags.IsReadOnly = true
+	}
 	metrics.currentTags.AddMultiple(tags)
 	return &metrics
 }

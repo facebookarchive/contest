@@ -33,6 +33,7 @@ func (family *countFamily) get(tags tags) metrics.Count {
 
 	family.Lock()
 	defer family.Unlock()
+
 	metric = family.Metrics[tagsKey]
 	if metric != nil {
 		return metric

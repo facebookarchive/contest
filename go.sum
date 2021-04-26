@@ -315,6 +315,8 @@ github.com/xaionaro-go/metrics v0.0.0-20210425194006-68050b337673 h1:JbI/0kqtrQ4
 github.com/xaionaro-go/metrics v0.0.0-20210425194006-68050b337673/go.mod h1:mg+WWOABLgtBKT9UFqWxP+p+4C5Nj9ho1GicoVrhWsc=
 github.com/xaionaro-go/spinlock v0.0.0-20190309154744-55278e21e817 h1:0ikx4JlTx9uNiHGGC4o0k93GhcWOtONYdhk2H8RUnZU=
 github.com/xaionaro-go/spinlock v0.0.0-20190309154744-55278e21e817/go.mod h1:Nb/15eS0BMty6TMuWgRQM8WCDIUlyPZagcpchHT6c9Y=
+github.com/xaionaro-go/unsafetools v0.0.0-20210220092901-4686db630395 h1:/ZKs2ECfb69jiMxaY3u8sdYN1UNSoQlP0lxXSxULn5s=
+github.com/xaionaro-go/unsafetools v0.0.0-20210220092901-4686db630395/go.mod h1:spWmgrD4QEkFsootCLGU3OLWgeeJew0KXrCsVPWBQ88=
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q53MR2AWcXfiuqkDkRtnGDLqkBTpCHuJHxtU=
 go.etcd.io/bbolt v1.3.3/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738/go.mod h1:dnLIgRNXwCJa5e+c6mIZCrds/GIG4ncV9HhK5PX7jPg=
