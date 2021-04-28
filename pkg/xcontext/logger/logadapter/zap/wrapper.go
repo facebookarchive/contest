@@ -40,7 +40,10 @@ type Wrapper struct {
 
 // Logf implements internal.MinimalLoggerCompact.
 func (l Wrapper) Logf(level logger.Level, format string, args ...interface{}) {
-	internal.MinimalLoggerLogf(l.Backend, level, format, args...)
+	// Passing through "format" for better automatic error categorization
+	// by Sentry-like services. This way we can detect which exactly
+	// Errorf line was used even when lines being shifted up and down.
+	internal.MinimalLoggerLogf(l.Backend.Named(format), level, format, args...)
 }
 
 // OriginalLogger implements internal.LoggerExtensions.
