@@ -15,14 +15,17 @@ require (
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d // indirect
 	github.com/onsi/ginkgo v1.12.0 // indirect
 	github.com/onsi/gomega v1.9.0 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkg/term v1.1.0 // indirect
 	github.com/pressly/goose v2.7.0+incompatible
+	github.com/prometheus/client_golang v1.10.0
+	github.com/prometheus/client_model v0.2.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/pflag v1.0.6-0.20200504143853-81378bbcd8a1
 	github.com/stretchr/testify v1.7.0
 	github.com/u-root/u-root v7.0.0+incompatible
 	github.com/x-cray/logrus-prefixed-formatter v0.5.2 // indirect
+	github.com/xaionaro-go/metrics v0.0.0-20210425194006-68050b337673
+	github.com/xaionaro-go/unsafetools v0.0.0-20210220092901-4686db630395 // indirect
 	go.uber.org/atomic v1.7.0
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.16.0

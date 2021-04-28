@@ -10,18 +10,17 @@ import (
 )
 
 type Fields = fields.Fields
-type tags = fields.PendingFields
 
 // Metrics is a handler of metrics (like Prometheus, ODS)
 type Metrics interface {
 	// Gauge returns the float64 gauge metric with key "key".
-	Gauge(key string) MetricGauge
+	Gauge(key string) Gauge
 
 	// IntGauge returns the int64 gauge metric with key "key".
-	IntGauge(key string) MetricIntGauge
+	IntGauge(key string) IntGauge
 
 	// Count returns the counter metric with key "key".
-	Count(key string) MetricCount
+	Count(key string) Count
 
 	// WithTag returns scoped Metrics with an added tag to be reported with the metrics.
 	//
@@ -31,44 +30,46 @@ type Metrics interface {
 	// WithTags returns scoped Metrics with added tags to be reported with the metrics.
 	//
 	// In terms of Prometheus the "tags" are called "labels".
+	//
+	// Value "nil" resets tags.
 	WithTags(fields Fields) Metrics
 }
 
-// MetricGauge is a float64 gauge metric.
+// Gauge is a float64 gauge metric.
 //
 // See also https://prometheus.io/docs/concepts/metric_types/
-type MetricGauge interface {
+type Gauge interface {
 	// Add adds value "v" to the metric and returns the result.
 	Add(v float64) float64
 
-	// WithOverriddenTags returns scoped MetricGauge with replaced tags to be reported with the metrics.
+	// WithOverriddenTags returns scoped Gauge with replaced tags to be reported with the metrics.
 	//
 	// In terms of Prometheus the "tags" are called "labels".
-	WithOverriddenTags(fields.Fields) MetricGauge
+	WithOverriddenTags(fields.Fields) Gauge
 }
 
-// MetricIntGauge is a int64 gauge metric.
+// IntGauge is a int64 gauge metric.
 //
 // See also https://prometheus.io/docs/concepts/metric_types/
-type MetricIntGauge interface {
+type IntGauge interface {
 	// Add adds value "v" to the metric and returns the result.
 	Add(v int64) int64
 
-	// WithOverriddenTags returns scoped MetricIntGauge with replaced tags to be reported with the metrics.
+	// WithOverriddenTags returns scoped IntGauge with replaced tags to be reported with the metrics.
 	//
 	// In terms of Prometheus the "tags" are called "labels".
-	WithOverriddenTags(Fields) MetricIntGauge
+	WithOverriddenTags(Fields) IntGauge
 }
 
-// MetricCount is a counter metric.
+// Count is a counter metric.
 //
 // See also https://prometheus.io/docs/concepts/metric_types/
-type MetricCount interface {
+type Count interface {
 	// Add adds value "v" to the metric and returns the result.
 	Add(v uint64) uint64
 
-	// WithOverriddenTags returns scoped MetricCount with replaced tags to be reported with the metrics.
+	// WithOverriddenTags returns scoped Count with replaced tags to be reported with the metrics.
 	//
 	// In terms of Prometheus the "tags" are called "labels".
-	WithOverriddenTags(Fields) MetricCount
+	WithOverriddenTags(Fields) Count
 }

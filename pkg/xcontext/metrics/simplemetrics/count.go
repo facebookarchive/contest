@@ -3,20 +3,25 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
-package metrics
+package simplemetrics
 
 import (
 	"sync"
 
+	"github.com/facebookincubator/contest/pkg/xcontext/metrics"
 	"go.uber.org/atomic"
 )
 
-type simpleMetricGaugeFamily struct {
+var (
+	_ metrics.Count = &Count{}
+)
+
+type countFamily struct {
 	sync.RWMutex
-	Metrics map[string]*SimpleMetricGauge
+	Metrics map[string]*Count
 }
 
-func (family *simpleMetricGaugeFamily) get(tags tags) MetricGauge {
+func (family *countFamily) get(tags tags) metrics.Count {
 	tagsKey := tagsToString(tags)
 
 	family.RLock()
@@ -28,28 +33,29 @@ func (family *simpleMetricGaugeFamily) get(tags tags) MetricGauge {
 
 	family.Lock()
 	defer family.Unlock()
+
 	metric = family.Metrics[tagsKey]
 	if metric != nil {
 		return metric
 	}
 
-	metric = &SimpleMetricGauge{
-		Family: family,
+	metric = &Count{
+		family: family,
 	}
 	family.Metrics[tagsKey] = metric
 
 	return metric
 }
 
-// SimpleMetricGauge is a naive implementation of MetricGauge.
-type SimpleMetricGauge struct {
-	Family *simpleMetricGaugeFamily
-	atomic.Float64
+// Count is a naive implementation of Count.
+type Count struct {
+	family *countFamily
+	atomic.Uint64
 }
 
-// OverrideTags implements MetricGauge.
-func (metric *SimpleMetricGauge) WithOverriddenTags(overrideTags Fields) MetricGauge {
+// WithOverriddenTags implements Count.
+func (metric *Count) WithOverriddenTags(overrideTags Fields) metrics.Count {
 	var tags tags
 	tags.AddMultiple(overrideTags)
-	return metric.Family.get(tags)
+	return metric.family.get(tags)
 }
