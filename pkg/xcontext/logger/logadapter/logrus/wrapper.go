@@ -6,6 +6,8 @@
 package logrus
 
 import (
+	"context"
+
 	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/facebookincubator/contest/pkg/xcontext/logger/internal"
 	"github.com/sirupsen/logrus"
@@ -52,9 +54,22 @@ type Wrapper struct {
 	Backend *logrus.Entry
 }
 
+type contextKey string
+
+// ContextKeyFormat is the key to extract log format from a log entry context.
+const ContextKeyFormat = contextKey("format")
+
 // Logf implements internal.MinimalLoggerCompact.
 func (l Wrapper) Logf(level logger.Level, format string, args ...interface{}) {
-	internal.MinimalLoggerLogf(l.Backend, level, format, args...)
+	// Passing through "format" for better automatic error categorization
+	// by Sentry-like services. This way we can detect which exactly
+	// Errorf line was used even when lines being shifted up and down.
+	ctx := l.Backend.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx = context.WithValue(ctx, ContextKeyFormat, format)
+	internal.MinimalLoggerLogf(l.Backend.WithContext(ctx), level, format, args...)
 }
 
 // OriginalLogger implements internal.LoggerExtensions.
