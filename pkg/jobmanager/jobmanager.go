@@ -141,6 +141,8 @@ func (jm *JobManager) Run(ctx xcontext.Context, resumeJobs bool) error {
 		return fmt.Errorf("Cannot start API: %w", err)
 	}
 
+	ctx = ctx.WithTag("serverID", a.ServerID())
+
 	// First, resume paused jobs.
 	if resumeJobs {
 		if err := jm.resumeJobs(ctx, a.ServerID()); err != nil {
