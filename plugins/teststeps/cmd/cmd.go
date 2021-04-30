@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"syscall"
 
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
@@ -116,6 +117,10 @@ func (ts *Cmd) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.T
 		cmd.Dir = pwd
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			// Put the command into a separate session (and group) so signals do not propagate directly to it.
+			Setsid: true,
+		}
 		if cmd.Dir != "" {
 			log.Debugf("Running command '%+v' in directory '%+v'", cmd, cmd.Dir)
 		} else {
