@@ -23,13 +23,18 @@ import (
 	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
+// jobInfo describes jobs currently being run.
+type jobInfo struct {
+	jobID     types.JobID
+	targets   []*target.Target
+	jobCtx    xcontext.Context
+	jobCancel func()
+}
+
 // JobRunner implements logic to run, cancel and stop Jobs
 type JobRunner struct {
-	// targetMap keeps the association between JobID and list of targets.
-	// This might be requested from clients using the JobRunner instance
-	targetMap map[types.JobID][]*target.Target
-	// targetLock protects the access to targetMap
-	targetLock sync.RWMutex
+	jobsMapLock sync.Mutex
+	jobsMap     map[types.JobID]*jobInfo
 
 	// jobStorage is used to store job reports
 	jobStorage storage.JobStorage
@@ -46,16 +51,9 @@ type JobRunner struct {
 
 	// clock is the time measurement device, mocked out in tests.
 	clock clock.Clock
-}
 
-// GetTargets returns a list of acquired targets for JobID
-func (jr *JobRunner) GetTargets(jobID types.JobID) []*target.Target {
-	jr.targetLock.RLock()
-	defer jr.targetLock.RUnlock()
-	if _, ok := jr.targetMap[jobID]; !ok {
-		return nil
-	}
-	return jr.targetMap[jobID]
+	stopLockRefresh    chan struct{}
+	lockRefreshStopped chan struct{}
 }
 
 // Run implements the main job running logic. It holds a registry of all running
@@ -71,8 +69,20 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 	var delay time.Duration
 	runID := types.RunID(1)
 	testID := 1
+	keepJobEntry := false
 
-	ctx = ctx.WithField("job_id", j.ID)
+	ctx, jobCancel := xcontext.WithCancel(ctx.WithField("job_id", j.ID))
+
+	jr.jobsMapLock.Lock()
+	jr.jobsMap[j.ID] = &jobInfo{jobID: j.ID, jobCtx: ctx, jobCancel: jobCancel}
+	jr.jobsMapLock.Unlock()
+	defer func() {
+		if !keepJobEntry {
+			jr.jobsMapLock.Lock()
+			delete(jr.jobsMap, j.ID)
+			jr.jobsMapLock.Unlock()
+		}
+	}()
 
 	if resumeState != nil {
 		runID = resumeState.RunID
@@ -174,10 +184,10 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 					runCtx.Errorf(err.Error())
 					return nil, err
 				}
-				// Associate the targets with the job for later retrievel
-				jr.targetLock.Lock()
-				jr.targetMap[j.ID] = targets
-				jr.targetLock.Unlock()
+				// Associate targets with the job. Background routine will refresh the locks periodically.
+				jr.jobsMapLock.Lock()
+				jr.jobsMap[j.ID].targets = targets
+				jr.jobsMapLock.Unlock()
 
 			case <-jr.clock.After(j.TargetManagerAcquireTimeout):
 				return nil, fmt.Errorf("target manager acquire timed out after %s", j.TargetManagerAcquireTimeout)
@@ -193,31 +203,6 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 				runCtx.Infof("cancellation requested for job ID %v", j.ID)
 				return nil, xcontext.ErrCanceled
 			}
-
-			// refresh the target locks periodically, by extending their
-			// expiration time. If the job is cancelled, the locks are released.
-			// If the job is paused (e.g. because we are migrating the ConTest
-			// instance or upgrading it), the locks are not released, because we
-			// may want to resume once the new ConTest instance starts.
-			stopRefresh := make(chan struct{})
-			stoppedRefresh := make(chan struct{})
-			go func(j *job.Job, tl target.Locker, targets []*target.Target, refreshInterval time.Duration) {
-				defer close(stoppedRefresh)
-				for {
-					select {
-					case <-jr.clock.After(refreshInterval):
-						// refresh the locks before the timeout expires
-						if err := tl.RefreshLocks(runCtx, j.ID, jr.targetLockDuration, targets); err != nil {
-							runCtx.Errorf("Failed to refresh %d locks for job ID %d (%v), aborting job", len(targets), j.ID, err)
-							return
-						}
-					// Stop refreshing when told.
-					case <-stopRefresh:
-						return
-					}
-				}
-				// refresh locks a bit faster than locking timeout to avoid races
-			}(j, tl, targets, jr.targetLockDuration/10*9)
 
 			header := testevent.Header{JobID: j.ID, RunID: runID, TestName: t.Name}
 			testEventEmitter := storage.NewTestEventEmitter(header)
@@ -245,16 +230,9 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 						Targets:         targets,
 						TestRunnerState: testRunnerState,
 					}
-					// Stop refreshing the locks.
-					close(stopRefresh)
-					<-stoppedRefresh
-					// Refresh one last time.
-					if err2 := tl.RefreshLocks(runCtx, j.ID, jr.targetLockDuration, targets); err2 != nil {
-						runCtx.Errorf("Failed to refresh %d locks for job ID %d: %v", len(targets), j.ID, err2)
-						resumeState = nil
-						err = err2
-					}
-					// Return without releasing targets.
+					// Return without releasing targets and keep the job entry so locks continue to be refreshed
+					// all the way to server exit.
+					keepJobEntry = true
 					return resumeState, err
 				} else {
 					runErr = err
@@ -270,9 +248,11 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 				err := bundle.TargetManager.Release(ctx, j.ID, targets, bundle.ReleaseParameters)
 				// Announce that targets have been released
 				_ = jr.emitTargetEvents(runCtx, testEventEmitter, targets, target.EventTargetReleased)
-				// signal that we are done to the goroutine that refreshes the locks.
-				close(stopRefresh)
-				<-stoppedRefresh
+				// Stop refreshing the targets.
+				// Here we rely on the fact that jobsMapLock is held continuously during refresh.
+				jr.jobsMapLock.Lock()
+				jr.jobsMap[j.ID].targets = nil
+				jr.jobsMapLock.Unlock()
 				if err := tl.Unlock(runCtx, j.ID, targets); err == nil {
 					runCtx.Infof("Unlocked %d target(s) for job ID %d", len(targets), j.ID)
 				} else {
@@ -374,6 +354,66 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 	return nil, nil
 }
 
+func (jr *JobRunner) lockRefresher() {
+	// refresh locks a bit faster than locking timeout to avoid races
+	interval := jr.targetLockDuration / 10 * 9
+loop:
+	for {
+		select {
+		case <-jr.clock.After(interval):
+			jr.RefreshLocks()
+		case <-jr.stopLockRefresh:
+			break loop
+		}
+	}
+	close(jr.lockRefreshStopped)
+}
+
+// StartLockRefresh starts the background lock refresh routine.
+func (jr *JobRunner) StartLockRefresh() {
+	go jr.lockRefresher()
+}
+
+// StopLockRefresh stops the background lock refresh routine.
+func (jr *JobRunner) StopLockRefresh() {
+	close(jr.stopLockRefresh)
+	<-jr.lockRefreshStopped
+}
+
+// RefreshLocks refreshes locks for running or paused jobs.
+func (jr *JobRunner) RefreshLocks() {
+	// Note: For simplicity we perform refresh for all jobs while continuously holding the lock over the entire map.
+	// Should this become a problem, this can be made more granualar. When doing it, it is important to synchronise
+	// refresh with release (avoid releasing targets while refresh is ongoing).
+	jr.jobsMapLock.Lock()
+	defer jr.jobsMapLock.Unlock()
+	var wg sync.WaitGroup
+	for jobID := range jr.jobsMap {
+		ji := jr.jobsMap[jobID]
+		if len(ji.targets) == 0 {
+			continue
+		}
+		wg.Add(1)
+		go func() { // Refresh locks for all the jobs in parallel.
+			tl := target.GetLocker()
+			select {
+			case <-ji.jobCtx.Done():
+				// Job has been canceled, nothing to do
+				break
+			default:
+				ji.jobCtx.Debugf("Refreshing target locks...")
+				if err := tl.RefreshLocks(ji.jobCtx, ji.jobID, jr.targetLockDuration, ji.targets); err != nil {
+					ji.jobCtx.Errorf("Failed to refresh %d locks for job ID %d (%v), aborting job", len(ji.targets), ji.jobID, err)
+					// We lost our grip on targets, fold the tent and leave ASAP.
+					ji.jobCancel()
+				}
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+}
+
 // emitTargetEvents emits test events to keep track of Target acquisition and release
 func (jr *JobRunner) emitTargetEvents(ctx xcontext.Context, emitter testevent.Emitter, targets []*target.Target, eventName event.Name) error {
 	// The events hold a serialization of the Target in the payload
@@ -434,13 +474,15 @@ func (jr *JobRunner) emitEvent(ctx xcontext.Context, jobID types.JobID, eventNam
 
 // NewJobRunner returns a new JobRunner, which holds an empty registry of jobs
 func NewJobRunner(js storage.JobStorage, clk clock.Clock, lockDuration time.Duration) *JobRunner {
-	jr := JobRunner{
-		targetMap:             make(map[types.JobID][]*target.Target),
+	jr := &JobRunner{
+		jobsMap:               make(map[types.JobID]*jobInfo),
 		jobStorage:            js,
 		frameworkEventManager: storage.NewFrameworkEventEmitterFetcher(),
 		testEvManager:         storage.NewTestEventFetcher(),
 		targetLockDuration:    lockDuration,
 		clock:                 clk,
+		stopLockRefresh:       make(chan struct{}),
+		lockRefreshStopped:    make(chan struct{}),
 	}
-	return &jr
+	return jr
 }

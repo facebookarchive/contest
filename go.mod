@@ -25,7 +25,7 @@ require (
 	github.com/u-root/u-root v7.0.0+incompatible
 	github.com/x-cray/logrus-prefixed-formatter v0.5.2 // indirect
 	github.com/xaionaro-go/metrics v0.0.0-20210425194006-68050b337673
-	github.com/xaionaro-go/unsafetools v0.0.0-20210220092901-4686db630395 // indirect
+	github.com/xaionaro-go/unsafetools v0.0.0-20210220092901-4686db630395
 	go.uber.org/atomic v1.7.0
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.16.0
