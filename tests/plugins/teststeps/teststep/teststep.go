@@ -6,6 +6,7 @@
 package teststep
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -64,7 +65,7 @@ func (ts *Step) shouldFail(t *target.Target, params test.TestStepParameters) boo
 }
 
 // Run executes the example step.
-func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
 	f := func(ctx xcontext.Context, target *target.Target) error {
 		// Sleep to ensure TargetIn fires first. This simplifies test assertions.
 		time.Sleep(50 * time.Millisecond)
@@ -93,13 +94,13 @@ func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.
 		return nil
 	}
 	if err := ev.Emit(ctx, testevent.Data{EventName: StepRunningEvent}); err != nil {
-		return fmt.Errorf("failed to emit failed event: %v", err)
+		return nil, fmt.Errorf("failed to emit failed event: %v", err)
 	}
-	res := teststeps.ForEachTarget(Name, ctx, ch, f)
+	_, res := teststeps.ForEachTarget(Name, ctx, ch, f)
 	if err := ev.Emit(ctx, testevent.Data{EventName: StepFinishedEvent}); err != nil {
-		return fmt.Errorf("failed to emit failed event: %v", err)
+		return nil, fmt.Errorf("failed to emit failed event: %v", err)
 	}
-	return res
+	return nil, res
 }
 
 // ValidateParameters validates the parameters associated to the TestStep

@@ -6,6 +6,8 @@
 package noreturn
 
 import (
+	"encoding/json"
+
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/test"
@@ -27,13 +29,13 @@ func (ts *noreturnStep) Name() string {
 }
 
 // Run executes a step that never returns.
-func (ts *noreturnStep) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *noreturnStep) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
 	for target := range ch.In {
 		ch.Out <- test.TestStepResult{Target: target}
 	}
 	channel := make(chan struct{})
 	<-channel
-	return nil
+	return nil, nil
 }
 
 // ValidateParameters validates the parameters associated to the TestStep

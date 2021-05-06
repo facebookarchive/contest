@@ -266,6 +266,7 @@ func (ts *E2ETestSuite) TestPauseResume() {
 		require.NotEqual(ts.T(), 0, resp.Data.JobID)
 		jobID = resp.Data.JobID
 	}
+	start := time.Now()
 	{ // Stop/start the server up to 20 times or until the job completes.
 		var resp api.StatusResponse
 		for i := 1; i < 20; i++ {
@@ -283,6 +284,7 @@ func (ts *E2ETestSuite) TestPauseResume() {
 		}
 		require.Equal(ts.T(), string(job.EventJobCompleted), resp.Data.Status.State)
 	}
+	finish := time.Now()
 	{ // Verify step output.
 		es := testsCommon.GetJobEventsAsString(ctx, ts.st, jobID, []event.Name{
 			cmd.EventCmdStdout, target.EventTargetAcquired, target.EventTargetReleased,
@@ -292,7 +294,6 @@ func (ts *E2ETestSuite) TestPauseResume() {
 			fmt.Sprintf(`
 {[%d 1 Test 1 ][Target{ID: "T1"} TargetAcquired]}
 {[%d 1 Test 1 Test 1 Step 1][Target{ID: "T1"} CmdStdout &"{\"Msg\":\"Test 1, Step 1, target T1\\n\"}"]}
-{[%d 1 Test 1 Test 1 Step 2][Target{ID: "T1"} CmdStdout &"{\"Msg\":\"\"}"]}
 {[%d 1 Test 1 Test 1 Step 3][Target{ID: "T1"} CmdStdout &"{\"Msg\":\"Test 1, Step 3, target T1\\n\"}"]}
 {[%d 1 Test 1 ][Target{ID: "T1"} TargetReleased]}
 {[%d 1 Test 2 ][Target{ID: "T2"} TargetAcquired]}
@@ -302,7 +303,6 @@ func (ts *E2ETestSuite) TestPauseResume() {
 {[%d 1 Test 2 ][Target{ID: "T2"} TargetReleased]}
 {[%d 2 Test 1 ][Target{ID: "T1"} TargetAcquired]}
 {[%d 2 Test 1 Test 1 Step 1][Target{ID: "T1"} CmdStdout &"{\"Msg\":\"Test 1, Step 1, target T1\\n\"}"]}
-{[%d 2 Test 1 Test 1 Step 2][Target{ID: "T1"} CmdStdout &"{\"Msg\":\"\"}"]}
 {[%d 2 Test 1 Test 1 Step 3][Target{ID: "T1"} CmdStdout &"{\"Msg\":\"Test 1, Step 3, target T1\\n\"}"]}
 {[%d 2 Test 1 ][Target{ID: "T1"} TargetReleased]}
 {[%d 2 Test 2 ][Target{ID: "T2"} TargetAcquired]}
@@ -310,11 +310,13 @@ func (ts *E2ETestSuite) TestPauseResume() {
 {[%d 2 Test 2 Test 2 Step 2][Target{ID: "T2"} CmdStdout &"{\"Msg\":\"\"}"]}
 {[%d 2 Test 2 Test 2 Step 3][Target{ID: "T2"} CmdStdout &"{\"Msg\":\"Test 2, Step 3, target T2\\n\"}"]}
 {[%d 2 Test 2 ][Target{ID: "T2"} TargetReleased]}
-`, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID),
+`, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID, jobID),
 			es,
 		)
 	}
 	require.NoError(ts.T(), ts.stopServer(5*time.Second))
+	// Shouldn't take more than 20 seconds. If it does, it most likely means state is not saved properly.
+	require.Less(ts.T(), finish.Sub(start), 20*time.Second)
 }
 
 func TestE2E(t *testing.T) {

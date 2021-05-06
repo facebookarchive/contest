@@ -6,6 +6,7 @@
 package badtargets
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/facebookincubator/contest/pkg/event"
@@ -30,12 +31,12 @@ func (ts *badTargets) Name() string {
 }
 
 // Run executes a step that messes up the flow of targets.
-func (ts *badTargets) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *badTargets) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
 	for {
 		select {
 		case tgt, ok := <-ch.In:
 			if !ok {
-				return nil
+				return nil, nil
 			}
 			switch tgt.ID {
 			case "TDrop":
@@ -46,30 +47,30 @@ func (ts *badTargets) Run(ctx xcontext.Context, ch test.TestStepChannels, params
 				select {
 				case ch.Out <- test.TestStepResult{Target: &tgt2}:
 				case <-ctx.Done():
-					return xcontext.ErrCanceled
+					return nil, xcontext.ErrCanceled
 				}
 			case "TDup":
 				select {
 				case ch.Out <- test.TestStepResult{Target: tgt}:
 				case <-ctx.Done():
-					return xcontext.ErrCanceled
+					return nil, xcontext.ErrCanceled
 				}
 				select {
 				case ch.Out <- test.TestStepResult{Target: tgt}:
 				case <-ctx.Done():
-					return xcontext.ErrCanceled
+					return nil, xcontext.ErrCanceled
 				}
 			case "TExtra":
 				tgt2 := &target.Target{ID: "TExtra2"}
 				select {
 				case ch.Out <- test.TestStepResult{Target: tgt}:
 				case <-ctx.Done():
-					return xcontext.ErrCanceled
+					return nil, xcontext.ErrCanceled
 				}
 				select {
 				case ch.Out <- test.TestStepResult{Target: tgt2}:
 				case <-ctx.Done():
-					return xcontext.ErrCanceled
+					return nil, xcontext.ErrCanceled
 				}
 			case "T1":
 				// Mangle the returned target name.
@@ -77,13 +78,13 @@ func (ts *badTargets) Run(ctx xcontext.Context, ch test.TestStepChannels, params
 				select {
 				case ch.Out <- test.TestStepResult{Target: tgt2}:
 				case <-ctx.Done():
-					return xcontext.ErrCanceled
+					return nil, xcontext.ErrCanceled
 				}
 			default:
-				return fmt.Errorf("Unexpected target name: %q", tgt.ID)
+				return nil, fmt.Errorf("Unexpected target name: %q", tgt.ID)
 			}
 		case <-ctx.Done():
-			return xcontext.ErrCanceled
+			return nil, xcontext.ErrCanceled
 		}
 	}
 }

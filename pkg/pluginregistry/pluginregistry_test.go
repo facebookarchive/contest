@@ -6,6 +6,7 @@
 package pluginregistry
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/facebookincubator/contest/pkg/event"
@@ -43,8 +44,8 @@ func (e AStep) Name() string {
 }
 
 // Run executes the AStep
-func (e AStep) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
-	return nil
+func (e AStep) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
+	return nil, nil
 }
 
 func TestRegisterTestStep(t *testing.T) {

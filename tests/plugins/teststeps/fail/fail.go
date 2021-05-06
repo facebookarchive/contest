@@ -6,12 +6,15 @@
 package fail
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
+	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/xcontext"
+	"github.com/facebookincubator/contest/plugins/teststeps"
 )
 
 // Name is the name used to look this plugin up.
@@ -28,22 +31,11 @@ func (ts *fail) Name() string {
 	return Name
 }
 
-// Run executes a step which does never return.
-func (ts *fail) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
-	for {
-		select {
-		case target, ok := <-ch.In:
-			if !ok {
-				return nil
-			}
-			ch.Out <- test.TestStepResult{
-				Target: target,
-				Err:    fmt.Errorf("Integration test failure for %v", target),
-			}
-		case <-ctx.Done():
-			return nil
-		}
-	}
+// Run executes a step that fails all the targets it receives.
+func (ts *fail) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
+	return teststeps.ForEachTarget(Name, ctx, ch, func(ctx xcontext.Context, t *target.Target) error {
+		return fmt.Errorf("Integration test failure for %v", t)
+	})
 }
 
 // ValidateParameters validates the parameters associated to the TestStep

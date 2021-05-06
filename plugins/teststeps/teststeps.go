@@ -6,6 +6,7 @@
 package teststeps
 
 import (
+	"encoding/json"
 	"sync"
 
 	"github.com/facebookincubator/contest/pkg/target"
@@ -25,7 +26,7 @@ type PerTargetFunc func(ctx xcontext.Context, target *target.Target) error
 // provide an implementation of a per-target function that will be called on
 // each target. The implementation of the per-target function is responsible for
 // handling internal cancellation and pausing.
-func ForEachTarget(pluginName string, ctx xcontext.Context, ch test.TestStepChannels, f PerTargetFunc) error {
+func ForEachTarget(pluginName string, ctx xcontext.Context, ch test.TestStepChannels, f PerTargetFunc) (json.RawMessage, error) {
 	reportTarget := func(t *target.Target, err error) {
 		if err != nil {
 			ctx.Errorf("%s: ForEachTarget: failed to apply test step function on target %s: %v", pluginName, t, err)
@@ -63,5 +64,5 @@ func ForEachTarget(pluginName string, ctx xcontext.Context, ch test.TestStepChan
 		}
 	}()
 	wg.Wait()
-	return nil
+	return nil, nil
 }

@@ -6,6 +6,7 @@
 package randecho
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -53,7 +54,7 @@ func (e Step) Name() string {
 }
 
 // Run executes the step
-func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
 	return teststeps.ForEachTarget(Name, ctx, ch,
 		func(ctx xcontext.Context, target *target.Target) error {
 			r := rand.Intn(2)
