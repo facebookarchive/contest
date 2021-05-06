@@ -66,7 +66,6 @@ func (fem dummyFrameworkEventManager) FetchAsync(ctx xcontext.Context, fields ..
 func TestBuildRunStatuses(t *testing.T) {
 	ctx := xcontext.Background()
 	jr := &JobRunner{
-		targetMap:             nil,
 		frameworkEventManager: dummyFrameworkEventManager{t: t},
 		testEvManager:         nil,
 	}

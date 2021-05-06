@@ -32,7 +32,6 @@ func (fem emptyFrameworkEventManager) FetchAsync(ctx xcontext.Context, fields ..
 
 func TestGetCurrentRunNoEvents(t *testing.T) {
 	mockRunner := JobRunner{
-		targetMap:             nil,
 		frameworkEventManager: emptyFrameworkEventManager{},
 		testEvManager:         storage.TestEventFetcher{},
 	}

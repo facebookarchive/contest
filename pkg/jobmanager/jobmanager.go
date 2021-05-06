@@ -136,6 +136,9 @@ func (jm *JobManager) handleEvent(ctx xcontext.Context, ev *api.Event) {
 
 // Run is responsible for starting the API listener and responding to incoming events.
 func (jm *JobManager) Run(ctx xcontext.Context, resumeJobs bool) error {
+	jm.jobRunner.StartLockRefresh()
+	defer jm.jobRunner.StopLockRefresh()
+
 	a, err := api.New(jm.config.apiOptions...)
 	if err != nil {
 		return fmt.Errorf("Cannot start API: %w", err)
@@ -202,6 +205,8 @@ loop:
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
+	// Refresh locks one last time for jobs that were paused.
+	jm.jobRunner.RefreshLocks()
 	return nil
 }
 
