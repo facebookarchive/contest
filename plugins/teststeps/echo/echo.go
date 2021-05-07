@@ -6,6 +6,7 @@
 package echo
 
 import (
+	"encoding/json"
 	"errors"
 
 	"github.com/facebookincubator/contest/pkg/event"
@@ -49,17 +50,17 @@ func (e Step) Name() string {
 }
 
 // Run executes the step
-func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
 	for {
 		select {
 		case target, ok := <-ch.In:
 			if !ok {
-				return nil
+				return nil, nil
 			}
 			ctx.Infof("Running on target %s with text '%s'", target, params.GetOne("text"))
 			ch.Out <- test.TestStepResult{Target: target}
 		case <-ctx.Done():
-			return nil
+			return nil, nil
 		}
 	}
 }

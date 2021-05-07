@@ -6,6 +6,8 @@
 package channels
 
 import (
+	"encoding/json"
+
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/test"
@@ -27,13 +29,13 @@ func (ts *channels) Name() string {
 }
 
 // Run executes a step that runs fine but closes its output channels on exit.
-func (ts *channels) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *channels) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
 	for target := range ch.In {
 		ch.Out <- test.TestStepResult{Target: target}
 	}
 	// This is bad, do not do this.
 	close(ch.Out)
-	return nil
+	return nil, nil
 }
 
 // ValidateParameters validates the parameters associated to the TestStep

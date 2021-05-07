@@ -6,6 +6,7 @@
 package test
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -112,7 +113,8 @@ type TestStep interface {
 	// Name returns the name of the step
 	Name() string
 	// Run runs the test step. The test step is expected to be synchronous.
-	Run(ctx xcontext.Context, ch TestStepChannels, params TestStepParameters, ev testevent.Emitter) error
+	Run(ctx xcontext.Context, ch TestStepChannels, params TestStepParameters, ev testevent.Emitter,
+		resumeState json.RawMessage) (json.RawMessage, error)
 	// ValidateParameters checks that the parameters are correct before passing
 	// them to Run.
 	ValidateParameters(ctx xcontext.Context, params TestStepParameters) error

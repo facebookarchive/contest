@@ -6,6 +6,8 @@
 package hanging
 
 import (
+	"encoding/json"
+
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/test"
@@ -27,10 +29,10 @@ func (ts *hanging) Name() string {
 }
 
 // Run executes a step that does not process any targets and never returns.
-func (ts *hanging) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *hanging) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
 	channel := make(chan struct{})
 	<-channel
-	return nil
+	return nil, nil
 }
 
 // ValidateParameters validates the parameters associated to the TestStep

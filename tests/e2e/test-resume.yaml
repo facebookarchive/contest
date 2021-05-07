@@ -1,6 +1,6 @@
 JobName: A job to test resumption
 Runs: 2
-RunInterval: 5s
+RunInterval: 3s
 TestDescriptors:
     - TargetManagerName: TargetListWithState
       TargetManagerAcquireParameters:
@@ -18,13 +18,10 @@ TestDescriptors:
                     args: ["Test 1, Step 1, target {{ .ID }}"]
                     emit_stdout: [true]
                     emit_stderr: [true]
-              - name: cmd
+              - name: sleep  # Supports pause / resume.
                 label: Test 1 Step 2
                 parameters:
-                    executable: [sleep]
-                    args: [2]
-                    emit_stdout: [true]
-                    emit_stderr: [true]
+                    duration: [4s]
               - name: cmd
                 label: Test 1 Step 3
                 parameters:
@@ -48,7 +45,7 @@ TestDescriptors:
                     args: ["Test 2, Step 1, target {{ .ID }}"]
                     emit_stdout: [true]
                     emit_stderr: [true]
-              - name: cmd
+              - name: cmd  # Does not support pause, will have to wait.
                 label: Test 2 Step 2
                 parameters:
                     executable: [sleep]

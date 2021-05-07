@@ -6,6 +6,7 @@
 package terminalexpect
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -53,15 +54,15 @@ func match(match string, log xcontext.Logger) termhook.LineHandler {
 }
 
 // Run executes the terminal step.
-func (ts *TerminalExpect) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *TerminalExpect) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
 	log := ctx.Logger()
 
 	if err := ts.validateAndPopulate(params); err != nil {
-		return err
+		return nil, err
 	}
 	hook, err := termhook.NewHook(ts.Port, ts.Speed, false, match(ts.Match, log))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// f implements plugins.PerTargetFunc
 	f := func(ctx xcontext.Context, target *target.Target) error {

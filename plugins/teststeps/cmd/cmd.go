@@ -93,11 +93,11 @@ func emitEvent(ctx xcontext.Context, name event.Name, payload interface{}, tgt *
 }
 
 // Run executes the cmd step.
-func (ts *Cmd) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *Cmd) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
 	log := ctx.Logger()
 
 	if err := ts.validateAndPopulate(params); err != nil {
-		return err
+		return nil, err
 	}
 	f := func(ctx xcontext.Context, target *target.Target) error {
 		// expand args

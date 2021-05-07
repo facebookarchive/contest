@@ -6,6 +6,7 @@
 package slowecho
 
 import (
+	"encoding/json"
 	"errors"
 	"strconv"
 	"time"
@@ -79,10 +80,10 @@ func (e *Step) ValidateParameters(_ xcontext.Context, params test.TestStepParame
 }
 
 // Run executes the step
-func (e *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (e *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
 	sleep, err := sleepTime(params.GetOne("sleep").String())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	clk := Clock
 	if clk == nil {

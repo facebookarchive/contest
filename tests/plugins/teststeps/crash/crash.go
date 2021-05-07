@@ -6,6 +6,7 @@
 package crash
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/facebookincubator/contest/pkg/event"
@@ -28,9 +29,9 @@ func (ts *crash) Name() string {
 	return Name
 }
 
-// Run executes a step which does never return.
-func (ts *crash) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
-	return fmt.Errorf("TestStep crashed")
+// Run executes a step which returns an error
+func (ts *crash) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
+	return nil, fmt.Errorf("TestStep crashed")
 }
 
 // ValidateParameters validates the parameters associated to the TestStep

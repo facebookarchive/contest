@@ -27,6 +27,7 @@ import (
 	"github.com/facebookincubator/contest/plugins/teststeps/echo"
 	"github.com/facebookincubator/contest/plugins/teststeps/example"
 	"github.com/facebookincubator/contest/plugins/teststeps/randecho"
+	"github.com/facebookincubator/contest/plugins/teststeps/sleep"
 	"github.com/facebookincubator/contest/plugins/teststeps/sshcmd"
 )
 
@@ -41,11 +42,12 @@ var testFetchers = []test.TestFetcherLoader{
 }
 
 var testSteps = []test.TestStepLoader{
+	cmd.Load,
 	echo.Load,
 	example.Load,
-	cmd.Load,
-	sshcmd.Load,
 	randecho.Load,
+	sleep.Load,
+	sshcmd.Load,
 }
 
 var reporters = []job.ReporterLoader{

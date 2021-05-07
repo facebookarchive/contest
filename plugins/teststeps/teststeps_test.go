@@ -77,7 +77,7 @@ func TestForEachTargetOneTarget(t *testing.T) {
 			}
 		}
 	}()
-	err := ForEachTarget("test_one_target ", d.ctx, d.stepChans, fn)
+	_, err := ForEachTarget("test_one_target ", d.ctx, d.stepChans, fn)
 	require.NoError(t, err)
 }
 
@@ -109,7 +109,7 @@ func TestForEachTargetOneTargetAllFail(t *testing.T) {
 			}
 		}
 	}()
-	err := ForEachTarget("test_one_target ", d.ctx, d.stepChans, fn)
+	_, err := ForEachTarget("test_one_target ", d.ctx, d.stepChans, fn)
 	require.NoError(t, err)
 }
 
@@ -141,7 +141,7 @@ func TestForEachTargetTenTargets(t *testing.T) {
 			}
 		}
 	}()
-	err := ForEachTarget("test_one_target ", d.ctx, d.stepChans, fn)
+	_, err := ForEachTarget("test_one_target ", d.ctx, d.stepChans, fn)
 	require.NoError(t, err)
 }
 
@@ -173,7 +173,7 @@ func TestForEachTargetTenTargetsAllFail(t *testing.T) {
 			}
 		}
 	}()
-	err := ForEachTarget("test_one_target ", d.ctx, d.stepChans, fn)
+	_, err := ForEachTarget("test_one_target ", d.ctx, d.stepChans, fn)
 	require.NoError(t, err)
 }
 
@@ -219,7 +219,7 @@ func TestForEachTargetTenTargetsOneFails(t *testing.T) {
 			}
 		}
 	}()
-	err := ForEachTarget("test_one_target ", d.ctx, d.stepChans, fn)
+	_, err := ForEachTarget("test_one_target ", d.ctx, d.stepChans, fn)
 	require.NoError(t, err)
 }
 
@@ -289,7 +289,7 @@ func TestForEachTargetTenTargetsParallelism(t *testing.T) {
 		}
 	}()
 
-	err := ForEachTarget("test_parallel", d.ctx, d.stepChans, fn)
+	_, err := ForEachTarget("test_parallel", d.ctx, d.stepChans, fn)
 
 	wg.Wait() //wait for receiver
 
@@ -333,7 +333,7 @@ func TestForEachTargetCancelSignalPropagation(t *testing.T) {
 		d.cancel()
 	}()
 
-	err := ForEachTarget("test_cancelation", d.ctx, d.stepChans, fn)
+	_, err := ForEachTarget("test_cancelation", d.ctx, d.stepChans, fn)
 	require.NoError(t, err)
 
 	assert.Equal(t, int32(numTargets), canceledTargets)
@@ -373,7 +373,7 @@ func TestForEachTargetCancelBeforeInputChannelClosed(t *testing.T) {
 		d.cancel()
 	}()
 
-	err := ForEachTarget("test_cancelation", d.ctx, d.stepChans, fn)
+	_, err := ForEachTarget("test_cancelation", d.ctx, d.stepChans, fn)
 	require.NoError(t, err)
 
 	wg.Done()
