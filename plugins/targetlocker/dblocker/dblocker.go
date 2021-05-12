@@ -25,6 +25,11 @@ var Name = "DBLocker"
 
 const DefaultMaxBatchSize = 100
 
+// used for functions that can operate with and without transactions
+type db interface {
+	Query(query string, args ...interface{}) (*sql.Rows, error)
+}
+
 // dblock represents parts of lock in the database, basically
 // a row from SELECT target_id, job_ID, expires_at
 type dblock struct {
@@ -80,7 +85,7 @@ type DBLocker struct {
 }
 
 // queryLocks returns a map of ID -> dblock for a given list of targets
-func (d *DBLocker) queryLocks(tx *sql.Tx, targets []string) (map[string]dblock, error) {
+func (d *DBLocker) queryLocks(tx db, targets []string) (map[string]dblock, error) {
 	q := "SELECT target_id, job_id, created_at, expires_at FROM locks WHERE target_id IN " + listQueryString(uint(len(targets)))
 	// convert targets to a list of interface{}
 	queryList := make([]interface{}, 0, len(targets))
@@ -201,7 +206,12 @@ func (d *DBLocker) handleLock(ctx xcontext.Context, jobID int64, targets []strin
 				createdAt = lock.createdAt
 			}
 			if len(stmt) == 0 {
-				stmt = append(stmt, "INSERT INTO locks (target_id, job_id, created_at, expires_at, valid) VALUES (?, ?, ?, ?, ?)")
+				// this can race with other transactions, acceptable for TryLock
+				if allowConflicts {
+					stmt = append(stmt, "INSERT IGNORE INTO locks (target_id, job_id, created_at, expires_at, valid) VALUES (?, ?, ?, ?, ?)")
+				} else {
+					stmt = append(stmt, "INSERT INTO locks (target_id, job_id, created_at, expires_at, valid) VALUES (?, ?, ?, ?, ?)")
+				}
 			} else {
 				stmt = append(stmt, ", (?, ?, ?, ?, ?)")
 			}
@@ -217,7 +227,31 @@ func (d *DBLocker) handleLock(ctx xcontext.Context, jobID int64, targets []strin
 		}
 	}
 
-	return toInsert, tx.Commit()
+	// Main transaction done
+	txErr := tx.Commit()
+	// Done except for TryLock
+	if txErr != nil || !allowConflicts || len(toInsert) == 0 {
+		return toInsert, txErr
+	}
+
+	// TryLock uses INSERT IGNORE, read inserted rows back to see which ones made it
+	var actualInserts []string
+	{
+		actualLocks, err := d.queryLocks(d.db, toInsert)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, targetID := range toInsert {
+			lock, ok := actualLocks[targetID]
+			// only care about locks that we own now
+			if ok && lock.jobID == jobID {
+				actualInserts = append(actualInserts, targetID)
+			}
+		}
+	}
+
+	return actualInserts, nil
 }
 
 // handleUnlock does the real unlocking, it assumes the jobID is valid
