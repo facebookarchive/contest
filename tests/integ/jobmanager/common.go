@@ -315,6 +315,10 @@ func (suite *TestJobManagerSuite) initJobManager(instanceTag string) {
 	suite.jmCtx, suite.jmPause = xcontext.WithNotify(suite.jmCtx, xcontext.ErrPaused)
 }
 
+func (suite *TestJobManagerSuite) BeforeTest(suiteName, testName string) {
+	suite.jmCtx.Infof("=== Running %s/%s", suiteName, testName)
+}
+
 func (suite *TestJobManagerSuite) stopJobManager() {
 	// Signal cancellation to the JobManager, which in turn will
 	// propagate cancellation signal to Serve method of the listener.
