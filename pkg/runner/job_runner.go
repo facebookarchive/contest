@@ -188,17 +188,8 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 				jr.jobsMapLock.Lock()
 				jr.jobsMap[j.ID].targets = targets
 				jr.jobsMapLock.Unlock()
-
 			case <-jr.clock.After(j.TargetManagerAcquireTimeout):
 				return nil, fmt.Errorf("target manager acquire timed out after %s", j.TargetManagerAcquireTimeout)
-			case <-ctx.Until(xcontext.ErrPaused):
-				runCtx.Infof("pause requested for job ID %v", j.ID)
-				resumeState = &job.PauseEventPayload{
-					Version: job.CurrentPauseEventPayloadVersion,
-					JobID:   j.ID,
-					RunID:   runID,
-				}
-				return resumeState, xcontext.ErrPaused
 			case <-ctx.Done():
 				runCtx.Infof("cancellation requested for job ID %v", j.ID)
 				return nil, xcontext.ErrCanceled
@@ -210,6 +201,21 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 			// Emit events tracking targets acquisition
 			if acquired {
 				runErr = jr.emitTargetEvents(runCtx, testEventEmitter, targets, target.EventTargetAcquired)
+			}
+
+			// Check for pause during target acquisition.
+			select {
+			case <-ctx.Until(xcontext.ErrPaused):
+				runCtx.Infof("pause requested for job ID %v", j.ID)
+				resumeState = &job.PauseEventPayload{
+					Version: job.CurrentPauseEventPayloadVersion,
+					JobID:   j.ID,
+					RunID:   runID,
+					TestID:  testID,
+					Targets: targets,
+				}
+				return resumeState, xcontext.ErrPaused
+			default:
 			}
 
 			if runErr == nil {
