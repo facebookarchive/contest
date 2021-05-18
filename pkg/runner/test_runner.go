@@ -69,6 +69,7 @@ type stepState struct {
 	tgtDone map[*target.Target]bool // Targets for which results have been received.
 
 	resumeState   json.RawMessage // Resume state passed to and returned by the Run method.
+	stepStarted   bool            // testStep.Run() has been invoked
 	stepRunning   bool            // testStep.Run() is currently running.
 	readerRunning bool            // Result reader is running.
 	runErr        error           // Runner error, returned from Run() or an error condition detected by the reader.
@@ -529,12 +530,10 @@ loop:
 func (tr *TestRunner) runStepIfNeeded(ss *stepState) {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
-	if ss.stepRunning {
+	if ss.stepStarted {
 		return
 	}
-	if ss.runErr != nil {
-		return
-	}
+	ss.stepStarted = true
 	ss.stepRunning = true
 	ss.readerRunning = true
 	go tr.stepRunner(ss)
@@ -791,27 +790,34 @@ stepLoop:
 	ctx.Debugf("monitor: waiting for targets to finish")
 tgtLoop:
 	for ; runErr == nil; pass++ {
-		ok := true
+		if runErr = tr.checkStepRunnersLocked(); runErr != nil {
+			break tgtLoop
+		}
+		done := true
 		for _, tgs := range tr.targets {
 			ctx.Debugf("monitor pass %d: %s", pass, tgs)
-			if runErr = tr.checkStepRunnersLocked(); runErr != nil {
-				break tgtLoop
-			}
 			if tgs.handlerRunning && (tgs.CurStep < len(tr.steps) || tgs.CurPhase != targetStepPhaseEnd) {
-				ss := tr.steps[tgs.CurStep]
-				if tgs.CurPhase == targetStepPhaseRun && !ss.readerRunning {
-					// Target has been injected but step runner has exited, this target has been lost.
-					runErr = &cerrors.ErrTestStepLostTargets{
-						StepName: ss.sb.TestStepLabel,
-						Targets:  []string{tgs.tgt.ID},
+				if tgs.CurPhase == targetStepPhaseRun {
+					// We have a target inside a step.
+					ss := tr.steps[tgs.CurStep]
+					if ss.runErr == xcontext.ErrPaused {
+						// It's been paused, this is fine.
+						continue
 					}
-					break tgtLoop
+					if ss.stepStarted && !ss.readerRunning {
+						// Target has been injected but step runner has exited without a valid reason, this target has been lost.
+						runErr = &cerrors.ErrTestStepLostTargets{
+							StepName: ss.sb.TestStepLabel,
+							Targets:  []string{tgs.tgt.ID},
+						}
+						break tgtLoop
+					}
 				}
-				ok = false
+				done = false
 				break
 			}
 		}
-		if ok {
+		if done {
 			break
 		}
 		// Wait for notification: as progress is being made, we get notified.

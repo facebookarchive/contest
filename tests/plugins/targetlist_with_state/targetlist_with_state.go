@@ -10,6 +10,7 @@ package targetlist_with_state
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/target"
@@ -64,6 +65,7 @@ func (tlws *TargetListWithState) Acquire(ctx xcontext.Context, jobID types.JobID
 		tc.TargetManagerState = json.RawMessage([]byte(fmt.Sprintf(`{"token":"%d-%s"}`, jobID, tc.ID)))
 		tt = append(tt, &tc)
 	}
+	time.Sleep(time.Duration(rand.Int31n(200)) * time.Millisecond)
 	ctx.Infof("Acquired %d targets", tt)
 	return tt, nil
 }
