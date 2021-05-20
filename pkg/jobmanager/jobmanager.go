@@ -99,7 +99,7 @@ func New(l api.Listener, pr *pluginregistry.PluginRegistry, opts ...Option) (*Jo
 	return &jm, nil
 }
 
-func (jm *JobManager) handleEvent(ctx xcontext.Context, ev *api.Event) {
+func (jm *JobManager) handleEvent(ev *api.Event) {
 	var resp *api.EventResponse
 
 	switch ev.Type {
@@ -168,11 +168,11 @@ loop:
 		select {
 		// handle events from the API
 		case ev := <-a.Events:
-			ctx.Debugf("Handling event %+v", ev)
+			ev.Context.Debugf("Handling event %+v", ev)
 			handlerWg.Add(1)
 			go func() {
 				defer handlerWg.Done()
-				jm.handleEvent(ctx, ev)
+				jm.handleEvent(ev)
 			}()
 		// check for errors or premature termination from the listener.
 		case err := <-errCh:
