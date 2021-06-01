@@ -190,9 +190,8 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 				jr.jobsMapLock.Unlock()
 			case <-jr.clock.After(j.TargetManagerAcquireTimeout):
 				return nil, fmt.Errorf("target manager acquire timed out after %s", j.TargetManagerAcquireTimeout)
-			case <-ctx.Done():
-				runCtx.Infof("cancellation requested for job ID %v", j.ID)
-				return nil, xcontext.ErrCanceled
+				// Note: not handling cancellation here to allow TM plugins to wrap up correctly.
+				// We have timeout to ensure it doesn't get stuck forever.
 			}
 
 			header := testevent.Header{JobID: j.ID, RunID: runID, TestName: t.Name}
