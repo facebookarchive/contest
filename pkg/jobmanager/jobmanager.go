@@ -144,6 +144,11 @@ func (jm *JobManager) Run(ctx xcontext.Context, resumeJobs bool) error {
 		return fmt.Errorf("Cannot start API: %w", err)
 	}
 
+	// Deal with zombieed jobs (fail them).
+	if err := jm.failZombieJobs(ctx, a.ServerID()); err != nil {
+		ctx.Errorf("failed to fail jobs: %v", err)
+	}
+
 	// First, resume paused jobs.
 	if resumeJobs {
 		if err := jm.resumeJobs(ctx, a.ServerID()); err != nil {
@@ -208,6 +213,42 @@ loop:
 	// Refresh locks one last time for jobs that were paused.
 	jm.jobRunner.RefreshLocks()
 	return nil
+}
+
+func (jm *JobManager) failZombieJobs(ctx xcontext.Context, serverID string) error {
+	zombieJobs, err := jm.listMyJobs(ctx, serverID, job.JobStateStarted)
+	if err != nil {
+		return fmt.Errorf("failed to list zombie jobs: %w", err)
+	}
+	ctx.Infof("Found %d zombie jobs for %s/%s", len(zombieJobs), jm.config.instanceTag, serverID)
+	for _, jobID := range zombieJobs {
+		// Log a line with job id so there's something in the job log to tell what happened.
+		jobCtx := ctx.WithField("job_id", jobID)
+		jobCtx.Errorf("This became a zombie, most likely the previous server instance was killed ungracefully")
+		if err = jm.emitErrEvent(ctx, jobID, job.EventJobFailed, fmt.Errorf("Job %d was zombieed", jobID)); err != nil {
+			ctx.Errorf("Failed to emit event: %v", err)
+		}
+	}
+	return nil
+}
+
+func (jm *JobManager) listMyJobs(ctx xcontext.Context, serverID string, jobState job.State) ([]types.JobID, error) {
+	queryFields := []storage.JobQueryField{
+		storage.QueryJobServerID(serverID),
+		storage.QueryJobStates(jobState),
+	}
+	if jm.config.instanceTag != "" {
+		queryFields = append(queryFields, storage.QueryJobTags(jm.config.instanceTag))
+	}
+	q, err := storage.BuildJobQuery(queryFields...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build job query: %w", err)
+	}
+	jobs, err := jm.jsm.ListJobs(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list jobs: %w", err)
+	}
+	return jobs, nil
 }
 
 func (jm *JobManager) checkIdle(ctx xcontext.Context) bool {
