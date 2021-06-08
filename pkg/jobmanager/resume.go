@@ -12,24 +12,12 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/job"
-	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 func (jm *JobManager) resumeJobs(ctx xcontext.Context, serverID string) error {
-	queryFields := []storage.JobQueryField{
-		storage.QueryJobServerID(serverID),
-		storage.QueryJobStates(job.JobStatePaused),
-	}
-	if jm.config.instanceTag != "" {
-		queryFields = append(queryFields, storage.QueryJobTags(jm.config.instanceTag))
-	}
-	q, err := storage.BuildJobQuery(queryFields...)
-	if err != nil {
-		return fmt.Errorf("failed to build job query: %w", err)
-	}
-	pausedJobs, err := jm.jsm.ListJobs(ctx, q)
+	pausedJobs, err := jm.listMyJobs(ctx, serverID, job.JobStatePaused)
 	if err != nil {
 		return fmt.Errorf("failed to list paused jobs: %w", err)
 	}
