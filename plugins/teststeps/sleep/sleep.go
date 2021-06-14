@@ -9,14 +9,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/xcontext"
+	"github.com/facebookincubator/contest/plugins/teststeps"
 )
 
 // Name is the name used to look this plugin up.
@@ -27,17 +26,12 @@ var Events = []event.Name{}
 
 // sleepStep implements an echo-style printing plugin.
 type sleepStep struct {
-	mu       sync.Mutex
-	wg       sync.WaitGroup
-	inFlight map[*target.Target]time.Time
 }
 
 // New initializes and returns a new EchoStep. It implements the TestStepFactory
 // interface.
 func New() test.TestStep {
-	return &sleepStep{
-		inFlight: make(map[*target.Target]time.Time),
-	}
+	return &sleepStep{}
 }
 
 // Load returns the name, factory and events which are needed to register the step.
@@ -69,61 +63,8 @@ func (ss *sleepStep) Name() string {
 	return Name
 }
 
-type targetState struct {
-	Target     *target.Target `json:"T"`
-	DeadlineMS int64          `json:"D"`
-}
-
-const currentStateVersion = 1
-
-type sleepStepState struct {
-	Version  int `json:"V"`
-	InFlight []targetState
-}
-
-func (ss *sleepStep) loadState(ctx xcontext.Context, resumeState json.RawMessage, out chan<- test.TestStepResult) error {
-	if len(resumeState) == 0 {
-		return nil
-	}
-	ss.mu.Lock()
-	defer ss.mu.Unlock()
-	var sss sleepStepState
-	if err := json.Unmarshal(resumeState, &sss); err != nil {
-		return fmt.Errorf("invalid resume state: %w", err)
-	}
-	if sss.Version != currentStateVersion {
-		return fmt.Errorf("incompatible resume state (want %d, got %d)", currentStateVersion, sss.Version)
-	}
-	now := time.Now()
-	for _, e := range sss.InFlight {
-		ss.wg.Add(1)
-		deadline := time.Unix(e.DeadlineMS/1000, (e.DeadlineMS%1000)*1000000)
-		go ss.doSleep(ctx, e.Target, deadline.Sub(now), out)
-	}
-	return nil
-}
-
-func (ss *sleepStep) doSleep(ctx xcontext.Context, t *target.Target, dur time.Duration, out chan<- test.TestStepResult) {
-	deadline := time.Now().Add(dur)
-	ss.mu.Lock()
-	ss.inFlight[t] = deadline
-	ss.mu.Unlock()
-	ctx.Debugf("%s: Sleeping for %s", t, dur)
-	select {
-	case <-time.After(dur):
-		select {
-		case out <- test.TestStepResult{Target: t, Err: nil}:
-			ss.mu.Lock()
-			delete(ss.inFlight, t)
-			ss.mu.Unlock()
-		case <-ctx.Done():
-		}
-	case <-ctx.Until(xcontext.ErrPaused):
-		ctx.Debugf("%s: Paused with %s left", t, time.Until(deadline))
-	case <-ctx.Done():
-		ctx.Debugf("%s: Cancelled with %s left", t, time.Until(deadline))
-	}
-	ss.wg.Done()
+type sleepStepData struct {
+	DeadlineMS int64 `json:"D"`
 }
 
 // Run executes the step
@@ -132,44 +73,44 @@ func (ss *sleepStep) Run(ctx xcontext.Context, ch test.TestStepChannels, params 
 	if err != nil {
 		return nil, err
 	}
-	if err := ss.loadState(ctx, resumeState, ch.Out); err != nil {
-		return nil, err
-	}
-loop:
-	for {
-		select {
-		case t, ok := <-ch.In:
-			if ok {
-				ss.wg.Add(1)
-				go ss.doSleep(ctx, t, dur, ch.Out)
-			} else {
-				break loop
+	fn := func(ctx xcontext.Context, target *teststeps.TargetWithData) error {
+		var deadline time.Time
+		// copy, can be different per target
+		var sleepTime = dur
+
+		// handle resume
+		if target.Data != nil {
+			ssd := sleepStepData{}
+			if err := json.Unmarshal(target.Data, &ssd); err != nil {
+				return fmt.Errorf("invalid resume state: %w", err)
 			}
+			deadline = time.Unix(ssd.DeadlineMS/1000, (ssd.DeadlineMS%1000)*1000000)
+			sleepTime = time.Until(deadline)
+			ctx.Debugf("restored with %v unix, in %s", ssd.DeadlineMS, time.Until(deadline))
+		} else {
+			deadline = time.Now().Add(dur)
+		}
+
+		// now sleep
+		select {
+		case <-time.After(sleepTime):
+			return nil
+		case <-ctx.Until(xcontext.ErrPaused):
+			ctx.Debugf("%s: Paused with %s left", target.Target, time.Until(deadline))
+			ssd := &sleepStepData{
+				DeadlineMS: deadline.UnixNano() / 1000000,
+			}
+			var err error
+			target.Data, err = json.Marshal(ssd)
+			if err != nil {
+				return err
+			}
+			return xcontext.ErrPaused
 		case <-ctx.Done():
-			break loop
+			ctx.Debugf("%s: Cancelled with %s left", target.Target, time.Until(deadline))
 		}
+		return nil
 	}
-	ss.wg.Wait()
-	select {
-	case <-ctx.Until(xcontext.ErrPaused):
-		sss := sleepStepState{
-			Version: currentStateVersion,
-		}
-		ss.mu.Lock()
-		for t, deadline := range ss.inFlight {
-			deadlineMS := deadline.UnixNano() / 1000000
-			sss.InFlight = append(sss.InFlight, targetState{
-				Target:     t,
-				DeadlineMS: deadlineMS,
-			})
-		}
-		ss.mu.Unlock()
-		resumeState, err := json.Marshal(&sss)
-		if err != nil {
-			return nil, err
-		}
-		return resumeState, xcontext.ErrPaused
-	default:
-	}
-	return nil, nil
+
+	return teststeps.ForEachTargetWithResume(ctx, ch, resumeState, 1, fn)
 }
