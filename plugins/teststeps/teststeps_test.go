@@ -7,6 +7,7 @@ package teststeps
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -18,6 +19,8 @@ import (
 	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
 	"github.com/facebookincubator/contest/pkg/xcontext/logger"
+
+	"github.com/facebookincubator/contest/tests/common/goroutine_leak_check"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -378,4 +381,127 @@ func TestForEachTargetCancelBeforeInputChannelClosed(t *testing.T) {
 
 	wg.Done()
 	assert.Equal(t, int32(numTargets), canceledTargets)
+}
+
+func TestForEachTargetWithResumeAllReturn(t * testing.T) {
+	numTargets := 10
+	d := newData()
+
+	fn := func(ctx xcontext.Context, target *TargetWithData) error {
+		return nil // success
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	// submit all, then close
+	go func() {
+		for i := 0; i < numTargets; i++ {
+			d.inCh <- &target.Target{ID: fmt.Sprintf("target%03d", i)}
+		}
+		close(d.inCh)
+		wg.Done()
+	}()
+
+	wg.Add(1)
+	// read all results
+	go func() {
+		for i := 0; i < numTargets; i++ {
+			<-d.outCh
+		}
+		wg.Done()
+	}()
+
+	res, err := ForEachTargetWithResume(d.ctx, d.stepChans, nil, 1, fn)
+	require.NoError(t, err)
+	assert.Nil(t, res)
+	// make sure all helpers are done
+	wg.Wait()
+	assert.NoError(t, goroutine_leak_check.CheckLeakedGoRoutines())
+}
+
+type simpleStepData struct {
+	Foo string
+}
+
+func TestForEachTargetWithResumeAllPause(t * testing.T) {
+	numTargets := 10
+	targets := make([]target.Target, 10)
+	for i := 0; i < numTargets; i++ {
+		targets[i] = target.Target{ID: fmt.Sprintf("target%03d", i)}
+	}
+	d := newData()
+
+	fn := func(ctx xcontext.Context, target *TargetWithData) error {
+		stepData := simpleStepData{target.Target.ID}
+		json, err := json.Marshal(&stepData)
+		require.NoError(t, err)
+		// block and pause
+		<-ctx.Until(xcontext.ErrPaused)
+		target.Data = json
+		return xcontext.ErrPaused
+	}
+	var testingWg sync.WaitGroup
+
+	// constantly read out channel, must not receive anything
+	outDone := make(chan struct{})
+	testingWg.Add(1)
+	go func() {
+		select {
+		case res := <- d.outCh:
+			assert.Fail(t, "unexpected target in out channel", res)
+		case <-outDone:
+			testingWg.Done()
+		}
+	}()
+
+	var inputWg sync.WaitGroup
+	inputWg.Add(1)
+	// submit all, then close
+	go func() {
+		for i := 0; i < numTargets; i++ {
+			d.inCh <- &targets[i]
+		}
+		close(d.inCh)
+		inputWg.Done()
+	}()
+
+	// run helper so it accepts jobs
+	testingWg.Add(1)
+	go func() {
+		res, err := ForEachTargetWithResume(d.ctx, d.stepChans, nil, 1, fn)
+		assert.Equal(t, xcontext.ErrPaused, err)
+		// inspect result
+		state := parallelTargetsState{}
+		assert.NoError(t, json.Unmarshal(res, &state))
+		assert.Equal(t, 1, state.Version)
+		assert.Equal(t, numTargets, len(state.Targets))
+		targetSeen := make(map[string]*TargetWithData)
+		// check all targets were returned once
+		for _, twd := range state.Targets {
+			_, ok := targetSeen[twd.Target.ID]
+			if ok {
+				assert.Fail(t, "duplicate target data in serialized resume data", twd)
+			}
+			targetSeen[twd.Target.ID] = twd
+		}
+		for i := 0; i < numTargets; i++ {
+			twd, ok := targetSeen[targets[i].ID]
+			assert.True(t, ok)
+			// check serialized data
+			stepData := simpleStepData{}
+			assert.NoError(t, json.Unmarshal(twd.Data, &stepData))
+			assert.Equal(t, targets[i].ID, stepData.Foo)
+		}
+		// done monitoring out channels now
+		outDone <-struct{}{}
+		testingWg.Done()
+	}()
+
+	// pause when all were submitted
+	inputWg.Wait()
+	d.pause()
+
+	// wait for pausing and all testing of pause result to be done
+	testingWg.Wait()
+	assert.NoError(t, goroutine_leak_check.CheckLeakedGoRoutines())
 }
