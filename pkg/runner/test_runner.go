@@ -167,7 +167,7 @@ func (tr *TestRunner) run(
 	for i, sb := range t.TestStepsBundles {
 		stepCtx, stepCancel := xcontext.WithCancel(stepsCtx)
 		var srs json.RawMessage
-		if i < len(rs.StepResumeState) {
+		if i < len(rs.StepResumeState) && string(rs.StepResumeState[i]) != "null" {
 			srs = rs.StepResumeState[i]
 		}
 		tr.steps = append(tr.steps, &stepState{

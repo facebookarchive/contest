@@ -21,9 +21,13 @@ TestDescriptors:
               - name: sleep  # Supports pause / resume.
                 label: Test 1 Step 2
                 parameters:
-                    duration: [4s]
-              - name: cmd
+                    duration: [2s]
+              - name: sleep  # Supports pause / resume.
                 label: Test 1 Step 3
+                parameters:
+                    duration: [2s]
+              - name: cmd
+                label: Test 1 Step 4
                 parameters:
                     executable: [echo]
                     args: ["Test 1, Step 3, target {{ .ID }}"]
