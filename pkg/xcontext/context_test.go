@@ -7,7 +7,6 @@ package xcontext
 
 import (
 	"context"
-	"fmt"
 	"runtime"
 	"testing"
 
@@ -46,7 +45,7 @@ func TestGoroutineLeak(t *testing.T) {
 	stack := make([]byte, 65536)
 	n := runtime.Stack(stack, true)
 	stack = stack[:n]
-	require.GreaterOrEqual(t, old, runtime.NumGoroutine(), fmt.Sprintf("%s", stack))
+	require.GreaterOrEqual(t, old, runtime.NumGoroutine(), string(stack))
 }
 
 func TestStdCtxUntil(t *testing.T) {
