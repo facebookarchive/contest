@@ -345,9 +345,8 @@ func (suite *TestJobManagerSuite) TearDownSuite() {
 	if err := suite.storage.Close(); err != nil {
 		panic("Failed to close storage")
 	}
-	time.Sleep(20 * time.Millisecond)
-	if err := goroutine_leak_check.CheckLeakedGoRoutines(); err != nil {
-		panic(fmt.Sprintf("%s", err))
+	if !suite.T().Failed() { // Only check for goroutine leaks if otherwise ok.
+		require.NoError(suite.T(), goroutine_leak_check.CheckLeakedGoRoutines())
 	}
 }
 

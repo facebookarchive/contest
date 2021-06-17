@@ -44,9 +44,8 @@ type TargetLockerTestSuite struct {
 }
 
 func (ts *TargetLockerTestSuite) TearDownSuite() {
-	time.Sleep(20 * time.Millisecond)
-	if err := goroutine_leak_check.CheckLeakedGoRoutines(); err != nil {
-		ts.T().Errorf("%s", err)
+	if !ts.T().Failed() { // Only check for goroutine leaks if otherwise ok.
+		require.NoError(ts.T(), goroutine_leak_check.CheckLeakedGoRoutines())
 	}
 }
 
