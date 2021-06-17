@@ -48,6 +48,8 @@ func CheckLeakedGoRoutines(funcWhitelist ...string) error {
 }
 
 func checkLeakedGoRoutines(funcWhitelist ...string) (string, error) {
+	// Allow some time for dying routines to exit.
+	time.Sleep(20 * time.Millisecond)
 	// Get goroutine stacks
 	buf := make([]byte, 1000000)
 	n := runtime.Stack(buf, true /* all */)

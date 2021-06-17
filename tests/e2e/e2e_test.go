@@ -72,12 +72,8 @@ func (ts *E2ETestSuite) SetupSuite() {
 
 func (ts *E2ETestSuite) TearDownSuite() {
 	ctx.Infof("Teardown")
-	time.Sleep(20 * time.Millisecond)
-	if err := goroutine_leak_check.CheckLeakedGoRoutines(
-	// TODO(rojer): shut storage down properly
-	//"github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.*",
-	); err != nil {
-		panic(fmt.Sprintf("%s", err))
+	if !ts.T().Failed() { // Only check for goroutine leaks if otherwise ok.
+		require.NoError(ts.T(), goroutine_leak_check.CheckLeakedGoRoutines())
 	}
 }
 
