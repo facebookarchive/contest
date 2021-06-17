@@ -269,15 +269,20 @@ func (ts *E2ETestSuite) TestPauseResume() {
 	start := time.Now()
 	{ // Stop/start the server up to 20 times or until the job completes.
 		var resp api.StatusResponse
+	wait_loop:
 		for i := 1; i < 20; i++ {
 			time.Sleep(1 * time.Second)
 			_, err := ts.runClient(&resp, "status", fmt.Sprintf("%d", jobID))
 			require.NoError(ts.T(), err)
 			require.Nil(ts.T(), resp.Err, "error: %s", resp.Err)
 			ctx.Infof("Job %d state %s", jobID, resp.Data.Status.State)
-			if resp.Data.Status.State == string(job.EventJobCompleted) {
+			switch resp.Data.Status.State {
+			case string(job.EventJobCompleted):
 				ctx.Debugf("Job %d completed after %d restarts", jobID, i)
-				break
+				break wait_loop
+			case string(job.EventJobFailed):
+				require.Failf(ts.T(), "job failed", "Job %d failed after %d restarts", jobID, i)
+				return
 			}
 			require.NoError(ts.T(), ts.stopServer(5*time.Second))
 			ts.startServer("--pauseTimeout=60s", "--resumeJobs")
@@ -294,7 +299,7 @@ func (ts *E2ETestSuite) TestPauseResume() {
 			fmt.Sprintf(`
 {[%d 1 Test 1 ][Target{ID: "T1"} TargetAcquired]}
 {[%d 1 Test 1 Test 1 Step 1][Target{ID: "T1"} CmdStdout &"{\"Msg\":\"Test 1, Step 1, target T1\\n\"}"]}
-{[%d 1 Test 1 Test 1 Step 3][Target{ID: "T1"} CmdStdout &"{\"Msg\":\"Test 1, Step 3, target T1\\n\"}"]}
+{[%d 1 Test 1 Test 1 Step 4][Target{ID: "T1"} CmdStdout &"{\"Msg\":\"Test 1, Step 3, target T1\\n\"}"]}
 {[%d 1 Test 1 ][Target{ID: "T1"} TargetReleased]}
 {[%d 1 Test 2 ][Target{ID: "T2"} TargetAcquired]}
 {[%d 1 Test 2 Test 2 Step 1][Target{ID: "T2"} CmdStdout &"{\"Msg\":\"Test 2, Step 1, target T2\\n\"}"]}
@@ -303,7 +308,7 @@ func (ts *E2ETestSuite) TestPauseResume() {
 {[%d 1 Test 2 ][Target{ID: "T2"} TargetReleased]}
 {[%d 2 Test 1 ][Target{ID: "T1"} TargetAcquired]}
 {[%d 2 Test 1 Test 1 Step 1][Target{ID: "T1"} CmdStdout &"{\"Msg\":\"Test 1, Step 1, target T1\\n\"}"]}
-{[%d 2 Test 1 Test 1 Step 3][Target{ID: "T1"} CmdStdout &"{\"Msg\":\"Test 1, Step 3, target T1\\n\"}"]}
+{[%d 2 Test 1 Test 1 Step 4][Target{ID: "T1"} CmdStdout &"{\"Msg\":\"Test 1, Step 3, target T1\\n\"}"]}
 {[%d 2 Test 1 ][Target{ID: "T1"} TargetReleased]}
 {[%d 2 Test 2 ][Target{ID: "T2"} TargetAcquired]}
 {[%d 2 Test 2 Test 2 Step 1][Target{ID: "T2"} CmdStdout &"{\"Msg\":\"Test 2, Step 1, target T2\\n\"}"]}
