@@ -432,35 +432,6 @@ func (jr *JobRunner) emitTargetEvents(ctx xcontext.Context, emitter testevent.Em
 	return nil
 }
 
-// GetCurrentRun returns the run which is currently being executed
-// Queries read-only storage, which does not offer strict read-after-write guarantees.
-// Returns 0 if there are no runs
-func (jr *JobRunner) GetCurrentRun(ctx xcontext.Context, jobID types.JobID) (types.RunID, error) {
-
-	var runID types.RunID
-
-	runEvents, err := jr.frameworkEventManager.Fetch(ctx,
-		frameworkevent.QueryJobID(jobID),
-		frameworkevent.QueryEventName(EventRunStarted),
-	)
-	if err != nil {
-		return runID, fmt.Errorf("could not fetch last run id for job %d: %v", jobID, err)
-	}
-
-	if len(runEvents) == 0 {
-		// no runs yet
-		return 0, nil
-	}
-
-	lastEvent := runEvents[len(runEvents)-1]
-	payload := RunStartedPayload{}
-	if err := json.Unmarshal([]byte(*lastEvent.Payload), &payload); err != nil {
-		return runID, fmt.Errorf("could not fetch last run id for job %d: %v", jobID, err)
-	}
-	return payload.RunID, nil
-
-}
-
 func (jr *JobRunner) emitEvent(ctx xcontext.Context, jobID types.JobID, eventName event.Name, payload interface{}) error {
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
