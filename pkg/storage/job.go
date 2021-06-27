@@ -6,8 +6,6 @@
 package storage
 
 import (
-	"fmt"
-
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
@@ -39,16 +37,10 @@ func (jsm JobStorageManager) StoreJobRequest(ctx xcontext.Context, request *job.
 
 // GetJobRequest fetches a job request from the storage layer
 func (jsm JobStorageManager) GetJobRequest(ctx xcontext.Context, jobID types.JobID) (*job.Request, error) {
-	return storage.GetJobRequest(ctx, jobID)
-}
-
-// GetJobRequest fetches a job request from the read-only storage layer
-func (jsm JobStorageManager) GetJobRequestAsync(ctx xcontext.Context, jobID types.JobID) (*job.Request, error) {
-	request, err := storageAsync.GetJobRequest(ctx, jobID)
-	if err != nil {
-		return nil, fmt.Errorf("could not fetch job request: %v", err)
+	if isStronglyConsistent(ctx) {
+		return storage.GetJobRequest(ctx, jobID)
 	}
-	return request, nil
+	return storageAsync.GetJobRequest(ctx, jobID)
 }
 
 // StoreReport submits a job run or final report to the storage layer
@@ -58,21 +50,20 @@ func (jsm JobStorageManager) StoreReport(ctx xcontext.Context, report *job.Repor
 
 // GetJobReport fetches a job report from the storage layer
 func (jsm JobStorageManager) GetJobReport(ctx xcontext.Context, jobID types.JobID) (*job.JobReport, error) {
-	return storage.GetJobReport(ctx, jobID)
+	if isStronglyConsistent(ctx) {
+		return storage.GetJobReport(ctx, jobID)
+	}
+
+	return storageAsync.GetJobReport(ctx, jobID)
 }
 
 // ListJobs returns list of job IDs matching the query
 func (jsm JobStorageManager) ListJobs(ctx xcontext.Context, query *JobQuery) ([]types.JobID, error) {
-	return storage.ListJobs(ctx, query)
-}
-
-// GetJobReportAsync fetches a job report from the read-only storage layer
-func (jsm JobStorageManager) GetJobReportAsync(ctx xcontext.Context, jobID types.JobID) (*job.JobReport, error) {
-	report, err := storageAsync.GetJobReport(ctx, jobID)
-	if err != nil {
-		return nil, err
+	if isStronglyConsistent(ctx) {
+		return storage.ListJobs(ctx, query)
 	}
-	return report, nil
+
+	return storageAsync.ListJobs(ctx, query)
 }
 
 // NewJobStorageManager creates a new JobStorageManager object

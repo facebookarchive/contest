@@ -9,12 +9,24 @@ import (
 	"fmt"
 
 	"github.com/facebookincubator/contest/pkg/config"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // storage defines the storage engine used by ConTest. It can be overridden
 // via the exported function SetStorage.
 var storage Storage
 var storageAsync Storage
+
+// ConsistencyModel hints at whether queries should go to the primary database
+// or any available replica (in which case, the guarantee is eventual consistency)
+type ConsistencyModel int
+
+const (
+	ConsistentReadAfterWrite ConsistencyModel = iota
+	ConsistentEventually
+)
+
+const consistencyModelKey = "storage_consistency_model"
 
 // Storage defines the interface that storage engines must implement
 type Storage interface {
@@ -83,4 +95,21 @@ func SetAsyncStorage(storageEngine Storage) error {
 	}
 	storageAsync = storageEngine
 	return nil
+}
+
+func isStronglyConsistent(ctx xcontext.Context) bool {
+	value := ctx.Value(consistencyModelKey)
+	ctx.Debugf("consistency model check: %v", value)
+
+	switch model := value.(type) {
+	case ConsistencyModel:
+		return model == ConsistentReadAfterWrite
+
+	default:
+		return true
+	}
+}
+
+func WithConsistencyModel(ctx xcontext.Context, model ConsistencyModel) xcontext.Context {
+	return xcontext.WithValue(ctx, consistencyModelKey, model)
 }

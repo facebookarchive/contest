@@ -6,8 +6,6 @@
 package storage
 
 import (
-	"fmt"
-	"os"
 	"testing"
 
 	"github.com/facebookincubator/contest/pkg/xcontext"
@@ -16,84 +14,115 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/facebookincubator/contest/pkg/event"
-	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/types"
 )
 
-var (
-	header = testevent.Header{
-		JobID:         types.JobID(123),
-		RunID:         types.RunID(456),
-		TestName:      "TestStep",
-		TestStepLabel: "TestLabel",
-	}
-	allowedEvents = []event.Name{
+type testEventEmitterFixture struct {
+	header          testevent.Header
+	allowedEvents   []event.Name
+	allowedMap      map[event.Name]bool
+	forbiddenEvents []event.Name
+	ctx             xcontext.Context
+}
+
+func mockTestEventEmitterData() *testEventEmitterFixture {
+	allowedEvents := []event.Name{
 		"TestEventAllowed1",
 		"TestEventAllowed2",
 	}
-	allowedMap = map[event.Name]bool{
-		allowedEvents[0]: true,
-		allowedEvents[1]: true,
+
+	return &testEventEmitterFixture{
+		header: testevent.Header{
+			JobID:         types.JobID(123),
+			RunID:         types.RunID(456),
+			TestName:      "TestStep",
+			TestStepLabel: "TestLabel",
+		},
+		allowedEvents: allowedEvents,
+		allowedMap: map[event.Name]bool{
+			allowedEvents[0]: true,
+			allowedEvents[1]: true,
+		},
+		forbiddenEvents: []event.Name{
+			"TestEventForbidden1",
+		},
+		ctx: logrusctx.NewContext(logger.LevelDebug),
 	}
-	forbiddenEvents = []event.Name{
-		"TestEventForbidden1",
-	}
-	ctx = logrusctx.NewContext(logger.LevelDebug)
-)
-
-type nullStorage struct{}
-
-func (n *nullStorage) StoreJobRequest(ctx xcontext.Context, request *job.Request) (types.JobID, error) {
-	return types.JobID(0), nil
-}
-func (n *nullStorage) GetJobRequest(ctx xcontext.Context, jobID types.JobID) (*job.Request, error) {
-	return nil, nil
-}
-func (n *nullStorage) StoreReport(ctx xcontext.Context, report *job.Report) error { return nil }
-func (n *nullStorage) GetJobReport(ctx xcontext.Context, jobID types.JobID) (*job.JobReport, error) {
-	return nil, nil
-}
-func (n *nullStorage) ListJobs(ctx xcontext.Context, query *JobQuery) ([]types.JobID, error) {
-	return nil, nil
-}
-func (n *nullStorage) StoreTestEvent(ctx xcontext.Context, event testevent.Event) error { return nil }
-func (n *nullStorage) GetTestEvents(ctx xcontext.Context, eventQuery *testevent.Query) ([]testevent.Event, error) {
-	return nil, nil
-}
-func (n *nullStorage) StoreFrameworkEvent(ctx xcontext.Context, event frameworkevent.Event) error {
-	return nil
-}
-func (n *nullStorage) GetFrameworkEvent(ctx xcontext.Context, eventQuery *frameworkevent.Query) ([]frameworkevent.Event, error) {
-	return nil, nil
-}
-
-func (n *nullStorage) Close() error {
-	return nil
-}
-
-func (n *nullStorage) Version() (uint64, error) {
-	return 0, nil
-}
-
-func TestMain(m *testing.M) {
-	if err := SetStorage(&nullStorage{}); err != nil {
-		panic(fmt.Sprintf("could not configure storage: %v", err))
-	}
-	os.Exit(m.Run())
 }
 
 func TestEmitUnrestricted(t *testing.T) {
-	em := NewTestEventEmitter(header)
-	require.NoError(t, em.Emit(ctx, testevent.Data{EventName: allowedEvents[0]}))
-	require.NoError(t, em.Emit(ctx, testevent.Data{EventName: allowedEvents[1]}))
-	require.NoError(t, em.Emit(ctx, testevent.Data{EventName: forbiddenEvents[0]}))
+	mockStorage(t)
+	f := mockTestEventEmitterData()
+
+	em := NewTestEventEmitter(f.header)
+	require.NoError(t, em.Emit(f.ctx, testevent.Data{EventName: f.allowedEvents[0]}))
+	require.NoError(t, em.Emit(f.ctx, testevent.Data{EventName: f.allowedEvents[1]}))
+	require.NoError(t, em.Emit(f.ctx, testevent.Data{EventName: f.forbiddenEvents[0]}))
 }
 
 func TestEmitRestricted(t *testing.T) {
-	em := NewTestEventEmitterWithAllowedEvents(header, &allowedMap)
-	require.NoError(t, em.Emit(ctx, testevent.Data{EventName: allowedEvents[0]}))
-	require.NoError(t, em.Emit(ctx, testevent.Data{EventName: allowedEvents[1]}))
-	require.Error(t, em.Emit(ctx, testevent.Data{EventName: forbiddenEvents[0]}))
+	mockStorage(t)
+	f := mockTestEventEmitterData()
+
+	em := NewTestEventEmitterWithAllowedEvents(f.header, &f.allowedMap)
+	require.NoError(t, em.Emit(f.ctx, testevent.Data{EventName: f.allowedEvents[0]}))
+	require.NoError(t, em.Emit(f.ctx, testevent.Data{EventName: f.allowedEvents[1]}))
+	require.Error(t, em.Emit(f.ctx, testevent.Data{EventName: f.forbiddenEvents[0]}))
+}
+
+type testEventFetcherFixture struct {
+	ctx xcontext.Context
+}
+
+func mockTestEventFetcherData() *testEventFetcherFixture {
+	return &testEventFetcherFixture{
+		ctx: logrusctx.NewContext(logger.LevelDebug),
+	}
+}
+
+func TestTestEventFetcherConsistency(t *testing.T) {
+	storage, storageAsync := mockStorage(t)
+	f := mockTestEventFetcherData()
+	ef := NewTestEventFetcher()
+
+	// test with default context
+	_, _ = ef.Fetch(f.ctx)
+	require.Equal(t, storage.GetEventRequestCount(), 1)
+	require.Equal(t, storageAsync.GetEventRequestCount(), 0)
+
+	// test with explicit strong consistency
+	ctx := WithConsistencyModel(f.ctx, ConsistentReadAfterWrite)
+	_, _ = ef.Fetch(ctx)
+	require.Equal(t, storage.GetEventRequestCount(), 2)
+	require.Equal(t, storageAsync.GetEventRequestCount(), 0)
+
+	// test with explicit relaxed consistency
+	ctx = WithConsistencyModel(f.ctx, ConsistentEventually)
+	_, _ = ef.Fetch(ctx)
+	require.Equal(t, storage.GetEventRequestCount(), 2)
+	require.Equal(t, storageAsync.GetEventRequestCount(), 1)
+}
+
+func TestFrameworkEventFetcherConsistency(t *testing.T) {
+	storage, storageAsync := mockStorage(t)
+	f := mockTestEventFetcherData()
+	ef := NewFrameworkEventFetcher()
+
+	// test with default context
+	_, _ = ef.Fetch(f.ctx)
+	require.Equal(t, storage.GetEventRequestCount(), 1)
+	require.Equal(t, storageAsync.GetEventRequestCount(), 0)
+
+	// test with explicit strong consistency
+	ctx := WithConsistencyModel(f.ctx, ConsistentReadAfterWrite)
+	_, _ = ef.Fetch(ctx)
+	require.Equal(t, storage.GetEventRequestCount(), 2)
+	require.Equal(t, storageAsync.GetEventRequestCount(), 0)
+
+	// test with explicit relaxed consistency
+	ctx = WithConsistencyModel(f.ctx, ConsistentEventually)
+	_, _ = ef.Fetch(ctx)
+	require.Equal(t, storage.GetEventRequestCount(), 2)
+	require.Equal(t, storageAsync.GetEventRequestCount(), 1)
 }

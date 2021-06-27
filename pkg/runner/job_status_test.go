@@ -43,26 +43,6 @@ func (fem dummyFrameworkEventManager) Fetch(ctx xcontext.Context, fields ...fram
 	}, nil
 }
 
-func (fem dummyFrameworkEventManager) FetchAsync(ctx xcontext.Context, fields ...frameworkevent.QueryField) ([]frameworkevent.Event, error) {
-	require.Len(fem.t, fields, 2)
-	require.Equal(fem.t, frameworkevent.QueryEventName(EventRunStarted), fields[0])
-	require.Equal(fem.t, frameworkevent.QueryJobID(1), fields[1])
-	return []frameworkevent.Event{
-		{
-			JobID:     1,
-			EventName: EventRunStarted,
-			Payload:   &[]json.RawMessage{json.RawMessage(`{"RunID":2}`)}[0],
-			EmitTime:  time.Unix(2, 0),
-		},
-		{
-			JobID:     1,
-			EventName: EventRunStarted,
-			Payload:   &[]json.RawMessage{json.RawMessage(`{"RunID":1}`)}[0],
-			EmitTime:  time.Unix(1, 0),
-		},
-	}, nil
-}
-
 func TestBuildRunStatuses(t *testing.T) {
 	ctx := xcontext.Background()
 	jr := &JobRunner{
