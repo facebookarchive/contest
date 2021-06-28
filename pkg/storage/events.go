@@ -62,7 +62,11 @@ func (ev TestEventFetcher) Fetch(ctx xcontext.Context, queryFields ...testevent.
 	if err != nil {
 		return nil, fmt.Errorf("unable to build a query: %w", err)
 	}
-	return storage.GetTestEvents(ctx, eventQuery)
+
+	if isStronglyConsistent(ctx) {
+		return storage.GetTestEvents(ctx, eventQuery)
+	}
+	return storageAsync.GetTestEvents(ctx, eventQuery)
 }
 
 // NewTestEventEmitter creates a new Emitter object associated with a Header
@@ -124,15 +128,9 @@ func (ev FrameworkEventFetcher) Fetch(ctx xcontext.Context, queryFields ...frame
 	if err != nil {
 		return nil, fmt.Errorf("unable to build a query: %w", err)
 	}
-	return storage.GetFrameworkEvent(ctx, eventQuery)
-}
 
-// FetchAsync retrieves events based on QueryFields that are used to build a Query object for FrameworkEvents
-// from read-only storage
-func (ev FrameworkEventFetcher) FetchAsync(ctx xcontext.Context, queryFields ...frameworkevent.QueryField) ([]frameworkevent.Event, error) {
-	eventQuery, err := frameworkevent.QueryFields(queryFields).BuildQuery()
-	if err != nil {
-		return nil, fmt.Errorf("unable to build a query: %w", err)
+	if isStronglyConsistent(ctx) {
+		return storage.GetFrameworkEvent(ctx, eventQuery)
 	}
 	return storageAsync.GetFrameworkEvent(ctx, eventQuery)
 }

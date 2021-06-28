@@ -26,17 +26,13 @@ func (fem emptyFrameworkEventManager) Fetch(ctx xcontext.Context, fields ...fram
 	return nil, nil
 }
 
-func (fem emptyFrameworkEventManager) FetchAsync(ctx xcontext.Context, fields ...frameworkevent.QueryField) ([]frameworkevent.Event, error) {
-	return nil, nil
-}
-
 func TestGetCurrentRunNoEvents(t *testing.T) {
 	mockRunner := JobRunner{
 		frameworkEventManager: emptyFrameworkEventManager{},
 		testEvManager:         storage.TestEventFetcher{},
 	}
 	// request a job that does not have any events at all
-	runID, err := mockRunner.GetCurrentRunAsync(xcontext.Background(), 1)
+	runID, err := mockRunner.GetCurrentRun(xcontext.Background(), 1)
 	require.NoError(t, err)
 	require.Equal(t, types.RunID(0), runID)
 }

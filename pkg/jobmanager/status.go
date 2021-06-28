@@ -16,10 +16,11 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/job"
+	"github.com/facebookincubator/contest/pkg/storage"
 )
 
 func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
-	ctx := ev.Context
+	ctx := storage.WithConsistencyModel(ev.Context, storage.ConsistentEventually)
 
 	msg := ev.Msg.(api.EventStatusMsg)
 	jobID := msg.JobID
@@ -30,7 +31,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 	}
 
 	// Look up job request.
-	req, err := jm.jsm.GetJobRequestAsync(ctx, jobID)
+	req, err := jm.jsm.GetJobRequest(ctx, jobID)
 	if err != nil {
 		evResp.Err = fmt.Errorf("failed to fetch request for job ID %d: %w", jobID, err)
 		return &evResp
@@ -59,7 +60,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 	}
 
 	// Fetch all the events associated to changes of state of the Job
-	jobEvents, err := jm.frameworkEvManager.FetchAsync(ctx,
+	jobEvents, err := jm.frameworkEvManager.Fetch(ctx,
 		frameworkevent.QueryJobID(jobID),
 		frameworkevent.QueryEventNames(job.JobStateEvents),
 	)
@@ -112,7 +113,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 		}
 	}
 
-	report, err := jm.jsm.GetJobReportAsync(ctx, jobID)
+	report, err := jm.jsm.GetJobReport(ctx, jobID)
 	if err != nil {
 		evResp.Err = fmt.Errorf("could not fetch job report: %v", err)
 		return &evResp
@@ -128,7 +129,7 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 	}
 
 	// Fetch the ID of the last run that was started
-	runID, err := jm.jobRunner.GetCurrentRunAsync(ev.Context, jobID)
+	runID, err := jm.jobRunner.GetCurrentRun(ctx, jobID)
 	if err != nil {
 		evResp.Err = fmt.Errorf("could not determine the current run id being executed: %v", err)
 		return &evResp
