@@ -43,6 +43,10 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 		return &evResp
 	}
 
+	// currentJob temporary object is just used as an interface to the job extended descriptor
+	// so populate it with the other necessary fields such as id (currently 0)
+	currentJob.ID = jobID
+
 	// Is it for our instance?
 	if jm.config.instanceTag != "" {
 		found := false
@@ -128,26 +132,17 @@ func (jm *JobManager) status(ev *api.Event) *api.EventResponse {
 		JobReport:   report,
 	}
 
-	// Fetch the ID of the last run that was started
-	runID, err := jm.jobRunner.GetCurrentRun(ctx, jobID)
+	jobStatus.RunStatuses, err = jm.jobRunner.BuildRunStatuses(ctx, currentJob)
 	if err != nil {
-		evResp.Err = fmt.Errorf("could not determine the current run id being executed: %v", err)
+		evResp.Err = fmt.Errorf("could not rebuild the statuses of the job: %v", err)
 		return &evResp
 	}
-	if runID == 0 {
-		// no runs
-		jobStatus.RunStatus = nil
-		evResp.Status = &jobStatus
-		evResp.Err = nil
-		return &evResp
+
+	if len(jobStatus.RunStatuses) > 0 {
+		// NOTE: deprecated, keeping for backwards compat
+		jobStatus.RunStatus = &jobStatus.RunStatuses[len(jobStatus.RunStatuses)-1]
 	}
-	runCoordinates := job.RunCoordinates{JobID: jobID, RunID: runID}
-	runStatus, err := jm.jobRunner.BuildRunStatus(ctx, runCoordinates, currentJob)
-	if err != nil {
-		evResp.Err = fmt.Errorf("could not rebuild the status of the job: %v", err)
-		return &evResp
-	}
-	jobStatus.RunStatus = runStatus
+
 	evResp.Status = &jobStatus
 	evResp.Err = nil
 	return &evResp
