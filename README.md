@@ -304,6 +304,8 @@ for many use cases, but if you need more feel free to contribute with a pull
 request, or to open an issue for a feature request. We are open to contributions
 that are useful to the community!
 
+[PLUGINS.md](ConTest’s Step Plugin Author’s Guide) explains the step plugin API.
+
 ### Job descriptors
 
 One of the main concepts in ConTest is the job descriptor. It describes how a test job will behave on each device under test.
