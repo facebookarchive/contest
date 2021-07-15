@@ -51,7 +51,7 @@ func initFlags(cmd string) {
 	flagListenAddr = flagSet.String("listenAddr", ":8080", "Listen address and port")
 	flagServerID = flagSet.String("serverID", "", "Set a static server ID, e.g. the host name or another unique identifier. If unset, will use the listener's default")
 	flagProcessTimeout = flagSet.Duration("processTimeout", api.DefaultEventTimeout, "API request processing timeout")
-	flagTargetLocker = flagSet.String("targetLocker", inmemory.Name, "Target locker implementation to use")
+	flagTargetLocker = flagSet.String("targetLocker", "auto", "Target locker implementation to use, \"auto\" follows DBURI setting")
 	flagInstanceTag = flagSet.String("instanceTag", "", "A tag for this instance. Server will only operate on jobs with this tag and will add this tag to the jobs it creates.")
 	flagLogLevel = flagSet.String("logLevel", "debug", "A log level, possible values: debug, info, warning, error, panic, fatal")
 	flagPauseTimeout = flagSet.Duration("pauseTimeout", 0, "SIGINT/SIGTERM shutdown timeout (seconds), after which pause will be escalated to cancellaton; -1 - no escalation, 0 - do not pause, cancel immediately")
@@ -149,6 +149,14 @@ func ServerMain(cmd string, args []string, sigs <-chan os.Signal) error {
 	}
 
 	// set Locker engine
+	if *flagTargetLocker == "auto" {
+		if *flagDBURI != "" {
+			*flagTargetLocker = dblocker.Name
+		} else {
+			*flagTargetLocker = inmemory.Name
+		}
+		log.Infof("Locker engine set to auto, using %s", *flagTargetLocker)
+	}
 	switch *flagTargetLocker {
 	case inmemory.Name:
 		target.SetLocker(inmemory.New(clk))

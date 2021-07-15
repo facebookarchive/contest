@@ -99,7 +99,6 @@ func (ts *E2ETestSuite) startServer(extraArgs ...string) {
 		fmt.Sprintf("--listenAddr=localhost:%d", ts.serverPort),
 		"--logLevel=debug",
 		"--dbURI", ts.dbURI,
-		"--targetLocker=DBLocker",
 	}
 	args = append(args, extraArgs...)
 	serverSigs := make(chan os.Signal)
