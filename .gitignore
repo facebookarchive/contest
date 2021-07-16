@@ -2,3 +2,4 @@ cmds/contest/contest
 cmds/clients/contestcli/contestcli
 .*.swp
 profile.out
+.DS_Store
