@@ -27,7 +27,8 @@ You can look at the tools implemented under [cmds/*](cmds/) for usage examples.
 
 ## Requirements
 
-ConTest is developed on Linux. It may work on other platforms, but it is only being actively tested on Linux.
+ConTest is developed and heavily tested in production on Linux with MySQL.
+There is some minimal testing with MacOS and MariaDB, but no production experience.
 You will also need a recent version of Go (we recommend at least Go 1.15 at the
 moment).
 
@@ -36,14 +37,16 @@ moment).
 
 We offer a few Docker files to help setup ConTest. The fastest way to
 have a ConTest instance up and running is to bring up the server and MySQL
-containers via the docker-compose configuration: just run
+containers via the default docker-compose configuration: just run
 `docker-compose up --build` from the root of the source tree.
+To use MariaDB instead, run `docker-compose -f docker-compose.mariadb.yml up --build`
 
-ConTest and MySQL containers can be also orchestrated separately:
+Containers can be also orchestrated separately:
 
 * [docker/mysql](docker/mysql) will configure and bring up a MySQL
   instance with a pre-populated ConTest database that you can use with a local
   instance. Just run `docker-compose mysql up` from the root of the source tree.
+* [docker/mariadb](docker/mariadb) is an alternative to MySQL. Don't start both!
 * [docker/contest](docker/contest) supports running ConTest as standalone instance
 as explained at the beginning of this section and also supports integration tests.
 For a full test run please see `run_tests.sh`.

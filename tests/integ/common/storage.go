@@ -14,7 +14,7 @@ import (
 
 func GetDatabaseURI() string {
 	if os.Getenv("CI") != "" {
-		return "contest:contest@tcp(mysql:3306)/contest_integ?parseTime=true"
+		return "contest:contest@tcp(dbstorage:3306)/contest_integ?parseTime=true"
 	} else {
 		return "contest:contest@tcp(localhost:3306)/contest_integ?parseTime=true"
 	}

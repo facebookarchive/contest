@@ -27,7 +27,7 @@ for d in $(go list ./... | grep -v vendor); do
 done
 
 # MySQL should be up by now.
-if ! mysqladmin -h mysql -P 3306 -u contest --protocol tcp --password=contest ping; then
+if ! mysqladmin -h dbstorage -P 3306 -u contest --protocol tcp --password=contest ping; then
     echo "MySQL is not ready!"
     exit 1
 fi

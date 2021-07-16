@@ -8,16 +8,16 @@ services:
         ports:
             - 8080:8080
         depends_on:
-            - mysql
+            - mariadb
         networks:
             - net
 
-    mysql:
+    mariadb:
         environment:
-            - MYSQL_RANDOM_ROOT_PASSWORD=true
+            - MARIADB_RANDOM_ROOT_PASSWORD=true
         build:
             context: .
-            dockerfile: docker/mysql/Dockerfile
+            dockerfile: docker/mariadb/Dockerfile
         ports:
             - 3306:3306
         networks:
