@@ -7,28 +7,35 @@ package server
 
 import (
 	"flag"
+	"fmt"
 	"os"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/benbjohnson/clock"
 
-	"github.com/facebookincubator/contest/cmds/plugins"
 	"github.com/facebookincubator/contest/pkg/api"
 	"github.com/facebookincubator/contest/pkg/config"
+	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/jobmanager"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/pluginregistry"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/userfunctions/donothing"
+	"github.com/facebookincubator/contest/pkg/userfunctions/ocp"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
 	"github.com/facebookincubator/contest/pkg/xcontext/logger"
-	"github.com/facebookincubator/contest/plugins/listeners/httplistener"
 	"github.com/facebookincubator/contest/plugins/storage/memory"
 	"github.com/facebookincubator/contest/plugins/storage/rdbms"
 	"github.com/facebookincubator/contest/plugins/targetlocker/dblocker"
 	"github.com/facebookincubator/contest/plugins/targetlocker/inmemory"
+
+	// the listener plugin
+	"github.com/facebookincubator/contest/plugins/listeners/httplistener"
 )
 
 var (
@@ -61,7 +68,74 @@ func initFlags(cmd string) {
 			"This is the maximum amount of time a job can stay paused safely.")
 }
 
-func ServerMain(cmd string, args []string, sigs <-chan os.Signal) error {
+var userFunctions = []map[string]interface{}{
+	ocp.Load(),
+	donothing.Load(),
+}
+
+var funcInitOnce sync.Once
+
+// PluginConfig contains the configuration for all the plugins desired in a
+// server instance.
+type PluginConfig struct {
+	TargetManagerLoaders []target.TargetManagerLoader
+	TestFetcherLoaders   []test.TestFetcherLoader
+	TestStepLoaders      []test.TestStepLoader
+	ReporterLoaders      []job.ReporterLoader
+}
+
+func registerPlugins(pluginRegistry *pluginregistry.PluginRegistry, pluginConfig *PluginConfig) error {
+	// register targetmanagers
+	for _, loader := range pluginConfig.TargetManagerLoaders {
+		name, factory := loader()
+		if err := pluginRegistry.RegisterTargetManager(name, factory); err != nil {
+			return err
+		}
+	}
+
+	// register testfetchers
+	for _, loader := range pluginConfig.TestFetcherLoaders {
+		name, factory := loader()
+		if err := pluginRegistry.RegisterTestFetcher(name, factory); err != nil {
+			return err
+		}
+	}
+
+	// register teststeps
+	for _, loader := range pluginConfig.TestStepLoaders {
+		name, factory, events := loader()
+		if err := pluginRegistry.RegisterTestStep(name, factory, events); err != nil {
+			return err
+		}
+	}
+
+	// register reporters
+	for _, loader := range pluginConfig.ReporterLoaders {
+		name, factory := loader()
+		if err := pluginRegistry.RegisterReporter(name, factory); err != nil {
+			return err
+		}
+	}
+
+	// TODO make listener also configurable from contest-generator.
+	// also register user functions here. TODO: make them configurable from contest-generator.
+	errCh := make(chan error, 1)
+	funcInitOnce.Do(func() {
+		for _, userFunction := range userFunctions {
+			for name, fn := range userFunction {
+				if err := test.RegisterFunction(name, fn); err != nil {
+					errCh <- fmt.Errorf("failed to load user function '%s': %w", name, err)
+					return
+				}
+			}
+		}
+	})
+
+	return nil
+}
+
+// Main is the main function that executes the ConTest server.
+func Main(pluginConfig *PluginConfig, cmd string, args []string, sigs <-chan os.Signal) error {
 	initFlags(cmd)
 	if err := flagSet.Parse(args); err != nil {
 		return err
@@ -80,6 +154,9 @@ func ServerMain(cmd string, args []string, sigs <-chan os.Signal) error {
 	defer cancel()
 
 	pluginRegistry := pluginregistry.NewPluginRegistry(ctx)
+	if err := registerPlugins(pluginRegistry, pluginConfig); err != nil {
+		return fmt.Errorf("failed to register plugins: %w", err)
+	}
 
 	var storageInstances []storage.Storage
 	defer func() {
@@ -170,10 +247,8 @@ func ServerMain(cmd string, args []string, sigs <-chan os.Signal) error {
 		log.Fatalf("Invalid target locker name %q", *flagTargetLocker)
 	}
 
-	plugins.Init(pluginRegistry, ctx.Logger())
-
 	// spawn JobManager
-	listener := httplistener.NewHTTPListener(*flagListenAddr)
+	listener := httplistener.New(*flagListenAddr)
 
 	opts := []jobmanager.Option{
 		jobmanager.APIOption(api.OptionEventTimeout(*flagProcessTimeout)),
