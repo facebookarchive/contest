@@ -22,18 +22,23 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/facebookincubator/contest/cmds/plugins"
 	"github.com/facebookincubator/contest/pkg/api"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
 	"github.com/facebookincubator/contest/pkg/xcontext/logger"
+	"github.com/facebookincubator/contest/plugins/reporters/noop"
+	"github.com/facebookincubator/contest/plugins/reporters/targetsuccess"
 	"github.com/facebookincubator/contest/plugins/targetlocker/dblocker"
+	"github.com/facebookincubator/contest/plugins/targetmanagers/targetlist"
+	"github.com/facebookincubator/contest/plugins/testfetchers/literal"
 	"github.com/facebookincubator/contest/plugins/teststeps/cmd"
+	"github.com/facebookincubator/contest/plugins/teststeps/sleep"
 	testsCommon "github.com/facebookincubator/contest/tests/common"
 	"github.com/facebookincubator/contest/tests/common/goroutine_leak_check"
 	"github.com/facebookincubator/contest/tests/integ/common"
@@ -67,7 +72,6 @@ func (ts *E2ETestSuite) SetupSuite() {
 	parts := strings.Split(ln.Addr().String(), ":")
 	ts.serverPort, _ = strconv.Atoi(parts[len(parts)-1])
 	ln.Close()
-	plugins.TargetManagers = append(plugins.TargetManagers, targetlist_with_state.Load)
 }
 
 func (ts *E2ETestSuite) TearDownSuite() {
@@ -85,7 +89,7 @@ func (ts *E2ETestSuite) SetupTest() {
 	require.NoError(ts.T(), st.(storage.ResettableStorage).Reset())
 	tl, err := dblocker.New(common.GetDatabaseURI())
 	require.NoError(ts.T(), err)
-	tl.ResetAllLocks(ctx)
+	_ = tl.ResetAllLocks(ctx)
 	tl.Close()
 	ts.st = st
 }
@@ -103,8 +107,19 @@ func (ts *E2ETestSuite) startServer(extraArgs ...string) {
 	args = append(args, extraArgs...)
 	serverSigs := make(chan os.Signal)
 	serverDone := make(chan struct{})
+	serverErr := make(chan error, 1)
 	go func() {
-		server.ServerMain("contest", args, serverSigs)
+		pc := server.PluginConfig{
+			TargetManagerLoaders: []target.TargetManagerLoader{
+				targetlist.Load,
+				targetlist_with_state.Load,
+			},
+			TestFetcherLoaders: []test.TestFetcherLoader{literal.Load},
+			TestStepLoaders:    []test.TestStepLoader{cmd.Load, sleep.Load},
+			ReporterLoaders:    []job.ReporterLoader{targetsuccess.Load, noop.Load},
+		}
+		err := server.Main(&pc, "contest", args, serverSigs)
+		serverErr <- err
 		close(serverDone)
 	}()
 	ts.serverDone = serverDone
@@ -119,7 +134,12 @@ func (ts *E2ETestSuite) startServer(extraArgs ...string) {
 		ctx.Infof("Server is up")
 		return
 	}
-	require.NoError(ts.T(), fmt.Errorf("Server failed to initialize"))
+	err := <-serverErr
+	if err != nil {
+		require.NoError(ts.T(), fmt.Errorf("Server failed to initialize: %w", err))
+	} else {
+		require.NoError(ts.T(), fmt.Errorf("Server failed to initialize but no error was returned"))
+	}
 }
 
 func (ts *E2ETestSuite) stopServer(timeout time.Duration) error {
@@ -133,10 +153,11 @@ func (ts *E2ETestSuite) stopServer(timeout time.Duration) error {
 	default:
 	}
 	close(ts.serverSigs)
+	shutdownTimeout := 5 * time.Second
 	select {
 	case <-ts.serverDone:
-	case <-time.After(5 * time.Second):
-		err = fmt.Errorf("Server failed to exit")
+	case <-time.After(shutdownTimeout):
+		err = fmt.Errorf("Server failed to exit within %s", shutdownTimeout)
 	}
 	ts.serverSigs = nil
 	ts.serverDone = nil
@@ -154,7 +175,7 @@ func (ts *E2ETestSuite) runClient(resp interface{}, extraArgs ...string) (string
 	if err == nil && resp != nil {
 		err = json.Unmarshal(stdout.Bytes(), resp)
 		if err != nil {
-			err = fmt.Errorf("%w, output:\n%s\n", err, stdout.String())
+			err = fmt.Errorf("%w, output:\n%s", err, stdout.String())
 		}
 	}
 	return stdout.String(), err

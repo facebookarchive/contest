@@ -28,7 +28,8 @@ type HTTPListener struct {
 	listenAddr string
 }
 
-func NewHTTPListener(listenAddr string) *HTTPListener {
+// New instantiates a new httplistener object.
+func New(listenAddr string) *HTTPListener {
 	return &HTTPListener{listenAddr: listenAddr}
 }
 
