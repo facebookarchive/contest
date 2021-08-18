@@ -8,6 +8,7 @@
 package test
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/api"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
+	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/jobmanager"
 	"github.com/facebookincubator/contest/pkg/logging"
@@ -38,10 +40,13 @@ import (
 	testsCommon "github.com/facebookincubator/contest/tests/common"
 	"github.com/facebookincubator/contest/tests/common/goroutine_leak_check"
 	testsIntegCommon "github.com/facebookincubator/contest/tests/integ/common"
+	readmetareporter "github.com/facebookincubator/contest/tests/plugins/reporters/readmeta"
+	"github.com/facebookincubator/contest/tests/plugins/targetmanagers/readmeta"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/crash"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/fail"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/noop"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/noreturn"
+	readmetastep "github.com/facebookincubator/contest/tests/plugins/teststeps/readmeta"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/slowecho"
 )
 
@@ -151,6 +156,29 @@ func pollForEvent(eventManager frameworkevent.EmitterFetcher, ev event.Name, job
 	}
 }
 
+func pollForTestEvent(eventManager testevent.Fetcher, ev event.Name, jobID types.JobID, timeout time.Duration) ([]testevent.Event, error) {
+	start := time.Now()
+	for {
+		select {
+		case <-time.After(10 * time.Millisecond):
+			queryFields := []testevent.QueryField{
+				testevent.QueryJobID(jobID),
+				testevent.QueryEventName(ev),
+			}
+			ev, err := eventManager.Fetch(xcontext.Background(), queryFields...)
+			if err != nil {
+				return nil, err
+			}
+			if len(ev) != 0 {
+				return ev, nil
+			}
+			if time.Since(start) > timeout {
+				return ev, fmt.Errorf("timeout")
+			}
+		}
+	}
+}
+
 type TestJobManagerSuite struct {
 	suite.Suite
 
@@ -172,9 +200,10 @@ type TestJobManagerSuite struct {
 
 	pluginRegistry *pluginregistry.PluginRegistry
 
-	jsm          storage.JobStorageManager
-	eventManager frameworkevent.EmitterFetcher
-	targetLocker target.Locker
+	jsm              storage.JobStorageManager
+	eventManager     frameworkevent.EmitterFetcher
+	testEventManager testevent.Fetcher
+	targetLocker     target.Locker
 
 	// API listener
 	listener *TestListener
@@ -270,6 +299,7 @@ func (suite *TestJobManagerSuite) SetupTest() {
 
 	jsm := storage.NewJobStorageManager()
 	eventManager := storage.NewFrameworkEventEmitterFetcher()
+	testEventManager := storage.NewTestEventFetcher()
 
 	// TODO(rojer): Use mock clock to speed up the tests.
 	// suite.clock = clock.NewMock()
@@ -279,15 +309,19 @@ func (suite *TestJobManagerSuite) SetupTest() {
 
 	suite.jsm = jsm
 	suite.eventManager = eventManager
+	suite.testEventManager = testEventManager
 
 	pr := pluginregistry.NewPluginRegistry(xcontext.Background())
 	pr.RegisterTargetManager(targetlist.Name, targetlist.New)
+	pr.RegisterTargetManager(readmeta.Name, readmeta.New)
 	pr.RegisterTestFetcher(literal.Name, literal.New)
+	pr.RegisterReporter(readmetareporter.Name, readmetareporter.New)
 	pr.RegisterReporter(targetsuccess.Name, targetsuccess.New)
 	pr.RegisterTestStep(noop.Name, noop.New, noop.Events)
 	pr.RegisterTestStep(fail.Name, fail.New, fail.Events)
 	pr.RegisterTestStep(crash.Name, crash.New, crash.Events)
 	pr.RegisterTestStep(noreturn.Name, noreturn.New, noreturn.Events)
+	pr.RegisterTestStep(readmetastep.Name, readmetastep.New, readmetastep.Events)
 	pr.RegisterTestStep(slowecho.Name, slowecho.New, slowecho.Events)
 	suite.pluginRegistry = pr
 
@@ -592,6 +626,35 @@ func (suite *TestJobManagerSuite) TestJobManagerJobStartSingle() {
 	ev, err = pollForEvent(suite.eventManager, job.EventJobCompleted, jobID, 1*time.Second)
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), 1, len(ev))
+}
+
+func (suite *TestJobManagerSuite) TestJobManagerTargetManagerMetadataAvailable() {
+	suite.startJobManager(false /* resumeJobs */)
+
+	jobID, err := suite.startJob(jobDescriptorReadmeta)
+	require.NoError(suite.T(), err)
+
+	_, err = suite.jsm.GetJobRequest(suite.jmCtx, jobID)
+	require.NoError(suite.T(), err)
+
+	r, err := suite.jsm.GetJobRequest(suite.jmCtx, jobID+1)
+	require.Error(suite.T(), err)
+	require.NotEqual(suite.T(), nil, r)
+
+	// JobManager will emit an EventJobCompleted when the Job completes
+	ev, err := pollForEvent(suite.eventManager, job.EventJobCompleted, jobID, 1*time.Second)
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), 1, len(ev))
+
+	// Validate IDs
+	ev2, err := pollForTestEvent(suite.testEventManager, readmetastep.MetadataEventName, jobID, 1*time.Second)
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), 1, len(ev2))
+	pl := make(map[string]int)
+	err = json.Unmarshal(*ev2[0].Data.Payload, &pl)
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), int(jobID), pl["job_id"])
+	require.Equal(suite.T(), 1, pl["run_id"])
 }
 
 func (suite *TestJobManagerSuite) TestJobManagerJobReport() {

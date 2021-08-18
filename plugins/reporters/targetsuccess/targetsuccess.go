@@ -6,13 +6,13 @@
 package targetsuccess
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/lib/comparison"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Name defines the name of the reporter used within the plugin registry
@@ -73,7 +73,7 @@ func (ts *TargetSuccessReporter) Name() string {
 }
 
 // RunReport calculates the report to be associated with a job run.
-func (ts *TargetSuccessReporter) RunReport(ctx context.Context, parameters interface{}, runStatus *job.RunStatus, ev testevent.Fetcher) (bool, interface{}, error) {
+func (ts *TargetSuccessReporter) RunReport(ctx xcontext.Context, parameters interface{}, runStatus *job.RunStatus, ev testevent.Fetcher) (bool, interface{}, error) {
 
 	var (
 		success, fail uint64
@@ -125,7 +125,7 @@ func (ts *TargetSuccessReporter) RunReport(ctx context.Context, parameters inter
 }
 
 // FinalReport calculates the final report to be associated to a job.
-func (ts *TargetSuccessReporter) FinalReport(ctx context.Context, parameters interface{}, runStatuses []job.RunStatus, ev testevent.Fetcher) (bool, interface{}, error) {
+func (ts *TargetSuccessReporter) FinalReport(ctx xcontext.Context, parameters interface{}, runStatuses []job.RunStatus, ev testevent.Fetcher) (bool, interface{}, error) {
 	return false, nil, fmt.Errorf("final reporting not implemented yet in %s", Name)
 }
 

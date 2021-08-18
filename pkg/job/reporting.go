@@ -7,12 +7,12 @@ package job
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Reporting is the configuration section that determines how to report the
@@ -49,8 +49,8 @@ type Reporter interface {
 
 	Name() string
 
-	RunReport(ctx context.Context, parameters interface{}, runStatus *RunStatus, ev testevent.Fetcher) (bool, interface{}, error)
-	FinalReport(ctx context.Context, parameters interface{}, runStatuses []RunStatus, ev testevent.Fetcher) (bool, interface{}, error)
+	RunReport(ctx xcontext.Context, parameters interface{}, runStatus *RunStatus, ev testevent.Fetcher) (bool, interface{}, error)
+	FinalReport(ctx xcontext.Context, parameters interface{}, runStatuses []RunStatus, ev testevent.Fetcher) (bool, interface{}, error)
 }
 
 // ReporterBundle bundles the selected Reporter together with its parameters
