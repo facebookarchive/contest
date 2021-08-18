@@ -126,6 +126,8 @@ func (tr *TestRunner) Run(
 		"job_id": jobID,
 		"run_id": runID,
 	})
+	ctx = xcontext.WithValue(ctx, types.KeyJobID, jobID)
+	ctx = xcontext.WithValue(ctx, types.KeyRunID, runID)
 
 	ctx.Debugf("== test runner starting job %d, run %d", jobID, runID)
 	resumeState, err := tr.run(ctx.WithTag("phase", "run"), t, targets, jobID, runID, resumeState)

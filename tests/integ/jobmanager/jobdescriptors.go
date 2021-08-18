@@ -292,3 +292,46 @@ var jobDescriptorSlowEcho2 = descriptorMust2(&templateData{
        "TestName": "IntegrationTest: resume"
    }`,
 })
+
+var jobDescriptorReadmeta = `
+{
+    "JobName": "test job",
+    "Runs": 1,
+    "RunInterval": "5s",
+    "Tags": [
+        "integration_testing"
+    ],
+    "TestDescriptors": [
+        {
+            "TargetManagerName": "readmeta",
+            "TargetManagerAcquireParameters": {},
+            "TargetManagerReleaseParameters": {},
+            "TestFetcherName": "literal",
+            "TestFetcherFetchParameters": {
+                "Steps": [
+                    {
+                        "name": "readmeta",
+                        "label": "readmeta_label",
+                        "parameters": {}
+                    }
+                ],
+                "TestName": "IntegrationTest: noop"
+            }
+        }
+    ],
+    "Reporting": {
+        "RunReporters": [
+            {
+                "Name": "readmeta",
+                "Parameters": {}
+            }
+        ],
+        "FinalReporters": [
+            {
+                "Name": "readmeta",
+                "Parameters": {}
+            }
+        ]
+    }
+}
+`

@@ -12,6 +12,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
@@ -57,7 +58,10 @@ func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.Te
 			if !ok {
 				return nil, nil
 			}
-			ctx.Infof("Running on target %s with text '%s'", target, params.GetOne("text"))
+			// guaranteed to work here
+			jobID, _ := types.JobIDFromContext(ctx)
+			runID, _ := types.RunIDFromContext(ctx)
+			ctx.Infof("This is job %d, run %d on target %s with text '%s'", jobID, runID, params.GetOne("text"))
 			ch.Out <- test.TestStepResult{Target: target}
 		case <-ctx.Done():
 			return nil, nil

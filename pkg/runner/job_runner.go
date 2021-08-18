@@ -71,6 +71,9 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 	testID := 1
 	keepJobEntry := false
 
+	// Values are for plugins to read...
+	ctx = xcontext.WithValue(ctx, types.KeyJobID, j.ID)
+	// .. Fields are for structured logging
 	ctx, jobCancel := xcontext.WithCancel(ctx.WithField("job_id", j.ID))
 
 	jr.jobsMapLock.Lock()
@@ -106,7 +109,8 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 	var runErr error
 
 	for ; runID <= types.RunID(j.Runs) || j.Runs == 0; runID++ {
-		runCtx := ctx.WithField("run_id", runID)
+		runCtx := xcontext.WithValue(ctx, types.KeyRunID, runID)
+		runCtx = runCtx.WithField("run_id", runID)
 		if delay > 0 {
 			nextRun := jr.clock.Now().Add(delay)
 			runCtx.Infof("Sleeping %s before the next run...", delay)
@@ -157,7 +161,7 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 					return
 				}
 				if len(targets) == 0 {
-					targets, err = bundle.TargetManager.Acquire(ctx, j.ID, j.TargetManagerAcquireTimeout+jr.targetLockDuration, bundle.AcquireParameters, tl)
+					targets, err = bundle.TargetManager.Acquire(runCtx, j.ID, j.TargetManagerAcquireTimeout+jr.targetLockDuration, bundle.AcquireParameters, tl)
 					if err != nil {
 						errCh <- err
 						return
@@ -250,7 +254,7 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 				// is simpler on the user's side. We run it in a goroutine in
 				// order to use a timeout for target acquisition. If Release fails, whether
 				// due to an error or for a timeout, the whole Job is considered failed
-				err := bundle.TargetManager.Release(ctx, j.ID, targets, bundle.ReleaseParameters)
+				err := bundle.TargetManager.Release(runCtx, j.ID, targets, bundle.ReleaseParameters)
 				// Announce that targets have been released
 				_ = jr.emitTargetEvents(runCtx, testEventEmitter, targets, target.EventTargetReleased)
 				// Stop refreshing the targets.
@@ -295,7 +299,7 @@ func (jr *JobRunner) Run(ctx xcontext.Context, j *job.Job, resumeState *job.Paus
 				ctx.Warnf("could not build run status for job %d: %v. Run report will not execute", j.ID, err)
 				continue
 			}
-			success, data, err := bundle.Reporter.RunReport(ctx, bundle.Parameters, runStatus, ev)
+			success, data, err := bundle.Reporter.RunReport(runCtx, bundle.Parameters, runStatus, ev)
 			if err != nil {
 				ctx.Warnf("Run reporter failed while calculating run results, proceeding anyway: %v", err)
 			} else {
