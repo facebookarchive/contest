@@ -111,10 +111,9 @@ func (ts *FileUpload) Run(ctx xcontext.Context, ch test.TestStepChannels, params
 				return fmt.Errorf("error creating an archive: %v", err)
 			}
 			fmt.Println("Tar archive created successfully")
-			path = path + ".tar.gz"
 			filename = filename + ".tar.gz"
 			// Upload file
-			url, err = ts.upload(path, filename, buf.Bytes())
+			url, err = ts.upload(filename, buf.Bytes())
 			if err != nil {
 				return fmt.Errorf("could not upload the file: %v", err)
 			}
@@ -125,7 +124,7 @@ func (ts *FileUpload) Run(ctx xcontext.Context, ch test.TestStepChannels, params
 				return fmt.Errorf("could not read the file: %v", err)
 			}
 			// Upload file
-			url, err = ts.upload(path, filename, bodyBytes)
+			url, err = ts.upload(filename, bodyBytes)
 			if err != nil {
 				return fmt.Errorf("could not upload the file: %v", err)
 			}
@@ -263,7 +262,7 @@ func addFileToArchive(tarwriter *tar.Writer, filename string) error {
 }
 
 // Upload the file that is specified in the JobDescritor
-func (ts *FileUpload) upload(path string, filename string, gzbuffer []byte) (string, error) {
+func (ts *FileUpload) upload(filename string, gzbuffer []byte) (string, error) {
 	// Create a single AWS session (we can re use this if we're uploading many files)
 	s, err := session.NewSession(&aws.Config{Region: aws.String(ts.s3region),
 		Credentials: credentials.NewSharedCredentials(
