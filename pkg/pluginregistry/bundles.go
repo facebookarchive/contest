@@ -8,7 +8,6 @@ package pluginregistry
 import (
 	"fmt"
 
-	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
@@ -16,13 +15,17 @@ import (
 )
 
 // NewTestStepBundle creates a TestStepBundle from a TestStepDescriptor
-func (r *PluginRegistry) NewTestStepBundle(ctx xcontext.Context, testStepDescriptor test.TestStepDescriptor, allowedEvents map[event.Name]bool) (*test.TestStepBundle, error) {
+func (r *PluginRegistry) NewTestStepBundle(ctx xcontext.Context, testStepDescriptor test.TestStepDescriptor) (*test.TestStepBundle, error) {
 	testStep, err := r.NewTestStep(testStepDescriptor.Name)
 	if err != nil {
 		return nil, fmt.Errorf("could not get the desired TestStep (%s): %v", testStepDescriptor.Name, err)
 	}
 	if err := testStep.ValidateParameters(ctx, testStepDescriptor.Parameters); err != nil {
 		return nil, fmt.Errorf("could not validate parameters for test step %s: %v", testStepDescriptor.Name, err)
+	}
+	allowedEvents, err := r.NewTestStepEvents(testStepDescriptor.Name)
+	if err != nil {
+		return nil, err
 	}
 	label := testStepDescriptor.Label
 	if label == "" {

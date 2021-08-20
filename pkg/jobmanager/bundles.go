@@ -68,16 +68,9 @@ func newBundlesFromSteps(ctx xcontext.Context, descriptors []*test.TestStepDescr
 		if err := limits.NewValidator().ValidateTestStepLabel(descriptor.Label); err != nil {
 			return nil, err
 		}
-		tse, err := registry.NewTestStepEvents(descriptor.Name)
-		if err != nil {
-			return nil, err
-		}
-		tsb, err := registry.NewTestStepBundle(ctx, *descriptor, tse)
+		tsb, err := registry.NewTestStepBundle(ctx, *descriptor)
 		if err != nil {
 			return nil, fmt.Errorf("NewStepBundle for test step '%s' with index %d failed: %w", descriptor.Name, idx, err)
-		}
-		if err != nil {
-			return nil, err
 		}
 		stepBundles = append(stepBundles, *tsb)
 	}

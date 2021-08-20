@@ -118,7 +118,7 @@ func newStep(label, name string, params *test.TestStepParameters) test.TestStepB
 	if params != nil {
 		td.Parameters = *params
 	}
-	sb, err := pluginRegistry.NewTestStepBundle(ctx, td, nil)
+	sb, err := pluginRegistry.NewTestStepBundle(ctx, td)
 	if err != nil {
 		panic(fmt.Sprintf("failed to create test step bundle: %v", err))
 	}
