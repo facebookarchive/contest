@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -45,14 +46,14 @@ var Events = []event.Name{
 
 // FileUpload is used to retrieve all the parameter, the plugin needs.
 type FileUpload struct {
-	localpath     *test.Param // Path to file that shall be uploaded
-	filename      *test.Param // Filename to file that shall be uploaded
-	s3region      string      // AWS server region that shall be used
-	s3bucket      string      // AWS Bucket name
-	s3path        string      // Path where in the bucket to upload the file
-	s3credfile    string      // Path to the AWS credential file to authenticate the session
-	s3credprofile string      // Profile of the AWS credential file that shall be used
-	compress      bool        // Bool that defines if the data should be compressed to gzip before upload
+	localPath     *test.Param // Path to file that shall be uploaded
+	fileName      *test.Param // Filename to file that shall be uploaded
+	s3Region      string      // AWS server region that shall be used
+	s3Bucket      string      // AWS Bucket name
+	s3Path        string      // Path where in the bucket to upload the file
+	s3CredFile    string      // Path to the AWS credential file to authenticate the session
+	s3CredProfile string      // Profile of the AWS credential file that shall be used
+	compGzip      bool        // Bool that defines if the data should be compressed to gzip before upload
 }
 
 // Datatype for the emmiting the URL Event
@@ -91,18 +92,18 @@ func (ts *FileUpload) Run(ctx xcontext.Context, ch test.TestStepChannels, params
 	}
 	f := func(ctx xcontext.Context, target *target.Target) error {
 		// expand args
-		path, err := ts.localpath.Expand(target)
+		path, err := ts.localPath.Expand(target)
 		if err != nil {
-			return fmt.Errorf("failed to expand argument '%s': %v", ts.localpath, err)
+			return fmt.Errorf("failed to expand argument '%s': %v", ts.localPath, err)
 		}
-		filename, err := ts.filename.Expand(target)
+		filename, err := ts.fileName.Expand(target)
 		if err != nil {
-			return fmt.Errorf("failed to expand argument dir '%s': %v", ts.filename, err)
+			return fmt.Errorf("failed to expand argument dir '%s': %v", ts.fileName, err)
 		}
 		// bodyBytes will contain the file data to upload it
 		var bodyBytes []byte
 		// Compress if compress parameter is true
-		if ts.compress {
+		if ts.compGzip {
 			// Create buffer for the compressed data
 			var buf bytes.Buffer
 			// Create the archive and write the output to the "out" Writer
@@ -138,12 +139,12 @@ func (ts *FileUpload) Run(ctx xcontext.Context, ch test.TestStepChannels, params
 func (ts *FileUpload) validateAndPopulate(params test.TestStepParameters) error {
 	// Retrieving parameter as json Raw.Message
 	// validate path and filename
-	ts.localpath = params.GetOne("path")
-	if ts.localpath.IsEmpty() {
+	ts.localPath = params.GetOne("path")
+	if ts.localPath.IsEmpty() {
 		return fmt.Errorf("missing or empty 'path' parameter")
 	}
-	ts.filename = params.GetOne("filename")
-	if ts.filename.IsEmpty() {
+	ts.fileName = params.GetOne("filename")
+	if ts.fileName.IsEmpty() {
 		return fmt.Errorf("missing or empty 'filename' parameter")
 	}
 
@@ -153,33 +154,33 @@ func (ts *FileUpload) validateAndPopulate(params test.TestStepParameters) error 
 	if param.IsEmpty() {
 		return fmt.Errorf("missing or empty 's3region' parameter")
 	}
-	ts.s3region = param.String()
+	ts.s3Region = param.String()
 	// validate s3bucket
 	param = params.GetOne("s3bucket")
 	if param.IsEmpty() {
 		return fmt.Errorf("missing or empty 's3bucket' parameter")
 	}
-	ts.s3bucket = param.String()
+	ts.s3Bucket = param.String()
 	// validate s3path
 	param = params.GetOne("s3path")
 	if param.IsEmpty() {
 		return fmt.Errorf("missing or empty 's3path' parameter")
 	}
-	ts.s3path = param.String()
+	ts.s3Path = param.String()
 	// retrieve s3credfile
-	ts.s3credfile = params.GetOne("s3credfile").String()
+	ts.s3CredFile = params.GetOne("s3credfile").String()
 	// retrieve s3credprofile
-	ts.s3credprofile = params.GetOne("s3credprofile").String()
+	ts.s3CredProfile = params.GetOne("s3credprofile").String()
 
 	// Retrieving parameter as bool
 	// validate compress
-	param = params.GetOne("compress")
+	param = params.GetOne("compgzip")
 	if !param.IsEmpty() {
 		v, err := strconv.ParseBool(param.String())
 		if err != nil {
-			return fmt.Errorf("invalid non-boolean `emit_URL` parameter: %v", err)
+			return fmt.Errorf("invalid non-boolean `compgzip` parameter: %v", err)
 		}
-		ts.compress = v
+		ts.compGzip = v
 	}
 	return nil
 }
@@ -254,10 +255,10 @@ func addFileToArchive(tarwriter *tar.Writer, filename string, ctx xcontext.Conte
 // Upload the file that is specified in the JobDescritor
 func (ts *FileUpload) upload(filename string, data []byte, ctx xcontext.Context) (string, error) {
 	// Create a single AWS session (we can re use this if we're uploading many files)
-	s, err := session.NewSession(&aws.Config{Region: aws.String(ts.s3region),
+	s, err := session.NewSession(&aws.Config{Region: aws.String(ts.s3Region),
 		Credentials: credentials.NewSharedCredentials(
-			ts.s3credfile,    // your credential file path (default if empty)
-			ts.s3credprofile, // profile name (default if empty)
+			ts.s3CredFile,    // your credential file path (default if empty)
+			ts.s3CredProfile, // profile name (default if empty)
 		)})
 	if err != nil {
 		return "", fmt.Errorf("could not open a new session: %w", err)
@@ -265,12 +266,13 @@ func (ts *FileUpload) upload(filename string, data []byte, ctx xcontext.Context)
 	currentTime := time.Now()
 	// Config settings: this is where you choose the bucket, filename, content-type etc.
 	// of the file you're uploading.
-	fileName := fmt.Sprintf("%s/%s_%s", ts.s3path, currentTime.Format("20060102_150405"), filename)
+	uploadPath := strings.Join([]string{ts.s3Path, currentTime.Format("20060102_150405")}, "/")
+	uploadPath = strings.Join([]string{uploadPath, filename}, "_")
 
 	// Uploading the file
 	_, err = s3.New(s).PutObject(&s3.PutObjectInput{
-		Bucket:               aws.String(ts.s3bucket),
-		Key:                  aws.String(fileName),
+		Bucket:               aws.String(ts.s3Bucket),
+		Key:                  aws.String(uploadPath),
 		ACL:                  aws.String("public-read"),
 		Body:                 bytes.NewReader(data),
 		ContentLength:        aws.Int64(int64(len(data))),
@@ -284,6 +286,6 @@ func (ts *FileUpload) upload(filename string, data []byte, ctx xcontext.Context)
 		ctx.Infof("Pushed the file to S3 Bucket! \n")
 	}
 	// Create download link for public ACL
-	url := "https://" + ts.s3bucket + ".s3.amazonaws.com/" + fileName
+	url := strings.Join([]string{"https://", ts.s3Bucket, ".s3.amazonaws.com/", uploadPath}, "")
 	return url, nil
 }
