@@ -254,7 +254,8 @@ func addFileToArchive(tarwriter *tar.Writer, filename string, ctx xcontext.Conte
 
 // Upload the file that is specified in the JobDescritor
 func (ts *FileUpload) upload(filename string, data []byte, ctx xcontext.Context) (string, error) {
-	// Create a single AWS session (we can re use this if we're uploading many files)
+
+	// Create an AWS session
 	s, err := session.NewSession(&aws.Config{Region: aws.String(ts.s3Region),
 		Credentials: credentials.NewSharedCredentials(
 			ts.s3CredFile,    // your credential file path (default if empty)
@@ -263,9 +264,9 @@ func (ts *FileUpload) upload(filename string, data []byte, ctx xcontext.Context)
 	if err != nil {
 		return "", fmt.Errorf("could not open a new session: %w", err)
 	}
+
+	// Creating an upload path where the file should be uploaded with a timestamp
 	currentTime := time.Now()
-	// Config settings: this is where you choose the bucket, filename, content-type etc.
-	// of the file you're uploading.
 	uploadPath := strings.Join([]string{ts.s3Path, currentTime.Format("20060102_150405")}, "/")
 	uploadPath = strings.Join([]string{uploadPath, filename}, "_")
 
@@ -283,7 +284,7 @@ func (ts *FileUpload) upload(filename string, data []byte, ctx xcontext.Context)
 	if err != nil {
 		return "", fmt.Errorf("could not upload the file: %w", err)
 	} else {
-		ctx.Infof("Pushed the file to S3 Bucket! \n")
+		ctx.Infof("Pushed the file to S3 Bucket!")
 	}
 	// Create download link for public ACL
 	url := strings.Join([]string{"https://", ts.s3Bucket, ".s3.amazonaws.com/", uploadPath}, "")
