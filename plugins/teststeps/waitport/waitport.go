@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/event"
@@ -57,6 +58,7 @@ func (ts *WaitPort) Run(ctx xcontext.Context, ch test.TestStepChannels, inputPar
 		}
 
 		// Emit EventCmdStart
+		// Can emit duplicate events on server restart / job resumption
 		payload, err := json.Marshal(targetParams)
 		if err != nil {
 			ctx.Warnf("Cannot encode payload for %T: %v", params, err)
@@ -88,6 +90,7 @@ func (ts *WaitPort) Run(ctx xcontext.Context, ch test.TestStepChannels, inputPar
 			}
 		}
 
+		// The timeout restarts after a server restart/resume
 		finishedContext, cancel := context.WithTimeout(ctx, targetParams.Timeout)
 		defer cancel()
 
@@ -150,6 +153,15 @@ func Load() (string, test.TestStepFactory, []event.Name) {
 	return Name, New, Events
 }
 
+var protocolOptions = []string{
+	"tcp",
+	"tcp4",
+	"tcp6",
+	"udp",
+	"udp4",
+	"udp6",
+}
+
 type parameters struct {
 	target        *test.Param
 	port          int
@@ -183,6 +195,19 @@ func parseParameters(params test.TestStepParameters) (*parameters, error) {
 	if len(protocols) != 1 {
 		return nil, errors.New("a single 'protocol' should be provided")
 	}
+	protocol := strings.ToLower(protocols[0].String())
+
+	isValidProtocol := func() bool {
+		for _, opt := range protocolOptions {
+			if opt == protocol {
+				return true
+			}
+		}
+		return false
+	}()
+	if !isValidProtocol {
+		return nil, fmt.Errorf("'protocol' should be one of [%s]", strings.Join(protocolOptions, ", "))
+	}
 
 	timeout, err := parseDurationParam(params, "timeout")
 	if err != nil {
@@ -196,7 +221,7 @@ func parseParameters(params test.TestStepParameters) (*parameters, error) {
 	return &parameters{
 		target:        target,
 		port:          int(port),
-		protocol:      protocols[0].String(),
+		protocol:      protocol,
 		checkInterval: checkInterval,
 		timeout:       timeout,
 	}, nil
