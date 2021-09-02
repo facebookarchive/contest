@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
@@ -69,7 +68,7 @@ func (ts FileUpload) Name() string {
 func emitEvent(ctx xcontext.Context, name event.Name, payload interface{}, tgt *target.Target, ev testevent.Emitter) error {
 	payloadStr, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("cannot encode payload for event '%s': %v", name, err)
+		return fmt.Errorf("cannot encode payload for event '%s': %w", name, err)
 	}
 	rm := json.RawMessage(payloadStr)
 	evData := testevent.Data{
@@ -78,7 +77,7 @@ func emitEvent(ctx xcontext.Context, name event.Name, payload interface{}, tgt *
 		Payload:   &rm,
 	}
 	if err := ev.Emit(ctx, evData); err != nil {
-		return fmt.Errorf("cannot emit event EventURL: %v", err)
+		return fmt.Errorf("cannot emit event EventURL: %w", err)
 	}
 	return nil
 }
@@ -104,19 +103,16 @@ func (ts *FileUpload) Run(ctx xcontext.Context, ch test.TestStepChannels, params
 		var bodyBytes []byte
 		// Compress if compress parameter is true
 		if ts.compGzip {
-			// Create buffer for the compressed data
-			var buf bytes.Buffer
 			// Create the archive and write the output to the "out" Writer
-			buf, err = createTarArchive(path, buf, ctx)
+			buf, err := createTarArchive(path, ctx)
 			if err != nil {
 				return fmt.Errorf("error creating an archive: %v", err)
 			}
-			fmt.Println("Tar archive created successfully")
 			filename = filename + ".tar.gz"
 			bodyBytes = buf.Bytes()
 		} else {
 			// Read the file that should be uploaded
-			bodyBytes, err = ioutil.ReadFile(path)
+			bodyBytes, err = os.ReadFile(path)
 			if err != nil {
 				return fmt.Errorf("could not read the file: %v", err)
 			}
@@ -128,7 +124,7 @@ func (ts *FileUpload) Run(ctx xcontext.Context, ch test.TestStepChannels, params
 		}
 		// Emit URL event to get the url into the report
 		if err := emitEvent(ctx, EventURL, eventURLPayload{Msg: url}, target, ev); err != nil {
-			return fmt.Errorf("failed to emit event: %v", err)
+			return fmt.Errorf("failed to emit event: %w", err)
 		}
 		return nil
 	}
@@ -201,7 +197,9 @@ func Load() (string, test.TestStepFactory, []event.Name) {
 }
 
 // createTarArchive creates compressed data writer and invokes addFileToArchive
-func createTarArchive(file string, buf bytes.Buffer, ctx xcontext.Context) (bytes.Buffer, error) {
+func createTarArchive(file string, ctx xcontext.Context) (*bytes.Buffer, error) {
+	// Create buffer for the compressed data
+	var buf bytes.Buffer
 	// Create gzip and tar writers
 	gzwriter := gzip.NewWriter(&buf)
 	defer gzwriter.Close()
@@ -210,9 +208,9 @@ func createTarArchive(file string, buf bytes.Buffer, ctx xcontext.Context) (byte
 	// Write file into tar archive
 	err := addFileToArchive(tarwriter, file, ctx)
 	if err != nil {
-		return buf, err
+		return &buf, err
 	}
-	return buf, nil
+	return &buf, nil
 }
 
 // addFileToArchive takes the data and writes it into the tar archive
