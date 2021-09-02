@@ -3,6 +3,7 @@ module github.com/facebookincubator/contest
 go 1.15
 
 require (
+	github.com/aws/aws-sdk-go v1.27.0
 	github.com/benbjohnson/clock v1.1.0
 	github.com/chappjc/logrus-prefix v0.0.0-20180227015900-3a1d64819adb
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
