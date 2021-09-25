@@ -8,7 +8,8 @@ services:
         ports:
             - 8080:8080
         depends_on:
-            - mysql
+            mysql:
+                condition: service_healthy
         networks:
             - net
 
@@ -20,6 +21,11 @@ services:
             dockerfile: docker/mysql/Dockerfile
         ports:
             - 3306:3306
+        healthcheck:
+            test: ["CMD", "mysqladmin", "ping", "-h127.0.0.1", "-ucontest", "-pcontest"]
+            interval: 5s
+            timeout: 1s
+            retries: 5
         networks:
             net:
                 aliases:

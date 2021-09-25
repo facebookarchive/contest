@@ -40,6 +40,8 @@ have a ConTest instance up and running is to bring up the server and MySQL
 containers via the default docker-compose configuration: just run
 `docker-compose up --build` from the root of the source tree.
 To use MariaDB instead, run `docker-compose -f docker-compose.mariadb.yml up --build`
+Note: you might need to set DOCKER_BUILDKIT=1 in env for Docker to interpret
+ARGs like $TARGETARCH inside the scripts.
 
 Containers can be also orchestrated separately:
 
