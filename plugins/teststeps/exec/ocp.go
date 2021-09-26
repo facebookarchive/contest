@@ -7,6 +7,7 @@ package exec
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
@@ -109,13 +110,36 @@ var Events = []event.Name{
 	StepLogEvent,
 }
 
+// TODO: check if there can be multiple runs in the same output
+type OCPState struct {
+	RunEnd *RunEnd
+}
+
+func (s OCPState) Error() error {
+	if s.RunEnd == nil {
+		return fmt.Errorf("did not see a complete run")
+	}
+
+	if s.RunEnd.Result != ResultPass {
+		// TODO: add a concat log of errors?
+		return fmt.Errorf("test failed")
+	}
+
+	return nil
+}
+
 type OCPEventParser struct {
 	target *target.Target
 	tee    testevent.Emitter
+	state  OCPState
 }
 
 func NewOCPEventParser(target *target.Target, ev testevent.Emitter) *OCPEventParser {
-	return &OCPEventParser{target, ev}
+	return &OCPEventParser{
+		target: target,
+		tee:    ev,
+		state:  OCPState{},
+	}
 }
 
 func (ep *OCPEventParser) emit(ctx xcontext.Context, name event.Name, data []byte) error {
@@ -151,6 +175,10 @@ func (ep *OCPEventParser) parseRun(ctx xcontext.Context, node *RunArtifact, root
 	}
 
 	if node.RunEnd != nil {
+		if node.RunEnd.Status == StatusComplete {
+			ep.state.RunEnd = node.RunEnd
+		}
+
 		type enddata struct {
 			SequenceNumber int    `json:"sequenceNumber"`
 			Timestamp      string `json:"timestamp"`
@@ -278,4 +306,8 @@ func (ep *OCPEventParser) Parse(ctx xcontext.Context, root *OCPRoot) error {
 	}
 
 	return nil
+}
+
+func (ep *OCPEventParser) Error() error {
+	return ep.state.Error()
 }

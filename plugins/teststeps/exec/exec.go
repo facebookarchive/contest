@@ -69,7 +69,7 @@ func (ts *TestStep) Run(ctx xcontext.Context, ch test.TestStepChannels, params t
 			return fmt.Errorf("failed to wait on process: %w", err)
 		}
 
-		return nil
+		return p.Error()
 	}
 	return teststeps.ForEachTarget(Name, ctx, ch, f)
 }
