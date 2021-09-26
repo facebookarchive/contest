@@ -41,8 +41,8 @@ const (
 	ResultNA   = Result("NOT_APPLICABLE")
 )
 
-// TODO: these should just be temporary until the
-// go:generate tool
+// TODO: these should just be temporary until the go:generate tool
+// TODO: this should also mean refactoring all the parser code
 type Log struct {
 	Severity Severity `json:"severity,omitempty"`
 	Text     string   `json:"text,omitempty"`
@@ -65,10 +65,28 @@ type RunArtifact struct {
 	Log      *Log      `json:"log,omitempty"`
 }
 
+type StepStart struct {
+	Name string `json:"name,omitempty"`
+}
+
+type StepEnd struct {
+	Name   string `json:"name,omitempty"`
+	Status Status `json:"status,omitempty"`
+}
+
+type StepArtifact struct {
+	StepId string `json:"testStepId,omitempty"`
+
+	StepStart *StepStart `json:"testStepStart,omitempty"`
+	StepEnd   *StepEnd   `json:"testStepEnd,omitempty"`
+	Log       *Log       `json:"log,omitempty"`
+}
+
 type OCPRoot struct {
-	SequenceNumber int          `json:"sequenceNumber"`
-	Timestamp      string       `json:"timestamp"`
-	RunArtifact    *RunArtifact `json:"testRunArtifact,omitempty"`
+	SequenceNumber int           `json:"sequenceNumber"`
+	Timestamp      string        `json:"timestamp"`
+	RunArtifact    *RunArtifact  `json:"testRunArtifact,omitempty"`
+	StepArtifact   *StepArtifact `json:"testStepArtifact,omitempty"`
 }
 
 // events that we may emit during the plugin's lifecycle
@@ -76,6 +94,10 @@ const (
 	TestStartEvent = event.Name("TestStart")
 	TestEndEvent   = event.Name("TestEnd")
 	TestLogEvent   = event.Name("TestLog")
+
+	StepStartEvent = event.Name("StepStart")
+	StepEndEvent   = event.Name("StepEnd")
+	StepLogEvent   = event.Name("StepLog")
 )
 
 // Events defines the events that a TestStep is allow to emit. Emitting an event
@@ -83,6 +105,8 @@ const (
 var Events = []event.Name{
 	TestStartEvent, TestEndEvent,
 	TestLogEvent,
+	StepStartEvent, StepEndEvent,
+	StepLogEvent,
 }
 
 type OCPEventParser struct {
@@ -104,7 +128,7 @@ func (ep *OCPEventParser) emit(ctx xcontext.Context, name event.Name, data []byt
 	return ep.tee.Emit(ctx, event)
 }
 
-func (ep *OCPEventParser) parseTestRun(ctx xcontext.Context, node *RunArtifact, root *OCPRoot) error {
+func (ep *OCPEventParser) parseRun(ctx xcontext.Context, node *RunArtifact, root *OCPRoot) error {
 	if node.RunStart != nil {
 		type startdata struct {
 			SequenceNumber int    `json:"sequenceNumber"`
@@ -173,9 +197,84 @@ func (ep *OCPEventParser) parseTestRun(ctx xcontext.Context, node *RunArtifact, 
 	return nil
 }
 
+func (ep *OCPEventParser) parseStep(ctx xcontext.Context, node *StepArtifact, root *OCPRoot) error {
+	if node.StepStart != nil {
+		type startdata struct {
+			SequenceNumber int    `json:"sequenceNumber"`
+			Timestamp      string `json:"timestamp"`
+			StepId         string `json:"stepId"`
+			Name           string `json:"name"`
+		}
+
+		data, err := json.Marshal(&startdata{
+			SequenceNumber: root.SequenceNumber,
+			Timestamp:      root.Timestamp,
+			StepId:         node.StepId,
+			Name:           node.StepStart.Name,
+		})
+		if err != nil {
+			return err
+		}
+
+		return ep.emit(ctx, StepStartEvent, data)
+	}
+
+	if node.StepEnd != nil {
+		type enddata struct {
+			SequenceNumber int    `json:"sequenceNumber"`
+			Timestamp      string `json:"timestamp"`
+			StepId         string `json:"stepId"`
+			Name           string `json:"name"`
+			Status         string `json:"status"`
+		}
+
+		data, err := json.Marshal(&enddata{
+			SequenceNumber: root.SequenceNumber,
+			Timestamp:      root.Timestamp,
+			StepId:         node.StepId,
+			Name:           node.StepEnd.Name,
+			Status:         string(node.StepEnd.Status),
+		})
+		if err != nil {
+			return err
+		}
+
+		return ep.emit(ctx, StepEndEvent, data)
+	}
+
+	if node.Log != nil {
+		type logdata struct {
+			SequenceNumber int    `json:"sequenceNumber"`
+			Timestamp      string `json:"timestamp"`
+			StepId         string `json:"stepId"`
+			Severity       string `json:"severity,omitempty"`
+			Message        string `json:"text,omitempty"`
+		}
+
+		data, err := json.Marshal(&logdata{
+			SequenceNumber: root.SequenceNumber,
+			Timestamp:      root.Timestamp,
+			StepId:         node.StepId,
+			Severity:       string(node.Log.Severity),
+			Message:        node.Log.Text,
+		})
+		if err != nil {
+			return err
+		}
+
+		return ep.emit(ctx, StepLogEvent, data)
+	}
+
+	return nil
+}
+
 func (ep *OCPEventParser) Parse(ctx xcontext.Context, root *OCPRoot) error {
 	if root.RunArtifact != nil {
-		return ep.parseTestRun(ctx, root.RunArtifact, root)
+		return ep.parseRun(ctx, root.RunArtifact, root)
+	}
+
+	if root.StepArtifact != nil {
+		return ep.parseStep(ctx, root.StepArtifact, root)
 	}
 
 	return nil
