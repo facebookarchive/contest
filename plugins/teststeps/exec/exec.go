@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"syscall"
 
 	"github.com/facebookincubator/contest/pkg/event"
@@ -21,18 +22,6 @@ import (
 
 // Name is the name used to look this plugin up.
 var Name = "Exec"
-
-// events that we may emit during the plugin's lifecycle. This is used in Events below.
-// Note that you don't normally need to emit start/finish/cancellation events as
-// these are emitted automatically by the framework.
-const (
-	StartedEvent  = event.Name("StartedEvent")
-	FinishedEvent = event.Name("FinishedEvent")
-)
-
-// Events defines the events that a TestStep is allow to emit. Emitting an event
-// that is not registered here will cause the plugin to terminate with an error.
-var Events = []event.Name{StartedEvent, FinishedEvent}
 
 type Parameters struct {
 	Bin struct {
@@ -57,15 +46,29 @@ func (ts *TestStep) Run(ctx xcontext.Context, ch test.TestStepChannels, params t
 	f := func(ctx xcontext.Context, target *target.Target) error {
 		ctx.Infof("Executing on target %s", target)
 
-		msg, _ := json.Marshal(&ts.params)
-		payload := json.RawMessage(msg)
-		if err := ev.Emit(ctx, testevent.Data{EventName: StartedEvent, Target: target, Payload: &payload}); err != nil {
-			return fmt.Errorf("failed to emit start event: %v", err)
+		cmd := exec.CommandContext(ctx, ts.params.Bin.Path, ts.params.Bin.Args...)
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return fmt.Errorf("failed to get stdout pipe")
 		}
 
-		if err := ev.Emit(ctx, testevent.Data{EventName: FinishedEvent, Target: target, Payload: nil}); err != nil {
-			return fmt.Errorf("failed to emit failed event: %v", err)
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("failed to start process: %w", err)
 		}
+
+		p := NewOCPEventParser(target, ev)
+		dec := json.NewDecoder(stdout)
+		for dec.More() {
+			var root *OCPRoot
+			dec.Decode(&root)
+
+			p.Parse(ctx, root)
+		}
+
+		if err := cmd.Wait(); err != nil {
+			return fmt.Errorf("failed to wait on process: %w", err)
+		}
+
 		return nil
 	}
 	return teststeps.ForEachTarget(Name, ctx, ch, f)
