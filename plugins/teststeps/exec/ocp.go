@@ -6,10 +6,8 @@
 package exec
 
 import (
-	"encoding/json"
 	"fmt"
 
-	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/xcontext"
@@ -90,26 +88,6 @@ type OCPRoot struct {
 	StepArtifact   *StepArtifact `json:"testStepArtifact,omitempty"`
 }
 
-// events that we may emit during the plugin's lifecycle
-const (
-	TestStartEvent = event.Name("TestStart")
-	TestEndEvent   = event.Name("TestEnd")
-	TestLogEvent   = event.Name("TestLog")
-
-	StepStartEvent = event.Name("StepStart")
-	StepEndEvent   = event.Name("StepEnd")
-	StepLogEvent   = event.Name("StepLog")
-)
-
-// Events defines the events that a TestStep is allow to emit. Emitting an event
-// that is not registered here will cause the plugin to terminate with an error.
-var Events = []event.Name{
-	TestStartEvent, TestEndEvent,
-	TestLogEvent,
-	StepStartEvent, StepEndEvent,
-	StepLogEvent,
-}
-
 // TODO: check if there can be multiple runs in the same output
 type OCPState struct {
 	RunEnd *RunEnd
@@ -130,167 +108,88 @@ func (s OCPState) Error() error {
 
 type OCPEventParser struct {
 	target *target.Target
-	tee    testevent.Emitter
+	ev     testevent.Emitter
 	state  OCPState
 }
 
 func NewOCPEventParser(target *target.Target, ev testevent.Emitter) *OCPEventParser {
 	return &OCPEventParser{
 		target: target,
-		tee:    ev,
+		ev:     ev,
 		state:  OCPState{},
 	}
 }
 
-func (ep *OCPEventParser) emit(ctx xcontext.Context, name event.Name, data []byte) error {
-	json := json.RawMessage(data)
-	event := testevent.Data{
-		EventName: name,
-		Target:    ep.target,
-		Payload:   &json,
-	}
-	return ep.tee.Emit(ctx, event)
-}
-
-func (ep *OCPEventParser) parseRun(ctx xcontext.Context, node *RunArtifact, root *OCPRoot) error {
+func (p *OCPEventParser) parseRun(ctx xcontext.Context, node *RunArtifact, root *OCPRoot) error {
 	if node.RunStart != nil {
-		type startdata struct {
-			SequenceNumber int    `json:"sequenceNumber"`
-			Timestamp      string `json:"timestamp"`
-			Name           string `json:"name,omitempty"`
-			Version        string `json:"version,omitempty"`
-		}
-
-		data, err := json.Marshal(&startdata{
+		payload := testStartEventPayload{
 			SequenceNumber: root.SequenceNumber,
 			Timestamp:      root.Timestamp,
 			Name:           node.RunStart.Name,
 			Version:        node.RunStart.Version,
-		})
-		if err != nil {
-			return err
 		}
-
-		return ep.emit(ctx, TestStartEvent, data)
+		return emitEvent(ctx, TestStartEvent, payload, p.target, p.ev)
 	}
 
 	if node.RunEnd != nil {
 		if node.RunEnd.Status == StatusComplete {
-			ep.state.RunEnd = node.RunEnd
+			p.state.RunEnd = node.RunEnd
 		}
 
-		type enddata struct {
-			SequenceNumber int    `json:"sequenceNumber"`
-			Timestamp      string `json:"timestamp"`
-			Name           string `json:"name,omitempty"`
-			Status         string `json:"status,omitempty"`
-			Result         string `json:"result,omitempty"`
-		}
-
-		data, err := json.Marshal(&enddata{
+		payload := testEndEventPayload{
 			SequenceNumber: root.SequenceNumber,
 			Timestamp:      root.Timestamp,
 			Name:           node.RunEnd.Name,
 			Status:         string(node.RunEnd.Status),
 			Result:         string(node.RunEnd.Result),
-		})
-		if err != nil {
-			return err
 		}
-
-		return ep.emit(ctx, TestEndEvent, data)
+		return emitEvent(ctx, TestEndEvent, payload, p.target, p.ev)
 	}
 
 	if node.Log != nil {
-		type logdata struct {
-			SequenceNumber int    `json:"sequenceNumber"`
-			Timestamp      string `json:"timestamp"`
-			Severity       string `json:"severity,omitempty"`
-			Message        string `json:"text,omitempty"`
-		}
-
-		data, err := json.Marshal(&logdata{
+		payload := testLogEventPayload{
 			SequenceNumber: root.SequenceNumber,
 			Timestamp:      root.Timestamp,
 			Severity:       string(node.Log.Severity),
 			Message:        node.Log.Text,
-		})
-		if err != nil {
-			return err
 		}
-
-		return ep.emit(ctx, TestLogEvent, data)
+		return emitEvent(ctx, TestLogEvent, payload, p.target, p.ev)
 	}
 
 	return nil
 }
 
-func (ep *OCPEventParser) parseStep(ctx xcontext.Context, node *StepArtifact, root *OCPRoot) error {
+func (p *OCPEventParser) parseStep(ctx xcontext.Context, node *StepArtifact, root *OCPRoot) error {
 	if node.StepStart != nil {
-		type startdata struct {
-			SequenceNumber int    `json:"sequenceNumber"`
-			Timestamp      string `json:"timestamp"`
-			StepId         string `json:"stepId"`
-			Name           string `json:"name"`
-		}
-
-		data, err := json.Marshal(&startdata{
+		payload := stepStartEventPayload{
 			SequenceNumber: root.SequenceNumber,
 			Timestamp:      root.Timestamp,
 			StepId:         node.StepId,
 			Name:           node.StepStart.Name,
-		})
-		if err != nil {
-			return err
 		}
-
-		return ep.emit(ctx, StepStartEvent, data)
+		return emitEvent(ctx, StepStartEvent, payload, p.target, p.ev)
 	}
 
 	if node.StepEnd != nil {
-		type enddata struct {
-			SequenceNumber int    `json:"sequenceNumber"`
-			Timestamp      string `json:"timestamp"`
-			StepId         string `json:"stepId"`
-			Name           string `json:"name"`
-			Status         string `json:"status"`
-		}
-
-		data, err := json.Marshal(&enddata{
+		payload := stepEndEventPayload{
 			SequenceNumber: root.SequenceNumber,
 			Timestamp:      root.Timestamp,
 			StepId:         node.StepId,
 			Name:           node.StepEnd.Name,
 			Status:         string(node.StepEnd.Status),
-		})
-		if err != nil {
-			return err
 		}
-
-		return ep.emit(ctx, StepEndEvent, data)
+		return emitEvent(ctx, StepEndEvent, payload, p.target, p.ev)
 	}
 
 	if node.Log != nil {
-		type logdata struct {
-			SequenceNumber int    `json:"sequenceNumber"`
-			Timestamp      string `json:"timestamp"`
-			StepId         string `json:"stepId"`
-			Severity       string `json:"severity,omitempty"`
-			Message        string `json:"text,omitempty"`
-		}
-
-		data, err := json.Marshal(&logdata{
+		payload := stepLogEventPayload{
 			SequenceNumber: root.SequenceNumber,
 			Timestamp:      root.Timestamp,
 			StepId:         node.StepId,
 			Severity:       string(node.Log.Severity),
 			Message:        node.Log.Text,
-		})
-		if err != nil {
-			return err
 		}
-
-		return ep.emit(ctx, StepLogEvent, data)
+		return emitEvent(ctx, StepLogEvent, payload, p.target, p.ev)
 	}
 
 	return nil
