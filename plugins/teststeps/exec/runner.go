@@ -9,12 +9,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"syscall"
 
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/xcontext"
+
+	"github.com/facebookincubator/contest/plugins/teststeps/exec/transport"
 )
 
 type outcome error
@@ -22,6 +23,7 @@ type outcome error
 type ExpandedParams struct {
 	bin       string
 	args      []string
+	transport transport.Transport
 	ocpOutput bool
 }
 
@@ -61,23 +63,19 @@ func (r *TargetRunner) expandParams(target *target.Target) (*ExpandedParams, err
 		return nil, err
 	}
 
+	params.transport = r.ts.transport
+	params.ocpOutput = r.ts.ocpOutput
 	return params, nil
 }
 
 func (r *TargetRunner) runWithOCP(ctx xcontext.Context, target *target.Target, params *ExpandedParams) (outcome, error) {
-	cmd := exec.CommandContext(ctx, params.bin, params.args...)
-
-	stdout, err := cmd.StdoutPipe()
+	proc, err := params.transport.Start(ctx, params.bin, params.args)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get stdout pipe")
-	}
-
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start process: %w", err)
+		return nil, fmt.Errorf("failed to start proc: %w", err)
 	}
 
 	p := NewOCPEventParser(target, r.ev)
-	dec := json.NewDecoder(stdout)
+	dec := json.NewDecoder(proc.Stdout())
 	for dec.More() {
 		var root *OCPRoot
 		dec.Decode(&root)
@@ -85,28 +83,30 @@ func (r *TargetRunner) runWithOCP(ctx xcontext.Context, target *target.Target, p
 		p.Parse(ctx, root)
 	}
 
-	if err := cmd.Wait(); err != nil {
-		return nil, fmt.Errorf("failed to wait on process: %w", err)
+	if err := proc.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("failed to wait on transport: %w", err)
 	}
 
 	return p.Error(), nil
 }
 
 func (r *TargetRunner) runAny(ctx xcontext.Context, target *target.Target, params *ExpandedParams) (outcome, error) {
-	cmd := exec.CommandContext(ctx, params.bin, params.args...)
+	proc, err := params.transport.Start(ctx, params.bin, params.args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start proc: %w", err)
+	}
 
 	// NOTE: these events technically aren't needed, but kept for symmetry with the ocp case
 	if err := emitEvent(ctx, TestStartEvent, nil, target, r.ev); err != nil {
 		return nil, fmt.Errorf("cannot emit event: %w", err)
 	}
-
-	outcome := cmd.Run()
+	out := proc.Wait(ctx)
 
 	if err := emitEvent(ctx, TestEndEvent, nil, target, r.ev); err != nil {
 		return nil, fmt.Errorf("cannot emit event: %w", err)
 	}
 
-	return outcome, nil
+	return out, nil
 }
 
 func (r *TargetRunner) Run(ctx xcontext.Context, target *target.Target) error {

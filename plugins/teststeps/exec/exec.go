@@ -14,6 +14,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/plugins/teststeps"
+	"github.com/facebookincubator/contest/plugins/teststeps/exec/transport"
 )
 
 // Name is the name used to look this plugin up.
@@ -23,6 +24,7 @@ var Name = "Exec"
 type TestStep struct {
 	bin       *test.Param
 	args      []test.Param
+	transport transport.Transport
 	ocpOutput bool
 }
 
@@ -49,6 +51,10 @@ func (ts *TestStep) populateParams(stepParams test.TestStepParameters) error {
 			Path string   `json:"path"`
 			Args []string `json:"args"`
 		} `json:"bin"`
+		Transport struct {
+			Proto   string          `json:"proto"`
+			Options json.RawMessage `json:"options,omitempty"`
+		} `json:"transport,omitempty"`
 		OCPOutput bool `json:"ocp_output"`
 	}
 
@@ -62,6 +68,12 @@ func (ts *TestStep) populateParams(stepParams test.TestStepParameters) error {
 		ts.args = append(ts.args, *test.NewParam(arg))
 	}
 
+	transport, err := transport.NewTransport(params.Transport.Proto, params.Transport.Options)
+	if err != nil {
+		return fmt.Errorf("cannot get transport factory: %w", err)
+	}
+
+	ts.transport = transport
 	ts.ocpOutput = params.OCPOutput
 	return nil
 }
