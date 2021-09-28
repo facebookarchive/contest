@@ -14,18 +14,26 @@ import (
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/plugins/teststeps"
-	"github.com/facebookincubator/contest/plugins/teststeps/exec/transport"
 )
+
+type stepParams struct {
+	Bin struct {
+		Path string   `json:"path"`
+		Args []string `json:"args"`
+	} `json:"bin"`
+	Transport struct {
+		Proto   string          `json:"proto"`
+		Options json.RawMessage `json:"options,omitempty"`
+	} `json:"transport,omitempty"`
+	OCPOutput bool `json:"ocp_output"`
+}
 
 // Name is the name used to look this plugin up.
 var Name = "Exec"
 
 // TestStep implementation for the exec plugin
 type TestStep struct {
-	bin       *test.Param
-	args      []test.Param
-	transport transport.Transport
-	ocpOutput bool
+	stepParams
 }
 
 // Name returns the name of the Step
@@ -46,45 +54,16 @@ func (ts *TestStep) Run(ctx xcontext.Context, ch test.TestStepChannels, params t
 func (ts *TestStep) populateParams(stepParams test.TestStepParameters) error {
 	bag := stepParams.GetOne("bag").JSON()
 
-	var params struct {
-		Bin struct {
-			Path string   `json:"path"`
-			Args []string `json:"args"`
-		} `json:"bin"`
-		Transport struct {
-			Proto   string          `json:"proto"`
-			Options json.RawMessage `json:"options,omitempty"`
-		} `json:"transport,omitempty"`
-		OCPOutput bool `json:"ocp_output"`
+	if err := json.Unmarshal(bag, &ts.stepParams); err != nil {
+		return fmt.Errorf("failed to deserialize parameters")
 	}
 
-	if err := json.Unmarshal(bag, &params); err != nil {
-		return fmt.Errorf("no params")
-	}
-
-	// populate the instance templated param types
-	ts.bin = test.NewParam(params.Bin.Path)
-	for _, arg := range params.Bin.Args {
-		ts.args = append(ts.args, *test.NewParam(arg))
-	}
-
-	transport, err := transport.NewTransport(params.Transport.Proto, params.Transport.Options)
-	if err != nil {
-		return fmt.Errorf("cannot get transport factory: %w", err)
-	}
-
-	ts.transport = transport
-	ts.ocpOutput = params.OCPOutput
 	return nil
 }
 
 // ValidateParameters validates the parameters associated to the step
 func (ts *TestStep) ValidateParameters(_ xcontext.Context, stepParams test.TestStepParameters) error {
-	if err := ts.populateParams(stepParams); err != nil {
-		return err
-	}
-
-	return nil
+	return ts.populateParams(stepParams)
 }
 
 // New initializes and returns a new exec step.

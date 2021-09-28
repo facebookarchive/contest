@@ -14,18 +14,10 @@ import (
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/xcontext"
-
 	"github.com/facebookincubator/contest/plugins/teststeps/exec/transport"
 )
 
 type outcome error
-
-type ExpandedParams struct {
-	bin       string
-	args      []string
-	transport transport.Transport
-	ocpOutput bool
-}
 
 type TargetRunner struct {
 	ts *TestStep
@@ -39,37 +31,11 @@ func NewTargetRunner(ts *TestStep, ev testevent.Emitter) *TargetRunner {
 	}
 }
 
-func (r *TargetRunner) expandParams(target *target.Target) (*ExpandedParams, error) {
-	var err error
-	params := &ExpandedParams{
-		ocpOutput: r.ts.ocpOutput,
-	}
-
-	params.bin, err = r.ts.bin.Expand(target)
-	if err != nil {
-		return nil, fmt.Errorf("cannot expand binary path: %w", err)
-	}
-
-	for _, argParam := range r.ts.args {
-		arg, err := argParam.Expand(target)
-		if err != nil {
-			return nil, fmt.Errorf("cannot expand command argument '%s': %v", argParam, err)
-		}
-		params.args = append(params.args, arg)
-	}
-
-	// check the now expanded binary path
-	if err := checkBinary(params.bin); err != nil {
-		return nil, err
-	}
-
-	params.transport = r.ts.transport
-	params.ocpOutput = r.ts.ocpOutput
-	return params, nil
-}
-
-func (r *TargetRunner) runWithOCP(ctx xcontext.Context, target *target.Target, params *ExpandedParams) (outcome, error) {
-	proc, err := params.transport.Start(ctx, params.bin, params.args)
+func (r *TargetRunner) runWithOCP(
+	ctx xcontext.Context, target *target.Target,
+	transport transport.Transport, params stepParams,
+) (outcome, error) {
+	proc, err := transport.Start(ctx, params.Bin.Path, params.Bin.Args)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start proc: %w", err)
 	}
@@ -90,8 +56,11 @@ func (r *TargetRunner) runWithOCP(ctx xcontext.Context, target *target.Target, p
 	return p.Error(), nil
 }
 
-func (r *TargetRunner) runAny(ctx xcontext.Context, target *target.Target, params *ExpandedParams) (outcome, error) {
-	proc, err := params.transport.Start(ctx, params.bin, params.args)
+func (r *TargetRunner) runAny(
+	ctx xcontext.Context, target *target.Target,
+	transport transport.Transport, params stepParams,
+) (outcome, error) {
+	proc, err := transport.Start(ctx, params.Bin.Path, params.Bin.Args)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start proc: %w", err)
 	}
@@ -112,20 +81,32 @@ func (r *TargetRunner) runAny(ctx xcontext.Context, target *target.Target, param
 func (r *TargetRunner) Run(ctx xcontext.Context, target *target.Target) error {
 	ctx.Infof("Executing on target %s", target)
 
-	params, err := r.expandParams(target)
-	if err != nil {
+	pe := NewParamExpander(target)
+
+	var params stepParams
+	if err := pe.ExpandObject(r.ts.stepParams, &params); err != nil {
 		return err
 	}
 
-	if params.ocpOutput {
-		out, err := r.runWithOCP(ctx, target, params)
+	// check the now expanded binary path
+	if err := checkBinary(params.Bin.Path); err != nil {
+		return err
+	}
+
+	transport, err := transport.NewTransport(params.Transport.Proto, params.Transport.Options)
+	if err != nil {
+		return fmt.Errorf("fail to create transport: %w", err)
+	}
+
+	if params.OCPOutput {
+		out, err := r.runWithOCP(ctx, target, transport, params)
 		if out != nil {
 			return out
 		}
 		return err
 	}
 
-	out, err := r.runAny(ctx, target, params)
+	out, err := r.runAny(ctx, target, transport, params)
 	if out != nil {
 		return out
 	}
