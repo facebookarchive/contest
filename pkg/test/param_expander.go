@@ -3,14 +3,13 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
-package exec
+package test
 
 import (
 	"fmt"
 	"reflect"
 
 	"github.com/facebookincubator/contest/pkg/target"
-	"github.com/facebookincubator/contest/pkg/test"
 )
 
 type ParamExpander struct {
@@ -22,7 +21,7 @@ func NewParamExpander(target *target.Target) *ParamExpander {
 }
 
 func (pe *ParamExpander) Expand(value string) (string, error) {
-	p := test.NewParam(value)
+	p := NewParam(value)
 	return p.Expand(pe.t)
 }
 

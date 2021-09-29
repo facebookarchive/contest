@@ -13,6 +13,7 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/plugins/teststeps/exec/transport"
 )
@@ -81,7 +82,7 @@ func (r *TargetRunner) runAny(
 func (r *TargetRunner) Run(ctx xcontext.Context, target *target.Target) error {
 	ctx.Infof("Executing on target %s", target)
 
-	pe := NewParamExpander(target)
+	pe := test.NewParamExpander(target)
 
 	var params stepParams
 	if err := pe.ExpandObject(r.ts.stepParams, &params); err != nil {
@@ -93,7 +94,7 @@ func (r *TargetRunner) Run(ctx xcontext.Context, target *target.Target) error {
 		return err
 	}
 
-	transport, err := transport.NewTransport(params.Transport.Proto, params.Transport.Options)
+	transport, err := transport.NewTransport(params.Transport.Proto, params.Transport.Options, pe)
 	if err != nil {
 		return fmt.Errorf("fail to create transport: %w", err)
 	}

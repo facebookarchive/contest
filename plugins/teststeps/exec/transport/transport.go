@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
@@ -24,10 +25,23 @@ type ExecProcess interface {
 	Stderr() io.Reader
 }
 
-func NewTransport(proto string, config json.RawMessage) (Transport, error) {
+func NewTransport(proto string, configSource json.RawMessage, expander *test.ParamExpander) (Transport, error) {
 	switch proto {
 	case "local":
-		return NewLocalTransport(config), nil
+		return NewLocalTransport(), nil
+
+	case "ssh":
+		configTempl := DefaultSSHTransportConfig()
+		if err := json.Unmarshal(configSource, &configTempl); err != nil {
+			return nil, fmt.Errorf("unable to deserialize transport options: %w", err)
+		}
+
+		var config SSHTransportConfig
+		if err := expander.ExpandObject(configTempl, &config); err != nil {
+			return nil, err
+		}
+
+		return NewSSHTransport(config), nil
 
 	default:
 		return nil, fmt.Errorf("no such transport: %v", proto)

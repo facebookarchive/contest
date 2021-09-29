@@ -6,7 +6,6 @@
 package transport
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os/exec"
@@ -16,7 +15,7 @@ import (
 
 type LocalTransport struct{}
 
-func NewLocalTransport(_ json.RawMessage) Transport {
+func NewLocalTransport() Transport {
 	return &LocalTransport{}
 }
 

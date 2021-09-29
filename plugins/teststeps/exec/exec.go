@@ -20,6 +20,7 @@ type stepParams struct {
 	Bin struct {
 		Path string   `json:"path"`
 		Args []string `json:"args"`
+		// TODO: add max execution timer
 	} `json:"bin"`
 	Transport struct {
 		Proto   string          `json:"proto"`
