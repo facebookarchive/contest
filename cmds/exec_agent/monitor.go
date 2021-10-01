@@ -75,6 +75,8 @@ func NewMonitorServer(pid int, stdout *bytes.Buffer, stderr *bytes.Buffer, done 
 }
 
 func (m *MonitorServer) Serve() error {
+	log.Printf("starting monitor...")
+
 	if err := os.RemoveAll(m.addr); err != nil {
 		return fmt.Errorf("failed to clear lingering socket %s: %w", m.addr, err)
 	}
@@ -97,6 +99,8 @@ func (m *MonitorServer) Serve() error {
 }
 
 func (m *MonitorServer) Shutdown() error {
+	log.Printf("shutting down monitor...")
+
 	if err := os.RemoveAll(m.addr); err != nil {
 		return fmt.Errorf("failed to remove any socket %s: %w", m.addr, err)
 	}

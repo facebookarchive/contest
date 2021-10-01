@@ -9,9 +9,12 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 func run() error {
@@ -92,9 +95,13 @@ func start(bin string, args []string) error {
 	mon := NewMonitorServer(cmd.Process.Pid, &stdout, &stderr, done)
 	monErr := make(chan error, 1)
 	go func() {
-		log.Printf("starting monitor...")
 		monErr <- mon.Serve()
 	}()
+
+	// catch termination signals
+	sigs := make(chan os.Signal, 1)
+	defer close(sigs)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	for {
 		select {
@@ -104,8 +111,19 @@ func start(bin string, args []string) error {
 			}
 			return err
 
+		case sig := <-sigs:
+			if err := mon.Shutdown(); err != nil {
+				log.Printf("failed to shutdown monitor: %v", err)
+			}
+			if cmd.ProcessState == nil {
+				if err := cmd.Process.Kill(); err != nil {
+					log.Printf("failed to kill process on signal: %v", err)
+				}
+			}
+			return fmt.Errorf("signal caught: %v", sig)
+
 		case err := <-monErr:
-			if !cmd.ProcessState.Exited() {
+			if cmd.ProcessState == nil {
 				if err := cmd.Process.Kill(); err != nil {
 					log.Printf("failed to kill process on monitor error: %v", err)
 				}
