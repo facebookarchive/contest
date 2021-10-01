@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -32,6 +33,30 @@ func run() error {
 		}
 		return start(bin, args)
 
+	case "wait":
+		pid, err := strconv.Atoi(flagSet.Arg(1))
+		if err != nil {
+			return fmt.Errorf("faile to parse exec id: %w", err)
+		}
+
+		return wait(pid)
+
+	case "stdout":
+		pid, err := strconv.Atoi(flagSet.Arg(1))
+		if err != nil {
+			return fmt.Errorf("faile to parse exec id: %w", err)
+		}
+
+		return stdout(pid)
+
+	case "stderr":
+		pid, err := strconv.Atoi(flagSet.Arg(1))
+		if err != nil {
+			return fmt.Errorf("faile to parse exec id: %w", err)
+		}
+
+		return stderr(pid)
+
 	default:
 		return fmt.Errorf("invalid verb: %s", verb)
 	}
@@ -44,8 +69,77 @@ func start(bin string, args []string) error {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	runErr := cmd.Run()
-	log.Printf("out: %s", stdout.String())
+	log.Printf("starting command: %s", cmd.String())
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start process: %w", err)
+	}
+	// NOTE: write this only pid on stdout
+	fmt.Printf("%d\n", cmd.Process.Pid)
 
-	return runErr
+	// signal channel for process exit. Similar to Wait
+	done := make(chan struct{})
+
+	cmdErr := make(chan error, 1)
+	go func() {
+		err := cmd.Wait()
+
+		// wait until remote says we're done
+		<-done
+		cmdErr <- err
+	}()
+
+	// start unix socket server
+	mon := NewMonitorServer(cmd.Process.Pid, &stdout, &stderr, done)
+	monErr := make(chan error, 1)
+	go func() {
+		log.Printf("starting monitor...")
+		monErr <- mon.Serve()
+	}()
+
+	for {
+		select {
+		case err := <-cmdErr:
+			if err := mon.Shutdown(); err != nil {
+				log.Printf("failed to shutdown monitor: %v", err)
+			}
+			return err
+
+		case err := <-monErr:
+			if !cmd.ProcessState.Exited() {
+				if err := cmd.Process.Kill(); err != nil {
+					log.Printf("failed to kill process on monitor error: %v", err)
+				}
+			}
+			return err
+		}
+	}
+}
+
+func wait(pid int) error {
+	mon := NewMonitorClient(pid)
+	return mon.Wait()
+}
+
+func stdout(pid int) error {
+	mon := NewMonitorClient(pid)
+
+	data, err := mon.Output(Stdout)
+	if err != nil {
+		return fmt.Errorf("failed to call monitor: %w", err)
+	}
+
+	fmt.Printf("%s", string(data))
+	return nil
+}
+
+func stderr(pid int) error {
+	mon := NewMonitorClient(pid)
+
+	data, err := mon.Output(Stderr)
+	if err != nil {
+		return fmt.Errorf("failed to call monitor: %w", err)
+	}
+
+	fmt.Printf("%s", string(data))
+	return nil
 }
