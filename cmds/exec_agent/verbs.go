@@ -7,6 +7,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -15,6 +16,10 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+)
+
+const (
+	DeadProcessExitCode = 13
 )
 
 func run() error {
@@ -36,29 +41,21 @@ func run() error {
 		}
 		return start(bin, args)
 
+	case "poll":
+		pid, err := strconv.Atoi(flagSet.Arg(1))
+		if err != nil {
+			return fmt.Errorf("failed to parse exec id: %w", err)
+		}
+
+		return poll(pid)
+
 	case "wait":
 		pid, err := strconv.Atoi(flagSet.Arg(1))
 		if err != nil {
-			return fmt.Errorf("faile to parse exec id: %w", err)
+			return fmt.Errorf("failed to parse exec id: %w", err)
 		}
 
 		return wait(pid)
-
-	case "stdout":
-		pid, err := strconv.Atoi(flagSet.Arg(1))
-		if err != nil {
-			return fmt.Errorf("faile to parse exec id: %w", err)
-		}
-
-		return stdout(pid)
-
-	case "stderr":
-		pid, err := strconv.Atoi(flagSet.Arg(1))
-		if err != nil {
-			return fmt.Errorf("faile to parse exec id: %w", err)
-		}
-
-		return stderr(pid)
 
 	default:
 		return fmt.Errorf("invalid verb: %s", verb)
@@ -92,7 +89,7 @@ func start(bin string, args []string) error {
 	}()
 
 	// start unix socket server
-	mon := NewMonitorServer(cmd.Process.Pid, &stdout, &stderr, done)
+	mon := NewMonitorServer(cmd.Process, &stdout, &stderr, done)
 	monErr := make(chan error, 1)
 	go func() {
 		monErr <- mon.Serve()
@@ -138,26 +135,25 @@ func wait(pid int) error {
 	return mon.Wait()
 }
 
-func stdout(pid int) error {
+func poll(pid int) error {
 	mon := NewMonitorClient(pid)
 
-	data, err := mon.Output(Stdout)
+	data, err := mon.Poll()
 	if err != nil {
+		// connection errors also means that the process or agent might have died
+		var e *ErrCantConnect
+		if errors.As(err, &e) {
+			os.Exit(DeadProcessExitCode)
+		}
+
 		return fmt.Errorf("failed to call monitor: %w", err)
 	}
 
-	fmt.Printf("%s", string(data))
-	return nil
-}
-
-func stderr(pid int) error {
-	mon := NewMonitorClient(pid)
-
-	data, err := mon.Output(Stderr)
-	if err != nil {
-		return fmt.Errorf("failed to call monitor: %w", err)
+	fmt.Printf("%s", string(data.Stdout))
+	fmt.Fprintf(os.Stderr, "%s", string(data.Stderr))
+	if !data.Alive {
+		os.Exit(DeadProcessExitCode)
 	}
 
-	fmt.Printf("%s", string(data))
 	return nil
 }

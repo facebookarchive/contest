@@ -8,53 +8,81 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"net/rpc"
 	"os"
+	"sync"
 	"syscall"
 )
 
-type BufferData struct {
-	Data []byte
+type PollResponse struct {
+	Stdout []byte
+	Stderr []byte
+	Alive  bool
 }
 
-type monitorAPI struct {
+type monitor struct {
+	proc *os.Process
+
 	// TODO: these should really be readonly
 	stdout *bytes.Buffer
 	stderr *bytes.Buffer
 
-	done chan<- struct{}
+	done   chan<- struct{}
+	waited bool
+
+	// there really shouldnt be multiple concurrent consumers
+	// by design, but better be safe than sorry
+	mu sync.Mutex
 }
 
-func newMonitorAPI(stdout *bytes.Buffer, stderr *bytes.Buffer, done chan<- struct{}) *monitorAPI {
-	return &monitorAPI{stdout, stderr, done}
+func newMonitor(proc *os.Process, stdout *bytes.Buffer, stderr *bytes.Buffer, done chan<- struct{}) *monitor {
+	return &monitor{proc, stdout, stderr, done, false, sync.Mutex{}}
 }
 
-func (api *monitorAPI) Output(fd int, reply *BufferData) error {
-	log.Printf("got a call for: output/%d", fd)
+func (m *monitor) Poll(_ int, reply *PollResponse) error {
+	log.Printf("got a call for: poll")
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	switch fd {
-	case syscall.Stdout:
-		reply.Data = make([]byte, api.stdout.Len())
-
-	case syscall.Stderr:
-		reply.Data = make([]byte, api.stderr.Len())
-
-	default:
-		return fmt.Errorf("unknown file descriptor: %d", fd)
+	reply.Stdout = make([]byte, m.stdout.Len())
+	if _, err := m.stdout.Read(reply.Stdout); err != nil {
+		return fmt.Errorf("failed to read stdout: %w", err)
 	}
 
-	_, err := api.stdout.Read(reply.Data)
-	return err
+	reply.Stderr = make([]byte, m.stderr.Len())
+	if _, err := m.stderr.Read(reply.Stderr); err != nil {
+		return fmt.Errorf("failed to read stderr: %w", err)
+	}
+
+	reply.Alive = true
+	if err := m.proc.Signal(syscall.Signal(0)); err != nil {
+		if errors.Is(err, os.ErrProcessDone) {
+			reply.Alive = false
+			return nil
+		}
+
+		return fmt.Errorf("failed to send signal: %w", err)
+	}
+
+	return nil
 }
 
-func (api *monitorAPI) Wait(_ int, _ *interface{}) error {
+func (m *monitor) Wait(_ int, _ *interface{}) error {
 	log.Print("got a call for: wait")
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	close(api.done)
+	if m.waited {
+		return nil
+	}
+
+	close(m.done)
+	m.waited = true
 	return nil
 }
 
@@ -62,14 +90,14 @@ const sockFormat = "/tmp/exec_bin_sock_%d"
 
 type MonitorServer struct {
 	addr string
-	api  *monitorAPI
+	mon  *monitor
 
 	http *http.Server
 }
 
-func NewMonitorServer(pid int, stdout *bytes.Buffer, stderr *bytes.Buffer, done chan<- struct{}) *MonitorServer {
-	addr := fmt.Sprintf(sockFormat, pid)
-	api := newMonitorAPI(stdout, stderr, done)
+func NewMonitorServer(proc *os.Process, stdout *bytes.Buffer, stderr *bytes.Buffer, done chan<- struct{}) *MonitorServer {
+	addr := fmt.Sprintf(sockFormat, proc.Pid)
+	api := newMonitor(proc, stdout, stderr, done)
 
 	return &MonitorServer{addr, api, nil}
 }
@@ -88,7 +116,7 @@ func (m *MonitorServer) Serve() error {
 	defer listener.Close()
 
 	rpcServer := rpc.NewServer()
-	rpcServer.RegisterName("api", m.api)
+	rpcServer.RegisterName("api", m.mon)
 
 	log.Printf("starting RPC server at: %s", m.addr)
 	m.http = &http.Server{
@@ -112,12 +140,17 @@ func (m *MonitorServer) Shutdown() error {
 	return nil
 }
 
-type OutputFD int
+type ErrCantConnect struct {
+	w error
+}
 
-const (
-	Stdout = OutputFD(1)
-	Stderr = OutputFD(2)
-)
+func (e ErrCantConnect) Error() string {
+	return e.w.Error()
+}
+
+func (e ErrCantConnect) Unwrap() error {
+	return e.w
+}
 
 type MonitorClient struct {
 	addr string
@@ -131,7 +164,7 @@ func NewMonitorClient(pid int) *MonitorClient {
 func (m *MonitorClient) Wait() error {
 	client, err := rpc.DialHTTP("unix", m.addr)
 	if err != nil {
-		return fmt.Errorf("failed to connect to %s: %w", m.addr, err)
+		return &ErrCantConnect{fmt.Errorf("failed to connect to %s: %w", m.addr, err)}
 	}
 	defer client.Close()
 
@@ -139,20 +172,21 @@ func (m *MonitorClient) Wait() error {
 	if err := client.Call("api.Wait", 0, &reply); err != nil {
 		return fmt.Errorf("failed to call rpc method: %w", err)
 	}
+
 	return nil
 }
 
-func (m *MonitorClient) Output(fd OutputFD) ([]byte, error) {
+func (m *MonitorClient) Poll() (*PollResponse, error) {
 	client, err := rpc.DialHTTP("unix", m.addr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to %s: %w", m.addr, err)
+		return nil, &ErrCantConnect{fmt.Errorf("failed to connect to %s: %w", m.addr, err)}
 	}
 	defer client.Close()
 
-	var reply BufferData
-	if err := client.Call("api.Output", int(fd), &reply); err != nil {
+	var reply PollResponse
+	if err := client.Call("api.Poll", 0, &reply); err != nil {
 		return nil, fmt.Errorf("failed to call rpc method: %w", err)
 	}
 
-	return reply.Data, nil
+	return &reply, nil
 }
