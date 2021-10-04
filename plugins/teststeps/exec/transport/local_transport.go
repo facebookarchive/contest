@@ -30,6 +30,10 @@ type localExecProcess struct {
 }
 
 func startLocalExecProcess(ctx xcontext.Context, bin string, args []string) (ExecProcess, error) {
+	if err := checkBinary(bin); err != nil {
+		return nil, err
+	}
+
 	cmd := exec.CommandContext(ctx, bin, args...)
 
 	stdout, err := cmd.StdoutPipe()

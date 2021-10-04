@@ -8,8 +8,7 @@ package exec
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"syscall"
+	"io"
 
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -32,6 +31,15 @@ func NewTargetRunner(ts *TestStep, ev testevent.Emitter) *TargetRunner {
 	}
 }
 
+func consume(r io.Reader) {
+	buf := make([]byte, 4096)
+	for {
+		if _, err := r.Read(buf); err == io.EOF {
+			break
+		}
+	}
+}
+
 func (r *TargetRunner) runWithOCP(
 	ctx xcontext.Context, target *target.Target,
 	transport transport.Transport, params stepParams,
@@ -40,6 +48,9 @@ func (r *TargetRunner) runWithOCP(
 	if err != nil {
 		return nil, fmt.Errorf("failed to start proc: %w", err)
 	}
+
+	// TODO: refactor this to only get pipes on demand
+	go consume(proc.Stderr())
 
 	p := NewOCPEventParser(target, r.ev)
 	dec := json.NewDecoder(proc.Stdout())
@@ -66,6 +77,9 @@ func (r *TargetRunner) runAny(
 		return nil, fmt.Errorf("failed to start proc: %w", err)
 	}
 
+	go consume(proc.Stdout())
+	go consume(proc.Stderr())
+
 	// NOTE: these events technically aren't needed, but kept for symmetry with the ocp case
 	if err := emitEvent(ctx, TestStartEvent, nil, target, r.ev); err != nil {
 		return nil, fmt.Errorf("cannot emit event: %w", err)
@@ -89,11 +103,6 @@ func (r *TargetRunner) Run(ctx xcontext.Context, target *target.Target) error {
 		return err
 	}
 
-	// check the now expanded binary path
-	if err := checkBinary(params.Bin.Path); err != nil {
-		return err
-	}
-
 	transport, err := transport.NewTransport(params.Transport.Proto, params.Transport.Options, pe)
 	if err != nil {
 		return fmt.Errorf("fail to create transport: %w", err)
@@ -112,35 +121,4 @@ func (r *TargetRunner) Run(ctx xcontext.Context, target *target.Target) error {
 		return out
 	}
 	return err
-}
-
-func canExecute(fi os.FileInfo) bool {
-	// TODO: deal with acls?
-	stat := fi.Sys().(*syscall.Stat_t)
-	if stat.Uid == uint32(os.Getuid()) {
-		return stat.Mode&0500 == 0500
-	}
-
-	if stat.Gid == uint32(os.Getgid()) {
-		return stat.Mode&0050 == 0050
-	}
-
-	return stat.Mode&0005 == 0005
-}
-
-func checkBinary(bin string) error {
-	// check binary exists and is executable
-	fi, err := os.Stat(bin)
-	if err != nil {
-		return fmt.Errorf("no such file")
-	}
-
-	if !fi.Mode().IsRegular() {
-		return fmt.Errorf("not a file")
-	}
-
-	if !canExecute(fi) {
-		return fmt.Errorf("provided binary is not executable")
-	}
-	return nil
 }
