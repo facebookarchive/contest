@@ -6,7 +6,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -29,8 +28,8 @@ type monitor struct {
 	proc *os.Process
 
 	// TODO: these should really be readonly
-	stdout *bytes.Buffer
-	stderr *bytes.Buffer
+	stdout *SafeBuffer
+	stderr *SafeBuffer
 
 	reaper *SafeSignal
 
@@ -39,7 +38,7 @@ type monitor struct {
 	mu sync.Mutex
 }
 
-func newMonitor(proc *os.Process, stdout *bytes.Buffer, stderr *bytes.Buffer, reaper *SafeSignal) *monitor {
+func newMonitor(proc *os.Process, stdout *SafeBuffer, stderr *SafeBuffer, reaper *SafeSignal) *monitor {
 	return &monitor{proc, stdout, stderr, reaper, sync.Mutex{}}
 }
 
@@ -87,7 +86,7 @@ type MonitorServer struct {
 	http *http.Server
 }
 
-func NewMonitorServer(proc *os.Process, stdout *bytes.Buffer, stderr *bytes.Buffer, reap *SafeSignal) *MonitorServer {
+func NewMonitorServer(proc *os.Process, stdout *SafeBuffer, stderr *SafeBuffer, reap *SafeSignal) *MonitorServer {
 	addr := fmt.Sprintf(sockFormat, proc.Pid)
 	mon := newMonitor(proc, stdout, stderr, reap)
 

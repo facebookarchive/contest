@@ -5,7 +5,10 @@
 
 package main
 
-import "sync"
+import (
+	"bytes"
+	"sync"
+)
 
 // SafeSignal is a goroutine safe signalling mechanism
 type SafeSignal struct {
@@ -35,4 +38,30 @@ func (s *SafeSignal) Wait() {
 	for !s.done {
 		s.c.Wait()
 	}
+}
+
+type SafeBuffer struct {
+	b  bytes.Buffer
+	mu sync.Mutex
+}
+
+func (sb *SafeBuffer) Write(data []byte) (int, error) {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+
+	return sb.b.Write(data)
+}
+
+func (sb *SafeBuffer) Read(data []byte) (int, error) {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+
+	return sb.b.Read(data)
+}
+
+func (sb *SafeBuffer) Len() int {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+
+	return sb.b.Len()
 }
