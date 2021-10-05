@@ -37,7 +37,11 @@ type SSHTransportConfig struct {
 
 	Timeout    types.Duration `json:"timeout,omitempty"`
 	SendBinary bool           `json:"send_binary,omitempty"`
-	AsyncAgent *string        `json:"async_agent,omitempty"`
+
+	Async *struct {
+		Agent     string         `json:"agent,omitempty"`
+		TimeQuota types.Duration `json:"time_quota,omitempty"`
+	} `json:"async,omitempty"`
 }
 
 func DefaultSSHTransportConfig() SSHTransportConfig {
@@ -120,7 +124,7 @@ func (st *SSHTransport) Start(ctx xcontext.Context, bin string, args []string) (
 		})
 	}
 
-	if st.AsyncAgent != nil {
+	if st.Async != nil {
 		return st.startAsync(ctx, client, addr, clientConfig, bin, args, stack)
 	}
 	return st.start(ctx, client, bin, args, stack)
@@ -137,7 +141,7 @@ func (st *SSHTransport) startAsync(
 	stack *deferedStack,
 ) (ExecProcess, error) {
 	// we always need the agent for the async case
-	agent, err := st.sendFile(ctx, client, *st.AsyncAgent, 0500)
+	agent, err := st.sendFile(ctx, client, st.Async.Agent, 0500)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send agent: %w", err)
 	}
@@ -149,7 +153,7 @@ func (st *SSHTransport) startAsync(
 		}
 	})
 
-	return startSSHExecProcessAsync(ctx, addr, clientConfig, agent, bin, args, stack)
+	return startSSHExecProcessAsync(ctx, addr, clientConfig, agent, st.Async.TimeQuota, bin, args, stack)
 }
 
 func (st *SSHTransport) sendFile(ctx xcontext.Context, client *ssh.Client, bin string, mode os.FileMode) (string, error) {
@@ -247,10 +251,16 @@ func startSSHExecProcessWithStdin(
 
 			case <-time.After(5 * time.Second):
 				ctx.Debugf("sending sigcont to ssh server...")
-				err = session.Signal(ssh.Signal("CONT"))
-				if err != nil {
+				if err := session.Signal(ssh.Signal("CONT")); err != nil {
 					ctx.Warnf("failed to send CONT to ssh server: %w", err)
 				}
+
+			case <-ctx.Done():
+				ctx.Debugf("killing ssh session because of timeout...")
+				if err := session.Signal(ssh.SIGKILL); err != nil {
+					ctx.Warnf("failed to send KILL on context cancel: %w", err)
+				}
+				return
 			}
 		}
 	}()
@@ -267,6 +277,11 @@ func (sp *sshExecProcess) Wait(_ xcontext.Context) error {
 	defer sp.session.Close()
 
 	if err := sp.session.Wait(); err != nil {
+		var e *ssh.ExitError
+		if errors.As(err, &e) {
+			return fmt.Errorf("process exited with error: %w", e)
+		}
+
 		return fmt.Errorf("failed to wait on process: %w", err)
 	}
 
@@ -282,17 +297,17 @@ func (sp *sshExecProcess) Stderr() io.Reader {
 }
 
 type sshExecProcessAsync struct {
-	stdout *io.PipeReader
-	stderr *io.PipeReader
+	stdout   *io.PipeReader
+	stderr   *io.PipeReader
+	exitChan <-chan error
 
-	alive chan struct{}
 	stack *deferedStack
 }
 
 func startSSHExecProcessAsync(
 	ctx xcontext.Context,
 	addr string, clientConfig *ssh.ClientConfig,
-	agent string,
+	agent string, timeQuota types.Duration,
 	bin string, args []string,
 	stack *deferedStack,
 ) (ExecProcess, error) {
@@ -320,8 +335,15 @@ func startSSHExecProcessAsync(
 			return
 		}
 
-		// TODO: pass a max time to live to the agent
-		cmd := shellquote.Join(append([]string{agent, "start", bin}, args...)...)
+		// build the command to run remotely
+		cmdArgs := []string{agent}
+		if !timeQuota.IsZero() {
+			cmdArgs = append(cmdArgs, fmt.Sprintf("--time-quota=%s", timeQuota.String()))
+		}
+		cmdArgs = append(cmdArgs, "start", bin)
+		cmdArgs = append(cmdArgs, args...)
+
+		cmd := shellquote.Join(cmdArgs...)
 		ctx.Debugf("starting remote agent: %s", cmd)
 
 		// NOTE: golang doesnt support forking, so the started process needs to be
@@ -349,12 +371,12 @@ func startSSHExecProcessAsync(
 
 		outReader, outWriter := io.Pipe()
 		errReader, errWriter := io.Pipe()
-		alive := make(chan struct{})
+		exitChan := make(chan error, 1)
 
 		mon := &asyncMonitor{addr, clientConfig, agent, sid}
-		go mon.Start(ctx, outWriter, errWriter, alive)
+		go mon.Start(ctx, outWriter, errWriter, exitChan)
 
-		return &sshExecProcessAsync{outReader, errReader, alive, stack}, nil
+		return &sshExecProcessAsync{outReader, errReader, exitChan, stack}, nil
 
 	case <-time.After(5 * time.Second):
 		return nil, fmt.Errorf("timeout while starting agent")
@@ -363,7 +385,8 @@ func startSSHExecProcessAsync(
 
 // TODO: maybe extract this to a package?
 const (
-	DeadProcessExitCode = 13
+	ProcessFinishedExitCode = 13
+	DeadAgentExitCode       = 14
 )
 
 type asyncMonitor struct {
@@ -377,7 +400,7 @@ type asyncMonitor struct {
 func (m *asyncMonitor) Start(
 	ctx xcontext.Context,
 	outWriter *io.PipeWriter, errWriter *io.PipeWriter,
-	alive chan<- struct{},
+	exitChan chan<- error,
 ) {
 	defer outWriter.Close()
 	defer errWriter.Close()
@@ -385,39 +408,62 @@ func (m *asyncMonitor) Start(
 	// TODO: add timeout cancel
 	for {
 		ctx.Debugf("polling remote process: %s", m.sid)
-		stop, err := func() (bool, error) {
-			stdout, stderr, runerr := m.runAgent("poll")
 
-			// append stdout, stderr; blocking until read
-			if _, err := outWriter.Write(stdout); err != nil {
-				return false, fmt.Errorf("failed to write to stdout pipe: %w", err)
-			}
+		stdout, stderr, err, runerr := m.runAgent(ctx, "poll")
+		if err != nil {
+			ctx.Warnf("failed to run agent: %w", err)
+			continue
+		}
 
-			if _, err := errWriter.Write(stderr); err != nil {
-				return false, fmt.Errorf("failed to write to stderr pipe: %w", err)
-			}
+		// append stdout, stderr; blocking until read
+		if _, err := outWriter.Write(stdout); err != nil {
+			ctx.Warnf("failed to write to stdout pipe: %w", err)
+			continue
+		}
 
-			if runerr != nil {
-				var e *ssh.ExitError
-				if errors.As(runerr, &e) && e.ExitStatus() == DeadProcessExitCode {
-					// the controlled process is no longer alive, signal
-					close(alive)
-					return true, m.reap(ctx)
+		if _, err := errWriter.Write(stderr); err != nil {
+			ctx.Warnf("failed to write to stderr pipe: %w", err)
+			continue
+		}
+
+		if runerr != nil {
+			var em *ssh.ExitMissingError
+			if errors.As(runerr, &em) {
+				if err := m.reap(ctx); err != nil {
+					ctx.Warnf("monitor error: %w", err)
 				}
 
-				return true, fmt.Errorf("process exited with error: %w", runerr)
+				// process exited without an error or signal; this is a ssh server error
+				exitChan <- fmt.Errorf("internal ssh server error: %w", em)
+				return
 			}
 
-			return false, nil
-		}()
+			var ee *ssh.ExitError
+			if errors.As(runerr, &ee) {
+				if err := m.reap(ctx); err != nil {
+					ctx.Warnf("monitor error: %w", err)
+				}
 
-		if err != nil {
-			ctx.Warnf("monitor error: %w", err)
-		}
-		if stop {
-			break
+				switch ee.ExitStatus() {
+				case ProcessFinishedExitCode:
+					// agent controlled process exited by itself
+					exitChan <- nil
+
+				case DeadAgentExitCode:
+					// agent killed itself due to time quota or other error
+					exitChan <- fmt.Errorf("agent exceeded time quota or just crashed")
+
+				default:
+					exitChan <- ee
+				}
+				return
+			}
+
+			// process is done, but there's some other internal error
+			exitChan <- runerr
 		}
 
+		// controlled process is still alive
 		time.Sleep(time.Second)
 	}
 }
@@ -425,24 +471,27 @@ func (m *asyncMonitor) Start(
 func (m *asyncMonitor) reap(ctx xcontext.Context) error {
 	ctx.Debugf("reaping remote process: %s", m.sid)
 
-	_, _, err := m.runAgent("wait")
+	_, _, err, runerr := m.runAgent(ctx, "wait")
 	if err != nil {
-		return fmt.Errorf("failed to reap remote process: %w", err)
+		return fmt.Errorf("failed to start agent reap: %w", err)
+	}
+	if runerr != nil {
+		return fmt.Errorf("failed to reap remote process: %w", runerr)
 	}
 
 	return nil
 }
 
-func (m *asyncMonitor) runAgent(verb string) ([]byte, []byte, error) {
+func (m *asyncMonitor) runAgent(ctx xcontext.Context, verb string) ([]byte, []byte, error, error) {
 	client, err := ssh.Dial("tcp", m.addr, m.clientConfig)
 	if err != nil {
-		return nil, nil, fmt.Errorf("cannot connect to SSH server %s: %v", m.addr, err)
+		return nil, nil, fmt.Errorf("cannot connect to SSH server %s: %v", m.addr, err), nil
 	}
 	defer client.Close()
 
 	session, err := client.NewSession()
 	if err != nil {
-		return nil, nil, fmt.Errorf("cannot create SSH session to server: %w", err)
+		return nil, nil, fmt.Errorf("cannot create SSH session to server: %w", err), nil
 	}
 	defer session.Close()
 
@@ -451,19 +500,30 @@ func (m *asyncMonitor) runAgent(verb string) ([]byte, []byte, error) {
 	session.Stderr = &stderr
 
 	cmd := shellquote.Join(m.agent, verb, m.sid)
+	ctx.Debugf("starting agent command: %s", cmd)
 	if err := session.Start(cmd); err != nil {
-		return nil, nil, fmt.Errorf("failed to start remote agent: %w", err)
+		return nil, nil, fmt.Errorf("failed to start remote agent: %w", err), nil
 	}
 
-	// wait for any exit code, the process already started
+	// note: dont move this to the return line because stdout will be empty
 	runerr := session.Wait()
-	return stdout.Bytes(), stderr.Bytes(), runerr
+	return stdout.Bytes(), stderr.Bytes(), nil, runerr
 }
 
 func (spa *sshExecProcessAsync) Wait(_ xcontext.Context) error {
 	defer spa.stack.Done()
 
-	<-spa.alive
+	// wait for process
+	err := <-spa.exitChan
+
+	var e *ssh.ExitError
+	if errors.As(err, &e) {
+		return fmt.Errorf("process exited with error: %w", e)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to wait on process: %w", err)
+	}
 	return nil
 }
 

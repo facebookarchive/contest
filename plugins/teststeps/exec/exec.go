@@ -12,6 +12,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/plugins/teststeps"
 )
@@ -22,11 +23,17 @@ type stepParams struct {
 		Args []string `json:"args"`
 		// TODO: add max execution timer
 	} `json:"bin"`
+
 	Transport struct {
 		Proto   string          `json:"proto"`
 		Options json.RawMessage `json:"options,omitempty"`
 	} `json:"transport,omitempty"`
+
 	OCPOutput bool `json:"ocp_output"`
+
+	Constraints struct {
+		TimeQuota types.Duration `json:"time_quota,omitempty"`
+	} `json:"constraints,omitempty"`
 }
 
 // Name is the name used to look this plugin up.

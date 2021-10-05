@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/target"
@@ -95,6 +96,14 @@ func (r *TargetRunner) runAny(
 
 func (r *TargetRunner) Run(ctx xcontext.Context, target *target.Target) error {
 	ctx.Infof("Executing on target %s", target)
+
+	// limit the execution time if specified
+	timeQuota := r.ts.Constraints.TimeQuota
+	if !timeQuota.IsZero() {
+		var cancel xcontext.CancelFunc
+		ctx, cancel = xcontext.WithTimeout(ctx, time.Duration(timeQuota))
+		defer cancel()
+	}
 
 	pe := test.NewParamExpander(target)
 

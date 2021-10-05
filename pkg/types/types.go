@@ -56,7 +56,7 @@ func RunIDFromContext(ctx xcontext.Context) (RunID, bool) {
 type Duration time.Duration
 
 func (d Duration) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Duration(d).String())
+	return json.Marshal(d.String())
 }
 
 func (d *Duration) UnmarshalJSON(b []byte) error {
@@ -80,4 +80,12 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 	default:
 		return errors.New("invalid duration")
 	}
+}
+
+func (d Duration) IsZero() bool {
+	return int64(d) == 0
+}
+
+func (d Duration) String() string {
+	return time.Duration(d).String()
 }

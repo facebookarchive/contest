@@ -32,16 +32,15 @@ type monitor struct {
 	stdout *bytes.Buffer
 	stderr *bytes.Buffer
 
-	done   chan<- struct{}
-	waited bool
+	reaper *SafeSignal
 
 	// there really shouldnt be multiple concurrent consumers
 	// by design, but better be safe than sorry
 	mu sync.Mutex
 }
 
-func newMonitor(proc *os.Process, stdout *bytes.Buffer, stderr *bytes.Buffer, done chan<- struct{}) *monitor {
-	return &monitor{proc, stdout, stderr, done, false, sync.Mutex{}}
+func newMonitor(proc *os.Process, stdout *bytes.Buffer, stderr *bytes.Buffer, reaper *SafeSignal) *monitor {
+	return &monitor{proc, stdout, stderr, reaper, sync.Mutex{}}
 }
 
 func (m *monitor) Poll(_ int, reply *PollResponse) error {
@@ -74,15 +73,8 @@ func (m *monitor) Poll(_ int, reply *PollResponse) error {
 
 func (m *monitor) Wait(_ int, _ *interface{}) error {
 	log.Print("got a call for: wait")
-	m.mu.Lock()
-	defer m.mu.Unlock()
 
-	if m.waited {
-		return nil
-	}
-
-	close(m.done)
-	m.waited = true
+	m.reaper.Signal()
 	return nil
 }
 
@@ -95,11 +87,11 @@ type MonitorServer struct {
 	http *http.Server
 }
 
-func NewMonitorServer(proc *os.Process, stdout *bytes.Buffer, stderr *bytes.Buffer, done chan<- struct{}) *MonitorServer {
+func NewMonitorServer(proc *os.Process, stdout *bytes.Buffer, stderr *bytes.Buffer, reap *SafeSignal) *MonitorServer {
 	addr := fmt.Sprintf(sockFormat, proc.Pid)
-	api := newMonitor(proc, stdout, stderr, done)
+	mon := newMonitor(proc, stdout, stderr, reap)
 
-	return &MonitorServer{addr, api, nil}
+	return &MonitorServer{addr, mon, nil}
 }
 
 func (m *MonitorServer) Serve() error {

@@ -16,10 +16,13 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 const (
-	DeadProcessExitCode = 13
+	ProcessFinishedExitCode = 13
+	DeadAgentExitCode       = 14
 )
 
 func run() error {
@@ -63,8 +66,27 @@ func run() error {
 }
 
 func start(bin string, args []string) error {
-	cmd := exec.Command(bin, args...)
+	ctx := xcontext.Background()
 
+	// signal channel for process exit. Similar to Wait
+	reaper := newSafeSignal()
+	defer reaper.Signal()
+
+	if flagTimeQuota != nil && *flagTimeQuota != 0 {
+		var cancel xcontext.CancelFunc
+		ctx, cancel = xcontext.WithTimeout(ctx, *flagTimeQuota)
+		defer cancel()
+
+		// skip waiting for remote to poll/wait
+		go func() {
+			<-ctx.Done()
+			reaper.Signal()
+		}()
+	}
+
+	cmd := exec.CommandContext(ctx, bin, args...)
+
+	// TODO: race condition on these buffers; fix
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -76,20 +98,21 @@ func start(bin string, args []string) error {
 	// NOTE: write this only pid on stdout
 	fmt.Printf("%d\n", cmd.Process.Pid)
 
-	// signal channel for process exit. Similar to Wait
-	done := make(chan struct{})
-
 	cmdErr := make(chan error, 1)
 	go func() {
 		err := cmd.Wait()
+		if err != nil {
+			log.Printf("process exited with err: %v", err)
+		} else {
+			log.Print("process finished")
+		}
 
-		// wait until remote says we're done
-		<-done
+		reaper.Wait()
 		cmdErr <- err
 	}()
 
 	// start unix socket server
-	mon := NewMonitorServer(cmd.Process, &stdout, &stderr, done)
+	mon := NewMonitorServer(cmd.Process, &stdout, &stderr, reaper)
 	monErr := make(chan error, 1)
 	go func() {
 		monErr <- mon.Serve()
@@ -143,7 +166,7 @@ func poll(pid int) error {
 		// connection errors also means that the process or agent might have died
 		var e *ErrCantConnect
 		if errors.As(err, &e) {
-			os.Exit(DeadProcessExitCode)
+			os.Exit(DeadAgentExitCode)
 		}
 
 		return fmt.Errorf("failed to call monitor: %w", err)
@@ -152,7 +175,7 @@ func poll(pid int) error {
 	fmt.Printf("%s", string(data.Stdout))
 	fmt.Fprintf(os.Stderr, "%s", string(data.Stderr))
 	if !data.Alive {
-		os.Exit(DeadProcessExitCode)
+		os.Exit(ProcessFinishedExitCode)
 	}
 
 	return nil

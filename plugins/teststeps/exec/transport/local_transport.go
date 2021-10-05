@@ -6,6 +6,7 @@
 package transport
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -55,6 +56,11 @@ func startLocalExecProcess(ctx xcontext.Context, bin string, args []string) (Exe
 
 func (lp *localExecProcess) Wait(_ xcontext.Context) error {
 	if err := lp.cmd.Wait(); err != nil {
+		var e *exec.ExitError
+		if errors.As(err, &e) {
+			return fmt.Errorf("process exited with error: %w", err)
+		}
+
 		return fmt.Errorf("failed to wait on process: %w", err)
 	}
 

@@ -12,15 +12,18 @@ import (
 	"os"
 	"path"
 	"syscall"
+	"time"
 )
 
 var (
-	flagSet   *flag.FlagSet
-	flagDebug *bool
+	flagSet       *flag.FlagSet
+	flagTimeQuota *time.Duration
+	flagDebug     *bool
 )
 
 func initFlags(cmd string) {
 	flagSet = flag.NewFlagSet(cmd, flag.ContinueOnError)
+	flagTimeQuota = flagSet.Duration("time-quota", 0, "Time quota until the process self-destructs; 0 means infinite")
 	flagDebug = flagSet.Bool("debug", false, "Output logs and errors in foreground, otherwise close stderr")
 
 	flagSet.Usage = func() {
@@ -62,6 +65,6 @@ func main() {
 	}
 
 	if err := run(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("execution failed: %v", err)
 	}
 }
