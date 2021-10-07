@@ -22,41 +22,34 @@ func NewLocalTransport() Transport {
 	return &LocalTransport{}
 }
 
-func (lt *LocalTransport) Start(ctx xcontext.Context, bin string, args []string) (ExecProcess, error) {
-	return startLocalExecProcess(ctx, bin, args)
+func (lt *LocalTransport) NewProcess(ctx xcontext.Context, bin string, args []string) (Process, error) {
+	return newLocalProcess(ctx, bin, args)
 }
 
-type localExecProcess struct {
-	cmd    *exec.Cmd
-	stdout io.ReadCloser
-	stderr io.ReadCloser
+// localProcess is just a thin layer over exec.Command
+type localProcess struct {
+	cmd *exec.Cmd
 }
 
-func startLocalExecProcess(ctx xcontext.Context, bin string, args []string) (ExecProcess, error) {
+func newLocalProcess(ctx xcontext.Context, bin string, args []string) (Process, error) {
 	if err := checkBinary(bin); err != nil {
 		return nil, err
 	}
 
 	cmd := exec.CommandContext(ctx, bin, args...)
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get stdout pipe")
-	}
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get stdout pipe")
-	}
-
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start process: %w", err)
-	}
-
-	return &localExecProcess{cmd, stdout, stderr}, nil
+	return &localProcess{cmd}, nil
 }
 
-func (lp *localExecProcess) Wait(_ xcontext.Context) error {
+func (lp *localProcess) Start(ctx xcontext.Context) error {
+	ctx.Debugf("starting local binary: %v", lp)
+	if err := lp.cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start process: %w", err)
+	}
+
+	return nil
+}
+
+func (lp *localProcess) Wait(_ xcontext.Context) error {
 	if err := lp.cmd.Wait(); err != nil {
 		var e *exec.ExitError
 		if errors.As(err, &e) {
@@ -69,10 +62,22 @@ func (lp *localExecProcess) Wait(_ xcontext.Context) error {
 	return nil
 }
 
-func (lp *localExecProcess) Stdout() io.Reader {
-	return lp.stdout
+func (lp *localProcess) StdoutPipe() (io.Reader, error) {
+	stdout, err := lp.cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stdout pipe")
+	}
+	return stdout, nil
 }
 
-func (lp *localExecProcess) Stderr() io.Reader {
-	return lp.stderr
+func (lp *localProcess) StderrPipe() (io.Reader, error) {
+	stderr, err := lp.cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stdout pipe")
+	}
+	return stderr, nil
+}
+
+func (lp *localProcess) String() string {
+	return lp.cmd.String()
 }

@@ -107,7 +107,9 @@ func (m *MonitorServer) Serve() error {
 	defer listener.Close()
 
 	rpcServer := rpc.NewServer()
-	rpcServer.RegisterName("api", m.mon)
+	if err := rpcServer.RegisterName("api", m.mon); err != nil {
+		return fmt.Errorf("failed to register rpc api: %v", err)
+	}
 
 	log.Printf("starting RPC server at: %s", m.addr)
 	m.http = &http.Server{

@@ -60,8 +60,12 @@ func main() {
 		}
 		defer null.Close()
 
-		syscall.Dup2(int(null.Fd()), 0)
-		syscall.Dup2(int(null.Fd()), 2)
+		if err := syscall.Dup2(int(null.Fd()), 0); err != nil {
+			log.Fatalf("failed stdin dup2: %v", err)
+		}
+		if err := syscall.Dup2(int(null.Fd()), 2); err != nil {
+			log.Fatalf("failed stderr dup2: %v", err)
+		}
 	}
 
 	if err := run(); err != nil {

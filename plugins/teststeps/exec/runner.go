@@ -8,7 +8,6 @@ package exec
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/event/testevent"
@@ -32,34 +31,35 @@ func NewTargetRunner(ts *TestStep, ev testevent.Emitter) *TargetRunner {
 	}
 }
 
-func consume(r io.Reader) {
-	buf := make([]byte, 4096)
-	for {
-		if _, err := r.Read(buf); err == io.EOF {
-			break
-		}
-	}
-}
-
 func (r *TargetRunner) runWithOCP(
 	ctx xcontext.Context, target *target.Target,
 	transport transport.Transport, params stepParams,
 ) (outcome, error) {
-	proc, err := transport.Start(ctx, params.Bin.Path, params.Bin.Args)
+	proc, err := transport.NewProcess(ctx, params.Bin.Path, params.Bin.Args)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start proc: %w", err)
+		return nil, fmt.Errorf("failed to create proc: %w", err)
 	}
 
-	// TODO: refactor this to only get pipes on demand
-	go consume(proc.Stderr())
+	stdout, err := proc.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to pipe stout: %w", err)
+	}
+
+	if err := proc.Start(ctx); err != nil {
+		return err, nil
+	}
 
 	p := NewOCPEventParser(target, r.ev)
-	dec := json.NewDecoder(proc.Stdout())
+	dec := json.NewDecoder(stdout)
 	for dec.More() {
 		var root *OCPRoot
-		dec.Decode(&root)
+		if err := dec.Decode(&root); err != nil {
+			ctx.Warnf("failed to decode ocp root: %w", err)
+		}
 
-		p.Parse(ctx, root)
+		if err := p.Parse(ctx, root); err != nil {
+			ctx.Warnf("failed to parse ocp root: %w", err)
+		}
 	}
 
 	if err := proc.Wait(ctx); err != nil {
@@ -73,19 +73,24 @@ func (r *TargetRunner) runAny(
 	ctx xcontext.Context, target *target.Target,
 	transport transport.Transport, params stepParams,
 ) (outcome, error) {
-	proc, err := transport.Start(ctx, params.Bin.Path, params.Bin.Args)
+	proc, err := transport.NewProcess(ctx, params.Bin.Path, params.Bin.Args)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start proc: %w", err)
+		return nil, fmt.Errorf("failed to create proc: %w", err)
 	}
 
-	go consume(proc.Stdout())
-	go consume(proc.Stderr())
+	var startPayload struct {
+		cmd string
+	}
+	startPayload.cmd = proc.String()
 
-	// NOTE: these events technically aren't needed, but kept for symmetry with the ocp case
-	if err := emitEvent(ctx, TestStartEvent, nil, target, r.ev); err != nil {
+	if err := emitEvent(ctx, TestStartEvent, startPayload, target, r.ev); err != nil {
 		return nil, fmt.Errorf("cannot emit event: %w", err)
 	}
-	out := proc.Wait(ctx)
+
+	out := proc.Start(ctx)
+	if out == nil {
+		out = proc.Wait(ctx)
+	}
 
 	if err := emitEvent(ctx, TestEndEvent, nil, target, r.ev); err != nil {
 		return nil, fmt.Errorf("cannot emit event: %w", err)

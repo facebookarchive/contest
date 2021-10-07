@@ -19,6 +19,6 @@ func NewLocalTransport() Transport {
 	return &LocalTransport{}
 }
 
-func (lt *LocalTransport) Start(ctx xcontext.Context, bin string, args []string) (ExecProcess, error) {
+func (lt *LocalTransport) NewProcess(ctx xcontext.Context, bin string, args []string) (Process, error) {
 	return nil, fmt.Errorf("unavailable without unsafe build tag")
 }
