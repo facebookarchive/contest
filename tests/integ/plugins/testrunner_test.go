@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/stretchr/testify/require"
 
 	"github.com/facebookincubator/contest/pkg/event"
@@ -29,6 +28,7 @@ import (
 	"github.com/facebookincubator/contest/plugins/teststeps/cmd"
 	"github.com/facebookincubator/contest/plugins/teststeps/echo"
 	"github.com/facebookincubator/contest/plugins/teststeps/example"
+	"github.com/facebookincubator/contest/plugins/teststeps/exec"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/channels"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/crash"
 	"github.com/facebookincubator/contest/tests/plugins/teststeps/fail"
@@ -55,6 +55,7 @@ var testSteps = map[string]test.TestStepFactory{
 	hanging.Name:   hanging.New,
 	channels.Name:  channels.New,
 	cmd.Name:       cmd.New,
+	exec.Name:      exec.New,
 	crash.Name:     crash.New,
 	fail.Name:      fail.New,
 }
@@ -67,6 +68,7 @@ var testStepsEvents = map[string][]event.Name{
 	hanging.Name:   hanging.Events,
 	channels.Name:  channels.Events,
 	cmd.Name:       cmd.Events,
+	exec.Name:      exec.Events,
 	crash.Name:     crash.Events,
 	fail.Name:      fail.Events,
 }
@@ -85,11 +87,11 @@ func TestMain(m *testing.M) {
 	}
 	// Setup test Targets and empty parameters
 	targets = []*target.Target{
-		&target.Target{ID: "001", FQDN: "host001.facebook.com"},
-		&target.Target{ID: "002", FQDN: "host002.facebook.com"},
-		&target.Target{ID: "003", FQDN: "host003.facebook.com"},
-		&target.Target{ID: "004", FQDN: "host004.facebook.com"},
-		&target.Target{ID: "005", FQDN: "host005.facebook.com"},
+		{ID: "001", FQDN: "host001.facebook.com"},
+		{ID: "002", FQDN: "host002.facebook.com"},
+		{ID: "003", FQDN: "host003.facebook.com"},
+		{ID: "004", FQDN: "host004.facebook.com"},
+		{ID: "005", FQDN: "host005.facebook.com"},
 	}
 
 	// Configure the storage layer to be in-memory for TestRunner integration tests.
@@ -120,9 +122,9 @@ func TestSuccessfulCompletion(t *testing.T) {
 
 	params := make(test.TestStepParameters)
 	testSteps := []test.TestStepBundle{
-		test.TestStepBundle{TestStep: ts1, TestStepLabel: "FirstStage", Parameters: params},
-		test.TestStepBundle{TestStep: ts2, TestStepLabel: "SecondStage", Parameters: params},
-		test.TestStepBundle{TestStep: ts3, TestStepLabel: "ThirdStage", Parameters: params},
+		{TestStep: ts1, TestStepLabel: "FirstStage", Parameters: params},
+		{TestStep: ts2, TestStepLabel: "SecondStage", Parameters: params},
+		{TestStep: ts3, TestStepLabel: "ThirdStage", Parameters: params},
 	}
 
 	errCh := make(chan error, 1)
@@ -132,51 +134,11 @@ func TestSuccessfulCompletion(t *testing.T) {
 		_, err := tr.Run(ctx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID, nil)
 		errCh <- err
 	}()
+
 	select {
 	case err = <-errCh:
 		require.NoError(t, err)
 	case <-time.After(successTimeout):
 		t.Errorf("test should return within timeout (%s)", successTimeout.String())
-	}
-}
-
-func TestCmdPlugin(t *testing.T) {
-
-	jobID := types.JobID(1)
-	runID := types.RunID(1)
-
-	ts1, err := pluginRegistry.NewTestStep("cmd")
-	require.NoError(t, err)
-
-	params := make(test.TestStepParameters)
-	params["executable"] = []test.Param{
-		*test.NewParam("sleep"),
-	}
-	params["args"] = []test.Param{
-		*test.NewParam("5"),
-	}
-
-	testSteps := []test.TestStepBundle{
-		test.TestStepBundle{TestStep: ts1, Parameters: params},
-	}
-
-	stateCtx, cancel := xcontext.WithCancel(ctx)
-	errCh := make(chan error, 1)
-
-	go func() {
-		tr := runner.NewTestRunner()
-		_, err := tr.Run(stateCtx, &test.Test{TestStepsBundles: testSteps}, targets, jobID, runID, nil)
-		errCh <- err
-	}()
-
-	go func() {
-		time.Sleep(time.Second)
-		cancel()
-	}()
-
-	select {
-	case <-errCh:
-	case <-time.After(successTimeout):
-		t.Errorf("test should return within timeout: %+v", successTimeout)
 	}
 }
