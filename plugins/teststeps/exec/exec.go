@@ -12,9 +12,9 @@ import (
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/test"
-	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/plugins/teststeps"
+	"github.com/insomniacslk/xjson"
 )
 
 type stepParams struct {
@@ -32,7 +32,7 @@ type stepParams struct {
 	OCPOutput bool `json:"ocp_output"`
 
 	Constraints struct {
-		TimeQuota types.Duration `json:"time_quota,omitempty"`
+		TimeQuota xjson.Duration `json:"time_quota,omitempty"`
 	} `json:"constraints,omitempty"`
 }
 

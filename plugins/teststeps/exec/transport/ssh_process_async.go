@@ -14,8 +14,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
+	"github.com/insomniacslk/xjson"
 	"github.com/kballard/go-shellquote"
 	"golang.org/x/crypto/ssh"
 )
@@ -38,13 +38,13 @@ type sshProcessAsync struct {
 func newSSHProcessAsync(
 	ctx xcontext.Context,
 	addr string, clientConfig *ssh.ClientConfig,
-	agent string, timeQuota types.Duration,
+	agent string, timeQuota xjson.Duration,
 	bin string, args []string,
 	stack *deferedStack,
 ) (Process, error) {
 	// build the command to run remotely
 	agentArgs := []string{agent}
-	if !timeQuota.IsZero() {
+	if timeQuota != 0 {
 		agentArgs = append(agentArgs, fmt.Sprintf("--time-quota=%s", timeQuota.String()))
 	}
 	agentArgs = append(agentArgs, "start", bin)
@@ -70,7 +70,7 @@ func (spa *sshProcessAsync) Start(ctx xcontext.Context) error {
 
 	go func() {
 		// NOTE: golang doesnt support forking, so the started process needs to be
-		// forcefully detached by closing the ssh session
+		// forcefully detached by closing the ssh session; detach is defered here
 		client, err := ssh.Dial("tcp", spa.addr, spa.clientConfig)
 		if err != nil {
 			errChan <- fmt.Errorf("cannot connect to SSH server %s: %v", spa.addr, err)

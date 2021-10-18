@@ -11,6 +11,9 @@ import (
 )
 
 // SafeSignal is a goroutine safe signalling mechanism
+// It can have multiple goroutines that trigger the signal without
+// interfering with eachother (or crashing as using a channel would)
+// Currently designed for a single waiter goroutine.
 type SafeSignal struct {
 	sync.Mutex
 	done bool

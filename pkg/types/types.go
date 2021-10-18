@@ -6,10 +6,7 @@
 package types
 
 import (
-	"encoding/json"
-	"errors"
 	"strconv"
-	"time"
 
 	"github.com/facebookincubator/contest/pkg/xcontext"
 )
@@ -50,42 +47,4 @@ func JobIDFromContext(ctx xcontext.Context) (JobID, bool) {
 func RunIDFromContext(ctx xcontext.Context) (RunID, bool) {
 	v, ok := ctx.Value(KeyRunID).(RunID)
 	return v, ok
-}
-
-// Duration is a JSON serializable time.Duration variant
-type Duration time.Duration
-
-func (d Duration) MarshalJSON() ([]byte, error) {
-	return json.Marshal(d.String())
-}
-
-func (d *Duration) UnmarshalJSON(b []byte) error {
-	var v interface{}
-	if err := json.Unmarshal(b, &v); err != nil {
-		return err
-	}
-
-	switch value := v.(type) {
-	case float64:
-		*d = Duration(time.Duration(value))
-		return nil
-
-	case string:
-		parsed, err := time.ParseDuration(value)
-		if err != nil {
-			return err
-		}
-		*d = Duration(parsed)
-		return nil
-	default:
-		return errors.New("invalid duration")
-	}
-}
-
-func (d Duration) IsZero() bool {
-	return int64(d) == 0
-}
-
-func (d Duration) String() string {
-	return time.Duration(d).String()
 }

@@ -57,6 +57,9 @@ func (m *monitor) Poll(_ int, reply *PollResponse) error {
 		return fmt.Errorf("failed to read stderr: %w", err)
 	}
 
+	// a signal value of 0 can be sent to the process to probe whether it's still alive
+	// or not, it triggers no handling in the receiver process; apart from this, there
+	// aren't many other ways of checking the process health (apart from poking the pid directly)
 	reply.Alive = true
 	if err := m.proc.Signal(syscall.Signal(0)); err != nil {
 		if errors.Is(err, os.ErrProcessDone) {

@@ -46,7 +46,7 @@ func (r *TargetRunner) runWithOCP(
 	}
 
 	if err := proc.Start(ctx); err != nil {
-		return err, nil
+		return nil, err
 	}
 
 	p := NewOCPEventParser(target, r.ev)
@@ -87,6 +87,9 @@ func (r *TargetRunner) runAny(
 		return nil, fmt.Errorf("cannot emit event: %w", err)
 	}
 
+	// try to start the process, if that succeeds then the outcome is the result of
+	// waiting on the process for its result; this way there's a semantic difference
+	// between "an error occured while launching" and "this was the outcome of the execution"
 	out := proc.Start(ctx)
 	if out == nil {
 		out = proc.Wait(ctx)
@@ -104,7 +107,7 @@ func (r *TargetRunner) Run(ctx xcontext.Context, target *target.Target) error {
 
 	// limit the execution time if specified
 	timeQuota := r.ts.Constraints.TimeQuota
-	if !timeQuota.IsZero() {
+	if timeQuota != 0 {
 		var cancel xcontext.CancelFunc
 		ctx, cancel = xcontext.WithTimeout(ctx, time.Duration(timeQuota))
 		defer cancel()
@@ -124,6 +127,9 @@ func (r *TargetRunner) Run(ctx xcontext.Context, target *target.Target) error {
 
 	if params.OCPOutput {
 		out, err := r.runWithOCP(ctx, target, transport, params)
+
+		// for any ambiguity, out is an error interface, but it encodes whether the process
+		// was launched sucessfully and it resulted in a failure; err means the launch failed
 		if out != nil {
 			return out
 		}

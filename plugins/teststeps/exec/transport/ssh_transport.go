@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/insomniacslk/xjson"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/facebookincubator/contest/pkg/types"
 	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
@@ -29,19 +29,19 @@ type SSHTransportConfig struct {
 	Password     string `json:"password,omitempty"`
 	IdentityFile string `json:"identity_file,omitempty"`
 
-	Timeout    types.Duration `json:"timeout,omitempty"`
+	Timeout    xjson.Duration `json:"timeout,omitempty"`
 	SendBinary bool           `json:"send_binary,omitempty"`
 
 	Async *struct {
 		Agent     string         `json:"agent,omitempty"`
-		TimeQuota types.Duration `json:"time_quota,omitempty"`
+		TimeQuota xjson.Duration `json:"time_quota,omitempty"`
 	} `json:"async,omitempty"`
 }
 
 func DefaultSSHTransportConfig() SSHTransportConfig {
 	return SSHTransportConfig{
 		Port:    22,
-		Timeout: types.Duration(10 * time.Minute),
+		Timeout: xjson.Duration(10 * time.Minute),
 	}
 }
 

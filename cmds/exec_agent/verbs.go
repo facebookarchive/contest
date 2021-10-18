@@ -85,7 +85,6 @@ func start(bin string, args []string) error {
 
 	cmd := exec.CommandContext(ctx, bin, args...)
 
-	// TODO: race condition on these buffers; fix
 	var stdout, stderr SafeBuffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
