@@ -51,12 +51,22 @@ func newSSHProcessWithStdin(
 }
 
 func (sp *sshProcess) Start(ctx xcontext.Context) error {
+	// important note: turns out that with some sshd configs/implementations
+	// sending signals thru the ssh channel doesn't work (either not implemented or
+	// refused due to privilege separation).
+	// So to work around that, allocate a pty for this session and rely on SIGHUP
+	// to kill the process remotely if the ctx gets cancelled.
+	// This obviously has the limitation that the spawned process can just ignore
+	// SIGHUP and control its own lifetime, but there's no other way to have this.
+	if err := sp.session.RequestPty("xterm", 80, 120, ssh.TerminalModes{}); err != nil {
+		return err
+	}
+
 	ctx.Debugf("starting remote binary: %s", sp.cmd)
 	if err := sp.session.Start(sp.cmd); err != nil {
 		return fmt.Errorf("failed to start process: %w", err)
 	}
 
-	// start a keepalive goro to keep sending to the ssh server
 	go func() {
 		for {
 			select {
@@ -70,10 +80,16 @@ func (sp *sshProcess) Start(ctx xcontext.Context) error {
 				}
 
 			case <-ctx.Done():
-				ctx.Debugf("killing ssh session because of timeout...")
-				if err := sp.session.Signal(ssh.SIGKILL); err != nil {
-					ctx.Warnf("failed to send KILL on context cancel: %w", err)
-				}
+				ctx.Debugf("killing ssh session because of cancellation...")
+
+				// Part 2 of the cancellation. Normally this would send a SIGKILL here
+				// but this is sometimes ignored by sshd based on config/impl, so instead
+				// rely on SIGHUP to kill the process by just closing the session.
+				// if err := sp.session.Signal(ssh.SIGINT); err != nil {
+				// 	ctx.Warnf("failed to send KILL on context cancel: %w", err)
+				// }
+
+				sp.session.Close()
 				return
 			}
 		}
@@ -82,7 +98,7 @@ func (sp *sshProcess) Start(ctx xcontext.Context) error {
 	return nil
 }
 
-func (sp *sshProcess) Wait(_ xcontext.Context) error {
+func (sp *sshProcess) Wait(c xcontext.Context) error {
 	// close these no matter what error we get from the wait
 	defer func() {
 		sp.stack.Done()

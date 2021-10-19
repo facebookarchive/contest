@@ -73,6 +73,16 @@ func (m *monitor) Poll(_ int, reply *PollResponse) error {
 	return nil
 }
 
+func (m *monitor) Kill(_ int, _ *interface{}) error {
+	log.Print("got a call for: kill")
+
+	if err := m.proc.Signal(syscall.SIGKILL); err != nil {
+		return fmt.Errorf("failed to send SIGKILL: %w", err)
+	}
+
+	return nil
+}
+
 func (m *monitor) Wait(_ int, _ *interface{}) error {
 	log.Print("got a call for: wait")
 
@@ -185,4 +195,19 @@ func (m *MonitorClient) Poll() (*PollResponse, error) {
 	}
 
 	return &reply, nil
+}
+
+func (m *MonitorClient) Kill() error {
+	client, err := rpc.DialHTTP("unix", m.addr)
+	if err != nil {
+		return &ErrCantConnect{fmt.Errorf("failed to connect to %s: %w", m.addr, err)}
+	}
+	defer client.Close()
+
+	var reply interface{}
+	if err := client.Call("api.Kill", 0, &reply); err != nil {
+		return fmt.Errorf("failed to call rpc method: %w", err)
+	}
+
+	return nil
 }

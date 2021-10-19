@@ -51,6 +51,14 @@ func run() error {
 
 		return poll(pid)
 
+	case "kill":
+		pid, err := strconv.Atoi(flagSet.Arg(1))
+		if err != nil {
+			return fmt.Errorf("failed to parse exec id: %w", err)
+		}
+
+		return kill(pid)
+
 	case "wait":
 		pid, err := strconv.Atoi(flagSet.Arg(1))
 		if err != nil {
@@ -177,4 +185,9 @@ func poll(pid int) error {
 	}
 
 	return nil
+}
+
+func kill(pid int) error {
+	mon := NewMonitorClient(pid)
+	return mon.Kill()
 }

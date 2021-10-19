@@ -8,6 +8,7 @@
 package tests
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -21,6 +22,8 @@ import (
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,7 +40,7 @@ func nextID() int {
 	return currentID
 }
 
-func runExecPlugin(t *testing.T, jsonParams string) error {
+func runExecPlugin(t *testing.T, ctx xcontext.Context, jsonParams string) error {
 	jobID := types.JobID(nextID())
 	runID := types.RunID(1)
 
@@ -112,7 +115,7 @@ func TestExecPluginLocalSimple(t *testing.T) {
 			"proto": "local"
 		}
 	}`
-	if err := runExecPlugin(t, jsonParams); err != nil {
+	if err := runExecPlugin(t, ctx, jsonParams); err != nil {
 		t.Error(err)
 	}
 }
@@ -130,10 +133,10 @@ func TestExecPluginLocalTimeout(t *testing.T) {
 			"proto": "local"
 		},
 		"constraints": {
-			"time_quota": "2s"
+			"time_quota": "1s"
 		}
 	}`
-	err := runExecPlugin(t, jsonParams)
+	err := runExecPlugin(t, ctx, jsonParams)
 	if !strings.Contains(err.Error(), "killed") {
 		t.Error(err)
 	}
@@ -158,7 +161,7 @@ func TestExecPluginSSHSimple(t *testing.T) {
 			}
 		}
 	}`
-	if err := runExecPlugin(t, jsonParams); err != nil {
+	if err := runExecPlugin(t, ctx, jsonParams); err != nil {
 		t.Error(err)
 	}
 }
@@ -187,7 +190,85 @@ func TestExecPluginSSHAsync(t *testing.T) {
 			}
 		}
 	}`
-	if err := runExecPlugin(t, jsonParams); err != nil {
+	if err := runExecPlugin(t, ctx, jsonParams); err != nil {
 		t.Error(err)
 	}
+}
+
+func TestExecPluginLocalCancel(t *testing.T) {
+	jsonParams := `
+	{
+		"bin": {
+			"path": "/bin/sleep",
+			"args": [
+				"20"
+			]
+		},
+		"transport": {
+			"proto": "local"
+		}
+	}`
+
+	ctx, cancel := xcontext.WithTimeout(ctx, time.Second)
+	defer cancel()
+
+	err := runExecPlugin(t, ctx, jsonParams)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestExecPluginSSHCancel(t *testing.T) {
+	jsonParams := `
+	{
+		"bin": {
+			"path": "/bin/sleep",
+			"args": [
+				"20"
+			]
+		},
+		"transport": {
+			"proto": "ssh",
+			"options": {
+				"host": "localhost",
+				"user": "root",
+				"identity_file": "/root/.ssh/id_rsa"
+			}
+		}
+	}`
+
+	ctx, cancel := xcontext.WithTimeout(ctx, time.Second)
+	defer cancel()
+
+	err := runExecPlugin(t, ctx, jsonParams)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestExecPluginSSHAsyncCancel(t *testing.T) {
+	jsonParams := `
+	{
+		"bin": {
+			"path": "/bin/sleep",
+			"args": [
+				"20"
+			]
+		},
+		"transport": {
+			"proto": "ssh",
+			"options": {
+				"host": "localhost",
+				"user": "root",
+				"identity_file": "/root/.ssh/id_rsa",
+				"send_binary": true,
+				"async": {
+					"agent": "/go/src/github.com/facebookincubator/contest/exec_agent",
+					"time_quota": "25s"
+				}
+			}
+		}
+	}`
+
+	ctx, cancel := xcontext.WithTimeout(ctx, time.Second)
+	defer cancel()
+
+	err := runExecPlugin(t, ctx, jsonParams)
+	assert.ErrorIs(t, err, context.Canceled)
 }

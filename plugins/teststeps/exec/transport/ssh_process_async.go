@@ -137,6 +137,9 @@ func (spa *sshProcessAsync) Start(ctx xcontext.Context) error {
 
 	case <-time.After(5 * time.Second):
 		return fmt.Errorf("timeout while starting agent")
+
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -199,67 +202,92 @@ func (m *asyncMonitor) Start(
 	defer outWriter.Close()
 	defer errWriter.Close()
 
-	// TODO: add timeout cancel
 	for {
-		ctx.Debugf("polling remote process: %s", m.sid)
+		select {
+		case <-time.After(time.Second):
+			ctx.Debugf("polling remote process: %s", m.sid)
 
-		stdout, stderr, err, runerr := m.runAgent(ctx, "poll")
-		if err != nil {
-			ctx.Warnf("failed to run agent: %w", err)
-			continue
-		}
-
-		// append stdout, stderr; blocking until read
-		if _, err := outWriter.Write(stdout); err != nil {
-			ctx.Warnf("failed to write to stdout pipe: %w", err)
-			continue
-		}
-
-		if _, err := errWriter.Write(stderr); err != nil {
-			ctx.Warnf("failed to write to stderr pipe: %w", err)
-			continue
-		}
-
-		if runerr != nil {
-			var em *ssh.ExitMissingError
-			if errors.As(runerr, &em) {
-				if err := m.reap(ctx); err != nil {
-					ctx.Warnf("monitor error: %w", err)
-				}
-
-				// process exited without an error or signal; this is a ssh server error
-				exitChan <- fmt.Errorf("internal ssh server error: %w", em)
-				return
+			stdout, stderr, err, runerr := m.runAgent(ctx, "poll")
+			if err != nil {
+				ctx.Warnf("failed to run agent: %w", err)
+				continue
 			}
 
-			var ee *ssh.ExitError
-			if errors.As(runerr, &ee) {
-				if err := m.reap(ctx); err != nil {
-					ctx.Warnf("monitor error: %w", err)
-				}
-
-				switch ee.ExitStatus() {
-				case ProcessFinishedExitCode:
-					// agent controlled process exited by itself
-					exitChan <- nil
-
-				case DeadAgentExitCode:
-					// agent killed itself due to time quota or other error
-					exitChan <- fmt.Errorf("agent exceeded time quota or just crashed")
-
-				default:
-					exitChan <- ee
-				}
-				return
+			// append stdout, stderr; blocking until read
+			if _, err := outWriter.Write(stdout); err != nil {
+				ctx.Warnf("failed to write to stdout pipe: %w", err)
+				continue
 			}
 
-			// process is done, but there's some other internal error
-			exitChan <- runerr
-		}
+			if _, err := errWriter.Write(stderr); err != nil {
+				ctx.Warnf("failed to write to stderr pipe: %w", err)
+				continue
+			}
 
-		// controlled process is still alive
-		time.Sleep(time.Second)
+			if runerr != nil {
+				var em *ssh.ExitMissingError
+				if errors.As(runerr, &em) {
+					if err := m.reap(ctx); err != nil {
+						ctx.Warnf("monitor error: %w", err)
+					}
+
+					// process exited without an error or signal; this is a ssh server error
+					exitChan <- fmt.Errorf("internal ssh server error: %w", em)
+					return
+				}
+
+				var ee *ssh.ExitError
+				if errors.As(runerr, &ee) {
+					if err := m.reap(ctx); err != nil {
+						ctx.Warnf("monitor error: %w", err)
+					}
+
+					switch ee.ExitStatus() {
+					case ProcessFinishedExitCode:
+						// agent controlled process exited by itself
+						exitChan <- nil
+
+					case DeadAgentExitCode:
+						// agent killed itself due to time quota or other error
+						exitChan <- fmt.Errorf("agent exceeded time quota or just crashed")
+
+					default:
+						exitChan <- ee
+					}
+					return
+				}
+
+				// process is done, but there's some other internal error
+				exitChan <- runerr
+			}
+
+		case <-ctx.Done():
+			ctx.Debugf("killing remote process, reason: cancellation")
+
+			err := m.kill(ctx)
+			if err := m.reap(ctx); err != nil {
+				ctx.Warnf("monitor error: %w", err)
+			}
+
+			exitChan <- err
+			return
+		}
 	}
+}
+
+func (m *asyncMonitor) kill(ctx xcontext.Context) error {
+	ctx.Debugf("killing remote process: %s", m.sid)
+
+	_, _, err, runerr := m.runAgent(ctx, "kill")
+	if err != nil {
+		return fmt.Errorf("failed to start agent kill: %w", err)
+	}
+	if runerr != nil {
+		// note: this should never happen
+		return fmt.Errorf("failed to kill remote process: %w", runerr)
+	}
+
+	return nil
 }
 
 func (m *asyncMonitor) reap(ctx xcontext.Context) error {
