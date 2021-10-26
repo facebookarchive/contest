@@ -11,66 +11,74 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/stretchr/testify/require"
 )
 
+var (
+	ctx = logrusctx.NewContext(logger.LevelDebug)
+)
+
 func TestNoopNew(t *testing.T) {
-	tl := New(time.Second)
+	tl := New()
 	require.NotNil(t, tl)
 	require.IsType(t, &Noop{}, tl)
 }
 
 func TestNoopLock(t *testing.T) {
-	tl := New(time.Second)
+	tl := New()
 	// we don't enforce that at least one target is passed, as checking on
 	// non-zero targets is the framework's responsibility, not the plugin.
 	// So, zero targets is OK.
 	jobID := types.JobID(123)
-	require.Nil(t, tl.Lock(jobID, nil))
-	require.Nil(t, tl.Lock(jobID, []*target.Target{}))
-	require.Nil(t, tl.Lock(jobID, []*target.Target{
-		&target.Target{Name: "blah"},
+	jobTargetManagerAcquireTimeout := 5 * time.Minute
+	require.Nil(t, tl.Lock(ctx, jobID, jobTargetManagerAcquireTimeout, nil))
+	require.Nil(t, tl.Lock(ctx, jobID, jobTargetManagerAcquireTimeout, []*target.Target{}))
+	require.Nil(t, tl.Lock(ctx, jobID, jobTargetManagerAcquireTimeout, []*target.Target{
+		&target.Target{ID: "blah"},
 	}))
-	require.Nil(t, tl.Lock(jobID, []*target.Target{
-		&target.Target{Name: "blah"},
-		&target.Target{Name: "bleh"},
+	require.Nil(t, tl.Lock(ctx, jobID, jobTargetManagerAcquireTimeout, []*target.Target{
+		&target.Target{ID: "blah"},
+		&target.Target{ID: "bleh"},
 	}))
+}
+
+func TestNoopTryLock(t *testing.T) {
+	tl := New()
+	// we don't enforce that at least one target is passed, as checking on
+	// non-zero targets is the framework's responsibility, not the plugin.
+	// So, zero targets is OK.
+	jobID := types.JobID(123)
+	jobTargetManagerAcquireTimeout := 5 * time.Minute
+	_, err := tl.TryLock(ctx, jobID, jobTargetManagerAcquireTimeout, nil, 0)
+	require.Nil(t, err)
+	_, err = tl.TryLock(ctx, jobID, jobTargetManagerAcquireTimeout, []*target.Target{}, 0)
+	require.Nil(t, err)
+	_, err = tl.TryLock(ctx, jobID, jobTargetManagerAcquireTimeout, []*target.Target{
+		&target.Target{ID: "blah"},
+	}, 1)
+	require.Nil(t, err)
+	_, err = tl.TryLock(ctx, jobID, jobTargetManagerAcquireTimeout, []*target.Target{
+		&target.Target{ID: "blah"},
+		&target.Target{ID: "bleh"},
+	}, 2)
+	require.Nil(t, err)
 }
 
 func TestNoopUnlock(t *testing.T) {
-	tl := New(time.Second)
+	tl := New()
 	// we don't enforce that at least one target is passed, as checking on
 	// non-zero targets is the framework's responsibility, not the plugin.
 	// So, zero targets is OK.
 	jobID := types.JobID(123)
-	require.Nil(t, tl.Unlock(jobID, nil))
-	require.Nil(t, tl.Unlock(jobID, []*target.Target{}))
-	require.Nil(t, tl.Unlock(jobID, []*target.Target{
-		&target.Target{Name: "blah"},
+	require.Nil(t, tl.Unlock(ctx, jobID, nil))
+	require.Nil(t, tl.Unlock(ctx, jobID, []*target.Target{}))
+	require.Nil(t, tl.Unlock(ctx, jobID, []*target.Target{
+		&target.Target{ID: "blah"},
 	}))
-	require.Nil(t, tl.Unlock(jobID, []*target.Target{
-		&target.Target{Name: "blah"},
-		&target.Target{Name: "bleh"},
+	require.Nil(t, tl.Unlock(ctx, jobID, []*target.Target{
+		&target.Target{ID: "blah"},
+		&target.Target{ID: "bleh"},
 	}))
-}
-
-func TestNoopCheckLocks(t *testing.T) {
-	tl := New(time.Second)
-	// we don't enforce that at least one target is passed, as checking on
-	// non-zero targets is the framework's responsibility, not the plugin.
-	// So, zero targets is OK.
-	jobID := types.JobID(123)
-	allAreLocked, locked, notLocked := tl.CheckLocks(jobID, nil)
-	require.True(t, allAreLocked)
-	require.Nil(t, locked)
-	require.Nil(t, notLocked)
-
-	targets := []*target.Target{
-		&target.Target{Name: "t1"},
-		&target.Target{Name: "t2"},
-	}
-	allAreLocked, locked, notLocked = tl.CheckLocks(jobID, targets)
-	require.True(t, allAreLocked)
-	require.Equal(t, locked, targets)
-	require.Nil(t, notLocked, nil)
 }

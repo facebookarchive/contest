@@ -10,7 +10,13 @@ import (
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/event/testevent"
+	"github.com/facebookincubator/contest/pkg/xcontext/bundles/logrusctx"
+	"github.com/facebookincubator/contest/pkg/xcontext/logger"
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	ctx = logrusctx.NewContext(logger.LevelDebug)
 )
 
 func TestMemory_GetTestEvents(t *testing.T) {
@@ -27,7 +33,7 @@ func TestMemory_GetTestEvents(t *testing.T) {
 		},
 		Data: &testevent.Data{},
 	}
-	err = stor.StoreTestEvent(ev0)
+	err = stor.StoreTestEvent(ctx, ev0)
 	require.NoError(t, err)
 
 	ev1 := testevent.Event{
@@ -40,7 +46,7 @@ func TestMemory_GetTestEvents(t *testing.T) {
 		},
 		Data: &testevent.Data{},
 	}
-	err = stor.StoreTestEvent(ev1)
+	err = stor.StoreTestEvent(ctx, ev1)
 	require.NoError(t, err)
 
 	query, err := testevent.BuildQuery(
@@ -49,7 +55,7 @@ func TestMemory_GetTestEvents(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	evs, err := stor.GetTestEvents(query)
+	evs, err := stor.GetTestEvents(ctx, query)
 	require.NoError(t, err)
 
 	require.Len(t, evs, 1)

@@ -13,13 +13,21 @@ import (
 
 // Request represents an incoming Job request which should be persisted in storage
 type Request struct {
-	JobID         types.JobID
-	JobName       string
-	Requestor     string
-	ServerID      string
-	RequestTime   time.Time
+	JobID       types.JobID
+	JobName     string
+	Requestor   string
+	ServerID    string
+	RequestTime time.Time
+
+	// JobDescriptor represents the raw descriptor as submitted by the user.
 	JobDescriptor string
-	// TestDescriptors are the fetched test steps as per the test fetcher
-	// defined in the JobDescriptor above.
-	TestDescriptors string
+
+	// ExtendedDescriptor represents the deserialized job description extended
+	// with with the full description of the test steps obtained from the test
+	// fetcher. Since the descriptions of the test steps might not be inlined in
+	// the descriptor itself, upon receiving a job request, job manager will fetch
+	// the desciption and build extended descriptor accordingly. The extended
+	// descriptor is then used upon requesting a resume without having a dependency
+	// on the test fetcher.
+	ExtendedDescriptor *ExtendedDescriptor
 }

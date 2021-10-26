@@ -6,16 +6,18 @@
 package channels
 
 import (
-	"github.com/facebookincubator/contest/pkg/cerrors"
+	"encoding/json"
+
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Name is the name used to look this plugin up.
 var Name = "Channels"
 
-// Events defines the events that a TestStep is allow to emit
+// Events defines the events that a TestStep is allowed to emit
 var Events = []event.Name{}
 
 type channels struct {
@@ -26,29 +28,19 @@ func (ts *channels) Name() string {
 	return Name
 }
 
-// Run executes a step which does never return.s
-func (ts *channels) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+// Run executes a step that runs fine but closes its output channels on exit.
+func (ts *channels) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
 	for target := range ch.In {
-		ch.Out <- target
+		ch.Out <- test.TestStepResult{Target: target}
 	}
+	// This is bad, do not do this.
 	close(ch.Out)
-	return nil
+	return nil, nil
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *channels) ValidateParameters(params test.TestStepParameters) error {
+func (ts *channels) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	return nil
-}
-
-// Resume tries to resume a previously interrupted test step. Channels test step
-// cannot resume.
-func (ts *channels) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
-	return &cerrors.ErrResumeNotSupported{StepName: Name}
-}
-
-// CanResume tells whether this step is able to resume.
-func (ts *channels) CanResume() bool {
-	return false
 }
 
 // New creates a new Channels step

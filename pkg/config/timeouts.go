@@ -7,13 +7,13 @@ package config
 
 import "time"
 
-// TargetManagerTimeout represents the maximum time that JobManager should wait
-// for the execution of Acquire and Release functions from the chosen TargetManager
-var TargetManagerTimeout = 5 * time.Minute
+// TargetManagerAcquireTimeout represents the maximum time that JobManager should wait
+// for the execution of Acquire function from the chosen TargetManager
+var TargetManagerAcquireTimeout = 5 * time.Minute
 
-// StepInjectTimeout represents the maximum time that TestRunner will wait for
-// the first TestStep of the pipeline to accept a Target
-var StepInjectTimeout = 30 * time.Second
+// TargetManagerReleaseTimeout represents the maximum time that JobManager should wait
+// for the execution of Release function from the chosen TargetManager
+var TargetManagerReleaseTimeout = 5 * time.Minute
 
 // TestRunnerMsgTimeout represents the maximum time that any component of the
 // TestRunner will wait for the delivery of a message to any other subsystem
@@ -41,5 +41,6 @@ var TestRunnerShutdownTimeout = 30 * time.Second
 // doesn't reset when a TestStep returns.
 var TestRunnerStepShutdownTimeout = 5 * time.Second
 
-// LockTimeout represent the amount of time that a lock is held for a target
-var LockTimeout = 1 * time.Minute
+// DefaultTargetLockDuration is the default value for -targetLockDuration.
+// It is the amount of time target lock is extended by while the job is running.
+const DefaultTargetLockDuration = 10 * time.Minute

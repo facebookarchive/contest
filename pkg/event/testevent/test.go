@@ -14,9 +14,10 @@ import (
 	"github.com/facebookincubator/contest/pkg/event/internal/querytools"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
-// Header models the header of a test event, which consists in metadatat hat defines the
+// Header models the header of a test event, which consists in metadata that defines the
 // emitter of the events. The Header is under ConTest control and cannot be manipulated
 // by the TestStep
 type Header struct {
@@ -28,8 +29,8 @@ type Header struct {
 
 // Data models the data of a test event. It is populated by the TestStep
 type Data struct {
-	EventName event.Name
 	Target    *target.Target
+	EventName event.Name
 	Payload   *json.RawMessage
 }
 
@@ -139,16 +140,28 @@ func (value queryFieldRunID) queryFieldPointer(query *Query) interface{} { retur
 
 // Emitter defines the interface that emitter objects must implement
 type Emitter interface {
-	Emit(event Data) error
+	Emit(ctx xcontext.Context, event Data) error
 }
 
 // Fetcher defines the interface that fetcher objects must implement
 type Fetcher interface {
-	Fetch(fields ...QueryField) ([]Event, error)
+	Fetch(ctx xcontext.Context, fields ...QueryField) ([]Event, error)
 }
 
 // EmitterFetcher defines the interface that objects supporting emitting and fetching events must implement
 type EmitterFetcher interface {
 	Emitter
 	Fetcher
+}
+
+func (h *Header) String() string {
+	return fmt.Sprintf("[%d %d %s %s]", h.JobID, h.RunID, h.TestName, h.TestStepLabel)
+}
+
+func (d *Data) String() string {
+	ps := ""
+	if d.Payload != nil {
+		ps = fmt.Sprintf(" %q", d.Payload) //nolint SA5009 - works fine
+	}
+	return fmt.Sprintf("[%s %s%s]", d.Target, d.EventName, ps)
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // targetRoutingEvents gather all event names which track the flow of targets
@@ -35,7 +36,7 @@ func (jr *JobRunner) buildTargetStatuses(coordinates job.TestStepCoordinates, ta
 		// Update the TargetStatus object associated to the Target. If there is no TargetStatus associated yet, append it
 		var targetStatus *job.TargetStatus
 		for index, candidateStatus := range targetStatuses {
-			if *candidateStatus.Target == *testEvent.Data.Target {
+			if candidateStatus.Target.ID == testEvent.Data.Target.ID {
 				targetStatus = &targetStatuses[index]
 				break
 			}
@@ -76,12 +77,12 @@ func (jr *JobRunner) buildTargetStatuses(coordinates job.TestStepCoordinates, ta
 }
 
 // buildTestStepStatus builds the status object of a test step belonging to a test
-func (jr *JobRunner) buildTestStepStatus(coordinates job.TestStepCoordinates) (*job.TestStepStatus, error) {
+func (jr *JobRunner) buildTestStepStatus(ctx xcontext.Context, coordinates job.TestStepCoordinates) (*job.TestStepStatus, error) {
 
 	testStepStatus := job.TestStepStatus{TestStepCoordinates: coordinates}
 
 	// Fetch all Events associated to this TestStep
-	testEvents, err := jr.testEvManager.Fetch(
+	testEvents, err := jr.testEvManager.Fetch(ctx,
 		testevent.QueryJobID(coordinates.JobID),
 		testevent.QueryRunID(coordinates.RunID),
 		testevent.QueryTestName(coordinates.TestName),
@@ -97,7 +98,7 @@ func (jr *JobRunner) buildTestStepStatus(coordinates job.TestStepCoordinates) (*
 			// we don't want target routing events in step events, but we want
 			// them in target events below
 			if _, skip := targetRoutingEvents[event.Data.EventName]; skip {
-				log.Warningf("Found routing event '%s' with no target associated, this could indicate a bug", event.Data.EventName)
+				ctx.Warnf("Found routing event '%s' with no target associated, this could indicate a bug", event.Data.EventName)
 				continue
 			}
 			// this goes into TestStepStatus.Events
@@ -118,7 +119,7 @@ func (jr *JobRunner) buildTestStepStatus(coordinates job.TestStepCoordinates) (*
 }
 
 // buildTestStatus builds the status of a test belonging to a specific to a test
-func (jr *JobRunner) buildTestStatus(coordinates job.TestCoordinates, currentJob *job.Job) (*job.TestStatus, error) {
+func (jr *JobRunner) buildTestStatus(ctx xcontext.Context, coordinates job.TestCoordinates, currentJob *job.Job) (*job.TestStatus, error) {
 
 	var currentTest *test.Test
 	// Identify the test within the Job for which we are asking to calculate the status
@@ -144,7 +145,7 @@ func (jr *JobRunner) buildTestStatus(coordinates job.TestCoordinates, currentJob
 			TestStepName:    bundle.TestStep.Name(),
 			TestStepLabel:   bundle.TestStepLabel,
 		}
-		testStepStatus, err := jr.buildTestStepStatus(testStepCoordinates)
+		testStepStatus, err := jr.buildTestStepStatus(ctx, testStepCoordinates)
 		if err != nil {
 			return nil, fmt.Errorf("could not build TestStatus for test %s: %v", bundle.TestStep.Name(), err)
 		}
@@ -156,7 +157,7 @@ func (jr *JobRunner) buildTestStatus(coordinates job.TestCoordinates, currentJob
 
 	// Fetch all events signaling that a Target has been acquired. This is the source of truth
 	// indicating which Targets belong to a Test.
-	targetAcquiredEvents, err := jr.testEvManager.Fetch(
+	targetAcquiredEvents, err := jr.testEvManager.Fetch(ctx,
 		testevent.QueryJobID(coordinates.JobID),
 		testevent.QueryRunID(coordinates.RunID),
 		testevent.QueryTestName(coordinates.TestName),
@@ -170,21 +171,21 @@ func (jr *JobRunner) buildTestStatus(coordinates job.TestCoordinates, currentJob
 	var targetStatuses []job.TargetStatus
 
 	// Keep track of the last TargetStatus seen for each Target
-	targetMap := make(map[target.Target]job.TargetStatus)
+	targetMap := make(map[string]job.TargetStatus)
 	for _, testStepStatus := range testStatus.TestStepStatuses {
 		for _, targetStatus := range testStepStatus.TargetStatuses {
-			targetMap[*targetStatus.Target] = targetStatus
+			targetMap[targetStatus.Target.ID] = targetStatus
 		}
 	}
 
 	for _, targetEvent := range targetAcquiredEvents {
 		t := *targetEvent.Data.Target
-		if _, ok := targetMap[t]; !ok {
+		if _, ok := targetMap[t.ID]; !ok {
 			// This Target is not associated to any TargetStatus, we assume it has not
 			// started the test
-			targetMap[t] = job.TargetStatus{}
+			targetMap[t.ID] = job.TargetStatus{}
 		}
-		targetStatuses = append(targetStatuses, targetMap[t])
+		targetStatuses = append(targetStatuses, targetMap[t.ID])
 	}
 
 	testStatus.TargetStatuses = targetStatuses
@@ -192,13 +193,13 @@ func (jr *JobRunner) buildTestStatus(coordinates job.TestCoordinates, currentJob
 }
 
 // BuildRunStatus builds the status of a run with a job
-func (jr *JobRunner) BuildRunStatus(coordinates job.RunCoordinates, currentJob *job.Job) (*job.RunStatus, error) {
+func (jr *JobRunner) BuildRunStatus(ctx xcontext.Context, coordinates job.RunCoordinates, currentJob *job.Job) (*job.RunStatus, error) {
 
 	runStatus := job.RunStatus{RunCoordinates: coordinates, TestStatuses: make([]job.TestStatus, len(currentJob.Tests))}
 
 	for index, currentTest := range currentJob.Tests {
 		testCoordinates := job.TestCoordinates{RunCoordinates: coordinates, TestName: currentTest.Name}
-		testStatus, err := jr.buildTestStatus(testCoordinates, currentJob)
+		testStatus, err := jr.buildTestStatus(ctx, testCoordinates, currentJob)
 		if err != nil {
 			return nil, fmt.Errorf("could not rebuild status for test %s: %v", currentTest.Name, err)
 		}
@@ -208,35 +209,38 @@ func (jr *JobRunner) BuildRunStatus(coordinates job.RunCoordinates, currentJob *
 }
 
 // BuildRunStatuses builds the status of all runs belonging to the job
-func (jr *JobRunner) BuildRunStatuses(currentJob *job.Job) ([]job.RunStatus, error) {
+func (jr *JobRunner) BuildRunStatuses(ctx xcontext.Context, currentJob *job.Job) ([]job.RunStatus, error) {
 
 	// Calculate the status only for the runs which effectively were executed
-	runStartEvents, err := jr.frameworkEventManager.Fetch(frameworkevent.QueryEventName(EventRunStarted))
+	runStartEvents, err := jr.frameworkEventManager.Fetch(ctx, frameworkevent.QueryEventName(EventRunStarted), frameworkevent.QueryJobID(currentJob.ID))
 	if err != nil {
 		return nil, fmt.Errorf("could not determine how many runs were executed: %v", err)
 	}
-	numRuns := uint(0)
 	if len(runStartEvents) == 0 {
-		return make([]job.RunStatus, 0, currentJob.Runs), nil
+		return nil, nil
 	}
 
-	payload, err := runStartEvents[len(runStartEvents)-1].Payload.MarshalJSON()
-	if err != nil {
-		return nil, fmt.Errorf("could not extract JSON payload from RunStart event: %v", err)
+	numRuns := types.RunID(0)
+	for _, runStartEvent := range runStartEvents {
+		payload, err := runStartEvent.Payload.MarshalJSON()
+		if err != nil {
+			return nil, fmt.Errorf("could not extract JSON payload from RunStart event: %v", err)
+		}
+
+		payloadUnmarshaled := RunStartedPayload{}
+		if err := json.Unmarshal(payload, &payloadUnmarshaled); err != nil {
+			return nil, fmt.Errorf("could not unmarshal RunStarted event payload")
+		}
+
+		if payloadUnmarshaled.RunID > numRuns {
+			numRuns = payloadUnmarshaled.RunID
+		}
 	}
 
-	payloadUnmarshaled := RunStartedPayload{}
-
-	if err := json.Unmarshal(payload, &payloadUnmarshaled); err != nil {
-		return nil, fmt.Errorf("could not unmarshal RunStarted event payload")
-	}
-	numRuns = uint(payloadUnmarshaled.RunID)
-
-	runStatuses := make([]job.RunStatus, 0, numRuns)
-
-	for runID := uint(1); runID <= numRuns; runID++ {
-		runCoordinates := job.RunCoordinates{JobID: currentJob.ID, RunID: types.RunID(runID)}
-		runStatus, err := jr.BuildRunStatus(runCoordinates, currentJob)
+	var runStatuses []job.RunStatus
+	for runID := types.RunID(1); runID <= numRuns; runID++ {
+		runCoordinates := job.RunCoordinates{JobID: currentJob.ID, RunID: runID}
+		runStatus, err := jr.BuildRunStatus(ctx, runCoordinates, currentJob)
 		if err != nil {
 			return nil, fmt.Errorf("could not rebuild run status for run %d: %v", runID, err)
 		}

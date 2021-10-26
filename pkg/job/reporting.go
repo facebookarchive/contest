@@ -12,6 +12,7 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Reporting is the configuration section that determines how to report the
@@ -48,8 +49,8 @@ type Reporter interface {
 
 	Name() string
 
-	RunReport(cancel <-chan struct{}, parameters interface{}, runStatus *RunStatus, ev testevent.Fetcher) (bool, interface{}, error)
-	FinalReport(cancel <-chan struct{}, parameters interface{}, runStatuses []RunStatus, ev testevent.Fetcher) (bool, interface{}, error)
+	RunReport(ctx xcontext.Context, parameters interface{}, runStatus *RunStatus, ev testevent.Fetcher) (bool, interface{}, error)
+	FinalReport(ctx xcontext.Context, parameters interface{}, runStatuses []RunStatus, ev testevent.Fetcher) (bool, interface{}, error)
 }
 
 // ReporterBundle bundles the selected Reporter together with its parameters
@@ -61,9 +62,11 @@ type ReporterBundle struct {
 
 // Report wraps the information of a run report or a final report.
 type Report struct {
+	JobID        types.JobID
+	RunID        types.RunID `json:"RunID,omitempty"` // 0 for a final report
 	ReporterName string
-	Success      bool
 	ReportTime   time.Time
+	Success      bool
 	Data         interface{}
 }
 

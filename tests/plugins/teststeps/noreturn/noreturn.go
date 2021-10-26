@@ -6,10 +6,12 @@
 package noreturn
 
 import (
-	"github.com/facebookincubator/contest/pkg/cerrors"
+	"encoding/json"
+
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Name is the name used to look this plugin up.
@@ -26,30 +28,19 @@ func (ts *noreturnStep) Name() string {
 	return Name
 }
 
-// Run executes a step which does never return.
-func (ts *noreturnStep) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+// Run executes a step that never returns.
+func (ts *noreturnStep) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
 	for target := range ch.In {
-		ch.Out <- target
+		ch.Out <- test.TestStepResult{Target: target}
 	}
 	channel := make(chan struct{})
 	<-channel
-	return nil
+	return nil, nil
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *noreturnStep) ValidateParameters(params test.TestStepParameters) error {
+func (ts *noreturnStep) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	return nil
-}
-
-// Resume tries to resume a previously interrupted test step. ExampleTestStep
-// cannot resume.
-func (ts *noreturnStep) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
-	return &cerrors.ErrResumeNotSupported{StepName: Name}
-}
-
-// CanResume tells whether this step is able to resume.
-func (ts *noreturnStep) CanResume() bool {
-	return false
 }
 
 // New creates a new noreturnStep which forwards targets before hanging

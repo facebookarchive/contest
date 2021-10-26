@@ -10,16 +10,14 @@ package literal
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Name defined the name of the plugin
 var (
 	Name = "Literal"
-	log  = logging.GetLogger("testfetchers/" + strings.ToLower(Name))
 )
 
 // FetchParameters contains the parameters necessary to fetch tests. This
@@ -35,7 +33,7 @@ type Literal struct {
 
 // ValidateFetchParameters performs sanity checks on the fields of the
 // parameters that will be passed to Fetch.
-func (tf Literal) ValidateFetchParameters(params []byte) (interface{}, error) {
+func (tf Literal) ValidateFetchParameters(_ xcontext.Context, params []byte) (interface{}, error) {
 	var fp FetchParameters
 	if err := json.Unmarshal(params, &fp); err != nil {
 		return nil, err
@@ -51,12 +49,11 @@ func (tf Literal) ValidateFetchParameters(params []byte) (interface{}, error) {
 // * Name of the test
 // * list of step definitions
 // * an error if any
-func (tf *Literal) Fetch(params interface{}) (string, []*test.TestStepDescriptor, error) {
+func (tf *Literal) Fetch(_ xcontext.Context, params interface{}) (string, []*test.TestStepDescriptor, error) {
 	fetchParams, ok := params.(FetchParameters)
 	if !ok {
 		return "", nil, fmt.Errorf("Fetch expects uri.FetchParameters object")
 	}
-	log.Printf("Returning literal test steps")
 	return fetchParams.TestName, fetchParams.Steps, nil
 }
 

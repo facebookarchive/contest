@@ -1,4 +1,4 @@
-FROM golang:1.13.0-buster
+FROM golang:1.16.2-buster
 
 RUN apt-get update && apt-get install -y mariadb-client
 

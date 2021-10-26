@@ -6,22 +6,21 @@
 package randecho
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
-	"strings"
 
-	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
+	"github.com/facebookincubator/contest/plugins/teststeps"
 )
 
 // Name is the name used to look this plugin up.
 var Name = "RandEcho"
-
-var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
 // Events defines the events that a TestStep is allow to emit
 var Events = []event.Name{}
@@ -42,7 +41,7 @@ func Load() (string, test.TestStepFactory, []event.Name) {
 
 // ValidateParameters validates the parameters that will be passed to the Run
 // and Resume methods of the test step.
-func (e Step) ValidateParameters(params test.TestStepParameters) error {
+func (e Step) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	if t := params.GetOne("text"); t.IsEmpty() {
 		return errors.New("Missing 'text' field in echo parameters")
 	}
@@ -55,14 +54,9 @@ func (e Step) Name() string {
 }
 
 // Run executes the step
-func (e Step) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
-	for {
-		select {
-		case target := <-ch.In:
-			if target == nil {
-				// no more targets incoming
-				return nil
-			}
+func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
+	return teststeps.ForEachTarget(Name, ctx, ch,
+		func(ctx xcontext.Context, target *target.Target) error {
 			r := rand.Intn(2)
 			if r == 0 {
 				evData := testevent.Data{
@@ -70,34 +64,19 @@ func (e Step) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, param
 					Target:    target,
 					Payload:   nil,
 				}
-				_ = ev.Emit(evData)
-				log.Infof("Run: target %s succeeded: %s", target, params.GetOne("text"))
-				ch.Out <- target
+				_ = ev.Emit(ctx, evData)
+				ctx.Infof("Run: target %s succeeded: %s", target, params.GetOne("text"))
+				return nil
 			} else {
 				evData := testevent.Data{
 					EventName: event.Name("TargetFailed"),
 					Target:    target,
 					Payload:   nil,
 				}
-				_ = ev.Emit(evData)
-				log.Infof("Run: target %s failed: %s", target, params.GetOne("text"))
-				ch.Err <- cerrors.TargetError{Target: target, Err: fmt.Errorf("target randomly failed")}
+				_ = ev.Emit(ctx, evData)
+				ctx.Infof("Run: target %s failed: %s", target, params.GetOne("text"))
+				return fmt.Errorf("target randomly failed")
 			}
-		case <-cancel:
-			return nil
-		case <-pause:
-			return nil
-		}
-	}
-}
-
-// CanResume tells whether this step is able to resume.
-func (e Step) CanResume() bool {
-	return false
-}
-
-// Resume tries to resume a previously interrupted test step. RandEchoStep cannot
-// resume.
-func (e Step) Resume(cancel, pause <-chan struct{}, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
-	return &cerrors.ErrResumeNotSupported{StepName: Name}
+		},
+	)
 }

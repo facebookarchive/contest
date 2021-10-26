@@ -1,20 +1,35 @@
 version: "3.2"
 services:
-        contest:
-                build:
-                    context: .
-                    dockerfile: docker/contest/Dockerfile
-                command: bash -c "cd /go/src/github.com/facebookincubator/contest/cmds/contest/ && go run . -dbURI 'contest:contest@tcp(mysql:3306)/contest_integ?parseTime=true'"
-                ports:
-                    - 8080:8080
-                depends_on:
-                    - mysql
+    contest:
+        build:
+            context: .
+            dockerfile: docker/contest/Dockerfile
+        command: bash -c "cd /go/src/github.com/facebookincubator/contest/cmds/contest/ && go run . -dbURI 'contest:contest@tcp(dbstorage:3306)/contest_integ?parseTime=true'"
+        ports:
+            - 8080:8080
+        depends_on:
+            mysql:
+                condition: service_healthy
+        networks:
+            - net
 
-        mysql:
-                environment:
-                    - MYSQL_RANDOM_ROOT_PASSWORD=true
-                build:
-                    context: .
-                    dockerfile: docker/mysql/Dockerfile
-                ports:
-                    - 3306:3306
+    mysql:
+        environment:
+            - MYSQL_RANDOM_ROOT_PASSWORD=true
+        build:
+            context: .
+            dockerfile: docker/mysql/Dockerfile
+        ports:
+            - 3306:3306
+        healthcheck:
+            test: ["CMD", "mysqladmin", "ping", "-h127.0.0.1", "-ucontest", "-pcontest"]
+            interval: 5s
+            timeout: 1s
+            retries: 5
+        networks:
+            net:
+                aliases:
+                    - dbstorage
+
+networks:
+    net:

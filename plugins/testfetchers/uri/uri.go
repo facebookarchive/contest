@@ -12,15 +12,15 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
+
 	"github.com/insomniacslk/xjson"
 )
 
 // Name defined the name of the plugin
 var (
 	Name = "URI"
-	log  = logging.GetLogger("testfetchers/" + strings.ToLower(Name))
 )
 
 var supportedSchemes = []string{
@@ -44,7 +44,7 @@ type URI struct {
 
 // ValidateFetchParameters performs sanity checks on the fields of the
 // parameters that will be passed to Fetch.
-func (tf URI) ValidateFetchParameters(params []byte) (interface{}, error) {
+func (tf URI) ValidateFetchParameters(_ xcontext.Context, params []byte) (interface{}, error) {
 	var fp FetchParameters
 	if err := json.Unmarshal(params, &fp); err != nil {
 		return nil, err
@@ -83,12 +83,12 @@ func (tf URI) ValidateFetchParameters(params []byte) (interface{}, error) {
 // * Name of the test
 // * list of step definitions
 // * an error if any
-func (tf *URI) Fetch(params interface{}) (string, []*test.TestStepDescriptor, error) {
+func (tf *URI) Fetch(ctx xcontext.Context, params interface{}) (string, []*test.TestStepDescriptor, error) {
 	fetchParams, ok := params.(FetchParameters)
 	if !ok {
 		return "", nil, fmt.Errorf("Fetch expects uri.FetchParameters object")
 	}
-	log.Printf("Fetching tests with params %+v", fetchParams)
+	ctx.Debugf("Fetching tests with params %+v", fetchParams)
 	scheme := strings.ToLower(strings.ToLower(fetchParams.URI.Scheme))
 	var (
 		buf []byte

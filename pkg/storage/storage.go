@@ -6,39 +6,38 @@
 package storage
 
 import (
-	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
-	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/job"
-	"github.com/facebookincubator/contest/pkg/types"
+	"fmt"
+
+	"github.com/facebookincubator/contest/pkg/config"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // storage defines the storage engine used by ConTest. It can be overridden
 // via the exported function SetStorage.
 var storage Storage
+var storageAsync Storage
 
-// JobStorage defines the interface that implements persistence for job
-// related information
-type JobStorage interface {
-	// Job request interface
-	StoreJobRequest(request *job.Request) (types.JobID, error)
-	GetJobRequest(jobID types.JobID) (*job.Request, error)
+// ConsistencyModel hints at whether queries should go to the primary database
+// or any available replica (in which case, the guarantee is eventual consistency)
+type ConsistencyModel int
 
-	// Job report interface
-	StoreJobReport(report *job.JobReport) error
-	GetJobReport(jobID types.JobID) (*job.JobReport, error)
-}
+const (
+	ConsistentReadAfterWrite ConsistencyModel = iota
+	ConsistentEventually
+)
+
+const consistencyModelKey = "storage_consistency_model"
 
 // Storage defines the interface that storage engines must implement
 type Storage interface {
 	JobStorage
+	EventStorage
 
-	// Test events storage interface
-	StoreTestEvent(event testevent.Event) error
-	GetTestEvents(eventQuery *testevent.Query) ([]testevent.Event, error)
+	// Close flushes and releases resources associated with the storage engine.
+	Close() error
 
-	// Framework events storage interface
-	StoreFrameworkEvent(event frameworkevent.Event) error
-	GetFrameworkEvent(eventQuery *frameworkevent.Query) ([]frameworkevent.Event, error)
+	// Version returns the version of the storage being used
+	Version() (uint64, error)
 }
 
 // TransactionalStorage is implemented by storage backends that support transactions.
@@ -52,12 +51,65 @@ type TransactionalStorage interface {
 
 // ResettableStorage is implemented by storage engines that support reset operation
 type ResettableStorage interface {
+	Storage
 	Reset() error
 }
 
 // SetStorage sets the desired storage engine for events. Switching to a new
 // storage engine implies garbage collecting the old one, with possible loss of
 // pending events if not flushed correctly
-func SetStorage(storageEngine Storage) {
+func SetStorage(storageEngine Storage) error {
+	if storageEngine != nil {
+		v, err := storageEngine.Version()
+		if err != nil {
+			return fmt.Errorf("could not determine storage version: %w", err)
+		}
+		if v < config.MinStorageVersion {
+			return fmt.Errorf("could not configure storage of type %T (minimum storage version: %d, current storage version: %d)", storageEngine, config.MinStorageVersion, v)
+		}
+	}
 	storage = storageEngine
+	return nil
+}
+
+// GetStorage returns the primary storage for events.
+func GetStorage() (Storage, error) {
+	if storage == nil {
+		return nil, fmt.Errorf("no storage engine assigned")
+	}
+	return storage, nil
+}
+
+// SetAsyncStorage sets the desired storage engine for read-only events. Switching to a new
+// storage engine implies garbage collecting the old one, with possible loss of
+// pending events if not flushed correctly
+func SetAsyncStorage(storageEngine Storage) error {
+	if storageEngine != nil {
+		v, err := storageEngine.Version()
+		if err != nil {
+			return fmt.Errorf("could not determine storage version: %w", err)
+		}
+		if v < config.MinStorageVersion {
+			return fmt.Errorf("could not configure storage of type %T (minimum storage version: %d, current storage version: %d)", storageEngine, config.MinStorageVersion, v)
+		}
+	}
+	storageAsync = storageEngine
+	return nil
+}
+
+func isStronglyConsistent(ctx xcontext.Context) bool {
+	value := ctx.Value(consistencyModelKey)
+	ctx.Debugf("consistency model check: %v", value)
+
+	switch model := value.(type) {
+	case ConsistencyModel:
+		return model == ConsistentReadAfterWrite
+
+	default:
+		return true
+	}
+}
+
+func WithConsistencyModel(ctx xcontext.Context, model ConsistencyModel) xcontext.Context {
+	return xcontext.WithValue(ctx, consistencyModelKey, model)
 }

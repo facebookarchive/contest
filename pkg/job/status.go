@@ -93,8 +93,11 @@ type Status struct {
 	// EndTime indicates when the job ended.
 	EndTime *time.Time
 
-	// RunStatuses represents the status of the current run of the job
-	RunStatus RunStatus
+	// RunStatus [deprecated since 28jun2021] is the status of the last run of the job, if it exists
+	RunStatus *RunStatus
+
+	// RunStatuses represents the status of all runs for a given job
+	RunStatuses []RunStatus
 
 	// Job report information
 	JobReport *JobReport

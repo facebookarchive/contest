@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+#
 # Copyright (c) Facebook, Inc. and its affiliates.
 #
 # This source code is licensed under the MIT license found in the
@@ -13,80 +13,64 @@ set -eu
 
 CI=${CI:-false}
 
-# Wait until mysql instance is up and running.
-attempts=0
-max_attempts=5
-while true; do
-  echo "Waiting for mysql to settle"
-  mysqladmin -h mysql -P 3306 -u contest --protocol tcp --password=contest ping && break || true
-  if test ${attempts} -eq ${max_attempts}; then
-    echo "MySQL is not healthy after ${max_attempts} attempts"
-    exit 1
-  fi
-  let attempts=${attempts}+1
-  echo "MySQL is not healthy, retrying in 5s"
-  sleep 5
-done
-
-echo "MySQL is healthy!"
-
-# disable CGO for the build
-export CGO_ENABLED=0
 for d in $(go list ./cmds/... | grep -v vendor); do
-    go build "${d}"
+    CGO_ENABLED=0 go build "${d}"
 done
 
-# CGO required for the race detector
-export CGO_ENABLED=1
-echo "" > coverage.txt
-
+i=1
 for d in $(go list ./... | grep -v vendor); do
-    go test -race -coverprofile=profile.out -covermode=atomic "${d}"
-    if [ -f profile.out ]; then
-      cat profile.out >> coverage.txt
-      rm profile.out
-    fi
+    # Run in stress mode first
+    go test -race -count=9 -failfast "${d}"
+    # Then in coverage mode
+    go test -race -coverprofile="unit.$i.cov" -covermode=atomic "${d}"
+    i=$(($i + 1))
 done
 
-# Distinguish between coverage for unit tests and integration tests
-# Report coverage for unit tests and clear workspace afterwards (-c)
-if [ "${CI}" == "true" ]
-then
-    echo "Uploading coverage profile for unit tests"
-    [[ ! -z ${CI} ]] && bash <(curl -s https://codecov.io/bash) -c -F unittests
-else
-    echo "Skipping upload of coverage profile for unit tests because not running in a CI"
+# MySQL should be up by now.
+if ! mysqladmin -h dbstorage -P 3306 -u contest --protocol tcp --password=contest ping; then
+    echo "MySQL is not ready!"
+    exit 1
 fi
 
 # Run integration tests collecting coverage only for the business logic (pkg directory)
+i=1
 for tag in integration integration_storage; do
     echo "Running integration tests with tag \"${tag}\""
-    for d in $(go list -tags=${tag} ./... | grep integ | grep -Ev "integ$|common$|vendor"); do
-	pflag=""
+    for d in $(go list -tags=${tag} ./tests/... | grep -Ev "integ$|common$|vendor"); do
+        pflag=""
         if test ${tag} = "integration_storage"; then
-	  # Storage tests are split across TestSuites in multiple packages. Within a TestSuite,
-	  # tests do not run in parallel, but tests in different packages might run in parallel
-	  # according to GOMAXPROCS. Storage tests are not safe to run in parallel as they
-	  # make assertions on the data that is persisted in the database. Therefore, use "-p1"
-	  # to have tests run serially.
-	  pflag="-p 1"
-	fi
-        go test -tags=${tag} -race \
-          -coverprofile=profile.out ${pflag} \
-          -covermode=atomic \
-          -coverpkg=github.com/facebookincubator/contest/pkg/...,github.com/facebookincubator/contest/plugins/...,github.com/facebookincubator/contest/cmds/... \
-          "${d}"
-        if [ -f profile.out ]; then
-          cat profile.out >> coverage.txt
-          rm profile.out
+          # Storage tests are split across TestSuites in multiple packages. Within a TestSuite,
+          # tests do not run in parallel, but tests in different packages might run in parallel
+          # according to GOMAXPROCS. Storage tests are not safe to run in parallel as they
+          # make assertions on the data that is persisted in the database. Therefore, use "-p1"
+          # to have tests run serially.
+          pflag="-p 1"
         fi
+        go test -tags=${tag} -race -count=4 -failfast ${pflag} "${d}"
+        go test -tags=${tag} -race \
+          -coverprofile="integ.$i.cov" ${pflag} \
+          -covermode=atomic \
+          -coverpkg=all \
+          "${d}"
+        i=$(($i + 1))
     done
+done
+
+# Run E2E tests.
+# They are run explicitly to avoid unintended influence of global variables.
+i=1
+echo "Running E2E tests"
+for t in TestE2E/TestCLI TestE2E/TestSimple TestE2E/TestPauseResume; do
+    echo "  $t"
+    go test -tags=e2e -race -coverprofile="e2e.$i.cov" -covermode=atomic -coverpkg=all ./tests/e2e/... -run "$t"
+    i=$(($i + 1))
 done
 
 if [ "${CI}" == "true" ]
 then
-    echo "Uploading coverage profile for integration tests"
-    bash <(curl -s https://codecov.io/bash) -c -F integration
+    bash <(curl -s https://codecov.io/bash) -c -f "./unit.*.cov" -F unittests
+    bash <(curl -s https://codecov.io/bash) -c -f "./integ.*.cov" -F integration
+    bash <(curl -s https://codecov.io/bash) -c -f "./e2e.*.cov" -F e2e
 else
-    echo "Skipping upload of coverage profile for integration tests because not running in a CI"
+    echo "Skipping upload of coverage profiles because not running in a CI"
 fi

@@ -10,199 +10,254 @@ package inmemory
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
-	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/benbjohnson/clock"
+
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Name is the name used to look this plugin up.
 var Name = "InMemory"
 
-var log = logging.GetLogger("targetlocker/" + strings.ToLower(Name))
-
 type request struct {
+	ctx     xcontext.Context
 	targets []*target.Target
+	// requireLocked specifies whether targets must be already locked, used by refresh.
+	requireLocked bool
+	// allowConflicts enabled tryLock semantics: Return what can be locked, but
+	// don't error on conflicts
+	allowConflicts bool
 	// owner is the owner of the lock, relative to the lock operation request,
 	// represented by a job ID.
 	// The in-memory locker enforces that the requests are validated against the
 	// right owner.
 	owner types.JobID
-	// timeout is how long the lock should be held for. There is no lower or
-	// upper bound on how long the lock can be held.
+	// limit provides an upper limit on how many locks will be acquired
+	limit uint
+	// timeout is the initial lock duration when acquiring a new lock
+	// during target acquisition. This should include TargetManagerAcquireTimeout
+	// to allow for dynamic locking in the target manager.
 	timeout time.Duration
-	// locked and notLocked are arrays of targets that are respectively already locked
-	// by a given job ID, and that are not locked by a given job ID. This is only
-	// populated when checking locks for such targets.
-	locked, notLocked []*target.Target
+	// locked is list of target IDs that were locked in this transaction (if any)
+	locked []string
 	// err reports whether there were errors in any lock-related operation.
 	err chan error
 }
 
 type lock struct {
 	owner     types.JobID
-	lockedAt  time.Time
+	createdAt time.Time
 	expiresAt time.Time
+}
+
+func validateRequest(req *request) error {
+	if req == nil {
+		return fmt.Errorf("got nil request")
+	}
+	if req.owner == 0 {
+		return fmt.Errorf("owner cannot be zero")
+	}
+	for _, target := range req.targets {
+		if target.ID == "" {
+			return fmt.Errorf("target list cannot contain empty target ID. Full list: %v", req.targets)
+		}
+	}
+	return nil
 }
 
 // broker is the broker of locking requests, and it's the only goroutine with
 // access to the locks map, in accordance with Go's "share memory by
 // communicating" principle.
-func broker(lockRequests, unlockRequests, checkLocksRequests <-chan request, done <-chan struct{}) {
-	locks := make(map[target.Target]lock)
+func broker(clk clock.Clock, lockRequests, unlockRequests <-chan *request, done <-chan struct{}) {
+	locks := make(map[string]lock)
 	for {
 		select {
 		case <-done:
-			log.Debugf("Shutting down in-memory target locker")
 			return
 		case req := <-lockRequests:
-			log.Debugf("Requested to lock %d targets: %v", len(req.targets), req.targets)
+			if err := validateRequest(req); err != nil {
+				req.err <- fmt.Errorf("lock request: %w", err)
+				continue
+			}
 			var lockErr error
+			// newLocks is the state of the locks that have been modified by this transaction
+			// If there is an error, we discard newLocks leaving the state of 'locks' untouched
+			// otherwise we update 'locks' with the modifed locks after the transaction has completed
+			newLocks := make(map[string]lock)
 			for _, t := range req.targets {
-				now := time.Now()
-				if l, ok := locks[*t]; ok {
-					// target has been locked before. Is it still locked, or did
-					// it expire?
-					if now.After(l.expiresAt) {
-						// lock has expired, consider it unlocked
-						locks[*t] = lock{
+				// don't go over limit
+				if uint(len(newLocks)) >= req.limit {
+					break
+				}
+				now := clk.Now()
+				if l, ok := locks[t.ID]; ok {
+					// target has been locked before. are/were we the owner?
+					// if so, extend (even if previous lease has expired).
+					if l.owner == req.owner {
+						// we are trying to extend a lock.
+						l.expiresAt = clk.Now().Add(req.timeout)
+						newLocks[t.ID] = l
+					} else {
+						// no, it's not us. can we take over?
+						if now.After(l.expiresAt) {
+							if !req.requireLocked {
+								// lock has expired, consider it unlocked
+								newLocks[t.ID] = lock{
+									owner:     req.owner,
+									createdAt: now,
+									expiresAt: now.Add(req.timeout),
+								}
+							} else {
+								lockErr = fmt.Errorf("target %q must be locked but isn't", t)
+								break
+							}
+						} else {
+							// already locked
+							if !req.allowConflicts {
+								lockErr = fmt.Errorf("target %q is already locked by %d", t, l.owner)
+								break
+							}
+							continue
+						}
+					}
+				} else {
+					if !req.requireLocked {
+						// target not locked and never been, create new lock
+						newLocks[t.ID] = lock{
 							owner:     req.owner,
-							lockedAt:  now,
+							createdAt: now,
 							expiresAt: now.Add(req.timeout),
 						}
 					} else {
-						// target is locked. Is it us or someone else?
-						if l.owner == req.owner {
-							// we are trying to extend a lock.
-							l := locks[*t]
-							l.expiresAt = time.Now().Add(req.timeout)
-							locks[*t] = l
-						} else {
-							lockErr = fmt.Errorf("target already locked: %+v", t)
-						}
+						lockErr = fmt.Errorf("target %q must be locked but isn't", t)
 						break
 					}
-				} else {
-					// target not locked and never seen, create new lock
-					locks[*t] = lock{
-						owner:     req.owner,
-						lockedAt:  now,
-						expiresAt: now.Add(req.timeout),
-					}
+				}
+			}
+			req.locked = make([]string, 0, len(newLocks))
+			if lockErr == nil {
+				// everything in this transaction was OK - update the locks
+				for id, l := range newLocks {
+					locks[id] = l
+					req.locked = append(req.locked, id)
 				}
 			}
 			req.err <- lockErr
 		case req := <-unlockRequests:
-			log.Debugf("Requested to transactionally unlock %d targets: %v", len(req.targets), req.targets)
+			if err := validateRequest(req); err != nil {
+				req.err <- fmt.Errorf("unlock request: %w", err)
+				continue
+			}
+			req.ctx.Debugf("Requested to transactionally unlock %d targets: %v", len(req.targets), req.targets)
+			// validate
+			var unlockErr error
 			for _, t := range req.targets {
-				if _, ok := locks[*t]; ok {
-					delete(locks, *t)
-				} else {
-					log.Debugf("Target is not locked, but received unlock request: %+v", t)
+				l, ok := locks[t.ID]
+				if !ok {
+					unlockErr = fmt.Errorf("unlock request: target %q is not locked", t)
+					break
+				}
+				if l.owner != req.owner {
+					unlockErr = fmt.Errorf("unlock request: target %q is locked by %d, not by %d", t, l.owner, req.owner)
+					break
 				}
 			}
-			req.err <- nil
-		case req := <-checkLocksRequests:
-			log.Debugf("Requested to check locks for %d targets: %v", len(req.targets), req.targets)
-			locked := make([]*target.Target, 0)
-			notLocked := make([]*target.Target, 0)
-			for _, t := range req.targets {
-				if l, ok := locks[*t]; ok {
-					now := time.Now()
-					if now.After(l.expiresAt) {
-						// target was locked but lock expired, purge the entry
-						log.Debugf("Purged expired lock for target %+v. Lock time is %s, expiration timeout is %s", t, l.lockedAt, req.timeout)
-						delete(locks, *t)
-						notLocked = append(notLocked, t)
-					} else {
-						// target is locked
-						locked = append(locked, t)
-					}
-				} else {
-					// target is not locked
-					notLocked = append(notLocked, t)
+			// apply
+			if unlockErr == nil {
+				for _, t := range req.targets {
+					delete(locks, t.ID)
 				}
 			}
-			req.locked = locked
-			req.notLocked = notLocked
-			req.err <- nil
+			req.err <- unlockErr
 		}
 	}
 }
 
-// InMemory is the no-op target locker. It does nothing.
+// InMemory locks targets in an in-memory map.
 type InMemory struct {
-	lockRequests, unlockRequests, checkLocksRequests chan request
-	done                                             chan struct{}
-	timeout                                          time.Duration
+	lockRequests, unlockRequests chan *request
+	done                         chan struct{}
 }
 
-func newReq(targets []*target.Target) request {
+func newReq(ctx xcontext.Context, jobID types.JobID, targets []*target.Target) request {
 	return request{
+		ctx:     ctx,
 		targets: targets,
+		owner:   jobID,
 		err:     make(chan error),
 	}
 }
 
-// Lock locks the specified targets by doing nothing.
-func (tl *InMemory) Lock(jobID types.JobID, targets []*target.Target) error {
-	log.Infof("Trying to lock %d targets", len(targets))
-	req := newReq(targets)
-	req.timeout = tl.timeout
-	tl.lockRequests <- req
-	return <-req.err
+// Lock locks the specified targets.
+func (tl *InMemory) Lock(ctx xcontext.Context, jobID types.JobID, duration time.Duration, targets []*target.Target) error {
+	req := newReq(ctx, jobID, targets)
+	req.timeout = duration
+	req.requireLocked = false
+	req.allowConflicts = false
+	req.limit = uint(len(targets))
+	tl.lockRequests <- &req
+	err := <-req.err
+	ctx.Debugf("Lock %d targets for %s: %v", len(targets), duration, err)
+	return err
 }
 
-// Unlock unlocks the specified targets by doing nothing.
-func (tl *InMemory) Unlock(jobID types.JobID, targets []*target.Target) error {
-	log.Infof("Trying to unlock %d targets", len(targets))
-	req := newReq(targets)
-	tl.unlockRequests <- req
-	return <-req.err
+// Lock locks the specified targets.
+func (tl *InMemory) TryLock(ctx xcontext.Context, jobID types.JobID, duration time.Duration, targets []*target.Target, limit uint) ([]string, error) {
+	req := newReq(ctx, jobID, targets)
+	req.timeout = duration
+	req.requireLocked = false
+	req.allowConflicts = true
+	req.limit = limit
+	tl.lockRequests <- &req
+	// wait for result
+	err := <-req.err
+	ctx.Debugf("TryLock %d targets for %s: %d %v", len(targets), duration, len(req.locked), err)
+	return req.locked, err
+}
+
+// Unlock unlocks the specified targets.
+func (tl *InMemory) Unlock(ctx xcontext.Context, jobID types.JobID, targets []*target.Target) error {
+	req := newReq(ctx, jobID, targets)
+	tl.unlockRequests <- &req
+	err := <-req.err
+	ctx.Debugf("Unlock %d targets: %v", len(targets), err)
+	return err
 }
 
 // RefreshLocks extends the lock duration by the internally configured timeout. If
 // the owner is different, the request is rejected.
-func (tl *InMemory) RefreshLocks(jobID types.JobID, targets []*target.Target) error {
-	log.Infof("Trying to refresh locks on %d targets by %s", len(targets), tl.timeout)
-	req := newReq(targets)
-	req.timeout = tl.timeout
+func (tl *InMemory) RefreshLocks(ctx xcontext.Context, jobID types.JobID, duration time.Duration, targets []*target.Target) error {
+	req := newReq(ctx, jobID, targets)
+	req.timeout = duration
+	req.requireLocked = true
+	req.allowConflicts = false
+	req.limit = uint(len(targets))
 	// refreshing a lock is just a lock operation with the same owner and a new
 	// duration.
-	tl.lockRequests <- req
-	return <-req.err
+	tl.lockRequests <- &req
+	err := <-req.err
+	ctx.Debugf("RefreshLocks on %d targets for %s: %v", len(targets), duration, err)
+	return err
 }
 
-// CheckLocks tells whether all the targets are locked. They all are, always. It
-// also returns the ones that are not locked.
-func (tl *InMemory) CheckLocks(jobID types.JobID, targets []*target.Target) (bool, []*target.Target, []*target.Target) {
-	log.Infof("Checking if %d target(s) are locked by job ID %d", len(targets), jobID)
-	req := newReq(targets)
-	tl.checkLocksRequests <- req
-	if err := <-req.err; err != nil {
-		// TODO the target.Locker.CheckLocks interface has to change to return an
-		// error as well, because lock checking can fail, e.g. when using
-		// external services.
-		// Just log an error for now.
-		log.Warningf("Error when trying to unlock targets: %v", err)
-	}
-	return len(req.notLocked) != len(targets), req.locked, req.notLocked
+// Close stops the brokern and releases resources.
+func (tl *InMemory) Close() error {
+	close(tl.done)
+	return nil
 }
 
-// New initializes and returns a new ExampleTestStep.
-func New(timeout time.Duration) target.Locker {
-	lockRequests := make(chan request)
-	unlockRequests := make(chan request)
-	checkLocksRequests := make(chan request)
-	done := make(chan struct{}, 1)
-	go broker(lockRequests, unlockRequests, checkLocksRequests, done)
+// New initializes and returns a new InMemory target locker.
+func New(clk clock.Clock) target.Locker {
+	lockRequests := make(chan *request)
+	unlockRequests := make(chan *request)
+	done := make(chan struct{})
+	go broker(clk, lockRequests, unlockRequests, done)
 	return &InMemory{
-		lockRequests:       lockRequests,
-		unlockRequests:     unlockRequests,
-		checkLocksRequests: checkLocksRequests,
-		done:               done,
-		timeout:            timeout,
+		lockRequests:   lockRequests,
+		unlockRequests: unlockRequests,
+		done:           done,
 	}
 }

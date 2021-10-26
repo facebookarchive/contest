@@ -5,12 +5,11 @@
             "label": "some label",
             "parameters": {
                 "user": ["your_username"],
-                "host": ["{{ .Name }}"],
+                "host": ["{{ .FQDN }}"],
                 "private_key_file": ["/home/user/.ssh/id_rsa"],
                 "executable": ["ping"],
-                "args": ["-c1", "-W2", "www.{{ ToLower .Name }}"]
+                "args": ["-c1", "-W2", "www.{{ ToLower .FQDN }}"]
             }
         }
     ]
 }
-

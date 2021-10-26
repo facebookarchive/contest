@@ -8,6 +8,7 @@ package noop
 import (
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/job"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Name defines the name of the reporter used within the plugin registry
@@ -34,12 +35,12 @@ func (n *Noop) Name() string {
 }
 
 // RunReport calculates the report to be associated with a job run.
-func (n *Noop) RunReport(cancel <-chan struct{}, parameters interface{}, runStatus *job.RunStatus, ev testevent.Fetcher) (bool, interface{}, error) {
+func (n *Noop) RunReport(ctx xcontext.Context, parameters interface{}, runStatus *job.RunStatus, ev testevent.Fetcher) (bool, interface{}, error) {
 	return true, "I did nothing", nil
 }
 
 // FinalReport calculates the final report to be associated to a job.
-func (n *Noop) FinalReport(cancel <-chan struct{}, parameters interface{}, runStatuses []job.RunStatus, ev testevent.Fetcher) (bool, interface{}, error) {
+func (n *Noop) FinalReport(ctx xcontext.Context, parameters interface{}, runStatuses []job.RunStatus, ev testevent.Fetcher) (bool, interface{}, error) {
 	return true, "I did nothing at the end, all good", nil
 }
 

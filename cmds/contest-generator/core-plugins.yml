@@ -1,0 +1,16 @@
+targetmanagers:
+  - path: github.com/facebookincubator/contest/plugins/targetmanagers/targetlist
+  - path: github.com/facebookincubator/contest/plugins/targetmanagers/csvtargetmanager
+
+testfetchers:
+  - path: github.com/facebookincubator/contest/plugins/testfetchers/literal
+  - path: github.com/facebookincubator/contest/plugins/testfetchers/uri
+
+teststeps:
+  - path: github.com/facebookincubator/contest/plugins/teststeps/cmd
+    alias: ts_cmd
+  - path: github.com/facebookincubator/contest/plugins/teststeps/sshcmd
+  - path: github.com/facebookincubator/contest/plugins/teststeps/sleep
+
+reporters:
+  - path: github.com/facebookincubator/contest/plugins/reporters/targetsuccess

@@ -19,10 +19,10 @@ var jobDescriptorTemplate = template.Must(template.New("jobDescriptor").Parse(`
     "ReporterParameters": {
         "SuccessExpression": ">10%"
     },
-    "RunInterval": "5s",
-    "Runs": 1,
+    "Runs": {{ .Runs }},
+    "RunInterval": "{{ .RunInterval }}",
     "Tags": [
-        "integration_testing"
+        "integration_testing" {{ .ExtraTags }}
     ],
     "TestDescriptors": [
         {
@@ -42,7 +42,7 @@ var jobDescriptorTemplate = template.Must(template.New("jobDescriptor").Parse(`
             },
             "TargetManagerReleaseParameters": {},
             "TestFetcherName": "literal",
-            {{ . }}
+            {{ .Def }}
         }
     ],
     "Reporting": {
@@ -58,7 +58,14 @@ var jobDescriptorTemplate = template.Must(template.New("jobDescriptor").Parse(`
 }
 `))
 
-func descriptorMust(data string) string {
+type templateData struct {
+	Runs        int
+	RunInterval string
+	ExtraTags   string
+	Def         string
+}
+
+func descriptorMust2(data *templateData) string {
 	var buf bytes.Buffer
 	if err := jobDescriptorTemplate.Execute(&buf, data); err != nil {
 		panic(err)
@@ -66,7 +73,11 @@ func descriptorMust(data string) string {
 	return buf.String()
 }
 
-var jobDescriptorNoop = descriptorMust(`
+func descriptorMust(def string) string {
+	return descriptorMust2(&templateData{Runs: 1, RunInterval: "1s", Def: def})
+}
+
+var testStepsNoop = `
     "TestFetcherFetchParameters": {
         "Steps": [
             {
@@ -76,16 +87,20 @@ var jobDescriptorNoop = descriptorMust(`
             }
         ],
         "TestName": "IntegrationTest: noop"
-    }`)
+    }`
+var jobDescriptorNoop = descriptorMust(testStepsNoop)
+var jobDescriptorNoop2 = descriptorMust2(
+	&templateData{Runs: 1, RunInterval: "1s", Def: testStepsNoop, ExtraTags: `, "foo"`},
+)
 
-var jobDescriptorSlowecho = descriptorMust(`
+var jobDescriptorSlowEcho = descriptorMust(`
    "TestFetcherFetchParameters": {
        "Steps": [
            {
                "name": "slowecho",
                "label": "slowecho_label",
                "parameters": {
-                 "sleep": ["5"],
+                 "sleep": ["0.5"],
                  "text": ["Hello world"]
                }
            }
@@ -154,7 +169,7 @@ var jobDescriptorLabelDuplication = descriptorMust(`
                "parameters": {}
            }
        ],
-       "TestName": "IntegrationTest: label_duplication"
+       "TestName": "TestTestStepLabelDuplication"
    }`)
 
 var jobDescriptorNullStep = descriptorMust(`
@@ -186,6 +201,135 @@ var jobDescriptorNullTest = `
                 "Parameters": {
                     "SuccessExpression": ">0%"
                 }
+            }
+        ]
+    }
+}
+`
+var jobDescriptorBadTag = descriptorMust2(&templateData{
+	Runs:        2,
+	RunInterval: "1s",
+	ExtraTags:   `, "a bad one"`,
+	Def: `
+   "TestFetcherFetchParameters": {
+       "Steps": [
+           {
+               "name": "slowecho",
+               "label": "slowecho_label",
+               "parameters": {
+                 "sleep": ["2"],
+                 "text": ["Hello world"]
+               }
+           }
+       ],
+       "TestName": "IntegrationTest: slow echo"
+   }`,
+})
+
+var jobDescriptorInternalTag = descriptorMust2(&templateData{
+	Runs:        2,
+	RunInterval: "1s",
+	ExtraTags:   `, "_foo"`,
+	Def: `
+   "TestFetcherFetchParameters": {
+       "Steps": [
+           {
+               "name": "slowecho",
+               "label": "slowecho_label",
+               "parameters": {
+                 "sleep": ["2"],
+                 "text": ["Hello world"]
+               }
+           }
+       ],
+       "TestName": "IntegrationTest: slow echo"
+   }`,
+})
+
+var jobDescriptorDuplicateTag = descriptorMust2(&templateData{
+	Runs:        2,
+	RunInterval: "1s",
+	ExtraTags:   `, "qwe", "qwe"`,
+	Def: `
+   "TestFetcherFetchParameters": {
+       "Steps": [
+           {
+               "name": "slowecho",
+               "label": "slowecho_label",
+               "parameters": {
+                 "sleep": ["2"],
+                 "text": ["Hello world"]
+               }
+           }
+       ],
+       "TestName": "IntegrationTest: slow echo"
+   }`,
+})
+
+var jobDescriptorSlowEcho2 = descriptorMust2(&templateData{
+	Runs:        2,
+	RunInterval: "0.5s",
+	Def: `
+   "TestFetcherFetchParameters": {
+       "Steps": [
+           {
+               "name": "slowecho",
+               "label": "Step 1",
+               "parameters": {
+                 "sleep": ["0.5"],
+                 "text": ["Hello step 1"]
+               }
+           },
+           {
+               "name": "slowecho",
+               "label": "Step 2",
+               "parameters": {
+                 "sleep": ["0"],
+                 "text": ["Hello step 2"]
+               }
+           }
+       ],
+       "TestName": "IntegrationTest: resume"
+   }`,
+})
+
+var jobDescriptorReadmeta = `
+{
+    "JobName": "test job",
+    "Runs": 1,
+    "RunInterval": "5s",
+    "Tags": [
+        "integration_testing"
+    ],
+    "TestDescriptors": [
+        {
+            "TargetManagerName": "readmeta",
+            "TargetManagerAcquireParameters": {},
+            "TargetManagerReleaseParameters": {},
+            "TestFetcherName": "literal",
+            "TestFetcherFetchParameters": {
+                "Steps": [
+                    {
+                        "name": "readmeta",
+                        "label": "readmeta_label",
+                        "parameters": {}
+                    }
+                ],
+                "TestName": "IntegrationTest: noop"
+            }
+        }
+    ],
+    "Reporting": {
+        "RunReporters": [
+            {
+                "Name": "readmeta",
+                "Parameters": {}
+            }
+        ],
+        "FinalReporters": [
+            {
+                "Name": "readmeta",
+                "Parameters": {}
             }
         ]
     }

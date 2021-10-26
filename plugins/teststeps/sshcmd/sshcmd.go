@@ -17,6 +17,7 @@ package sshcmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -24,23 +25,21 @@ import (
 	"net"
 	"regexp"
 	"strconv"
-	"strings"
+	"time"
 
-	"github.com/facebookincubator/contest/pkg/cerrors"
+	"github.com/kballard/go-shellquote"
+	"golang.org/x/crypto/ssh"
+
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 	"github.com/facebookincubator/contest/plugins/teststeps"
-	shellquote "github.com/kballard/go-shellquote"
-	"golang.org/x/crypto/ssh"
 )
 
 // Name is the name used to look this plugin up.
 var Name = "SSHCmd"
-
-var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
 // Events is used by the framework to determine which events this plugin will
 // emit. Any emitted event that is not registered here will cause the plugin to
@@ -48,17 +47,20 @@ var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 var Events = []event.Name{}
 
 const defaultSSHPort = 22
+const defaultTimeoutParameter = "10m"
 
 // SSHCmd is used to run arbitrary commands as test steps.
 type SSHCmd struct {
-	Host           *test.Param
-	Port           *test.Param
-	User           *test.Param
-	PrivateKeyFile *test.Param
-	Password       *test.Param
-	Executable     *test.Param
-	Args           []test.Param
-	Expect         *test.Param
+	Host            *test.Param
+	Port            *test.Param
+	User            *test.Param
+	PrivateKeyFile  *test.Param
+	Password        *test.Param
+	Executable      *test.Param
+	Args            []test.Param
+	Expect          *test.Param
+	Timeout         *test.Param
+	SkipIfEmptyHost *test.Param
 }
 
 // Name returns the plugin name.
@@ -67,7 +69,9 @@ func (ts SSHCmd) Name() string {
 }
 
 // Run executes the cmd step.
-func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (ts *SSHCmd) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
+	log := ctx.Logger()
+
 	// XXX: Dragons ahead! The target (%t) substitution, and function
 	// expression evaluations are done at run-time, so they may still fail
 	// despite passing at early validation time.
@@ -77,10 +81,10 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 	// Function evaluation could be done at validation time, but target
 	// substitution cannot, because the targets are not known at that time.
 	if err := ts.validateAndPopulate(params); err != nil {
-		return err
+		return nil, err
 	}
 
-	f := func(cancel, pause <-chan struct{}, target *target.Target) error {
+	f := func(ctx xcontext.Context, target *target.Target) error {
 		// apply filters and substitutions to user, host, private key, and command args
 		user, err := ts.User.Expand(target)
 		if err != nil {
@@ -92,6 +96,23 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 			return fmt.Errorf("cannot expand host parameter: %v", err)
 		}
 
+		if len(host) == 0 {
+			shouldSkip := false
+			if !ts.SkipIfEmptyHost.IsEmpty() {
+				var err error
+				shouldSkip, err = strconv.ParseBool(ts.SkipIfEmptyHost.String())
+				if err != nil {
+					return fmt.Errorf("cannot expand 'skip_if_empty_host' parameter value '%s': %w", ts.SkipIfEmptyHost, err)
+				}
+			}
+
+			if shouldSkip {
+				return nil
+			} else {
+				return fmt.Errorf("host value is empty")
+			}
+		}
+
 		portStr, err := ts.Port.Expand(target)
 		if err != nil {
 			return fmt.Errorf("cannot expand port parameter: %v", err)
@@ -100,6 +121,18 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 		if err != nil {
 			return fmt.Errorf("failed to convert port parameter to integer: %v", err)
 		}
+
+		timeoutStr, err := ts.Timeout.Expand(target)
+		if err != nil {
+			return fmt.Errorf("cannot expand timeout parameter %s: %v", timeoutStr, err)
+		}
+
+		timeout, err := time.ParseDuration(timeoutStr)
+		if err != nil {
+			return fmt.Errorf("cannot parse timeout paramter: %v", err)
+		}
+
+		timeTimeout := time.Now().Add(timeout)
 
 		// apply functions to the private key, if any
 		var signer ssh.Signer
@@ -156,14 +189,14 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 		}
 
 		// connect to the host
-		addr := net.JoinHostPort(host, strconv.Itoa(int(port)))
+		addr := net.JoinHostPort(host, strconv.Itoa(port))
 		client, err := ssh.Dial("tcp", addr, &config)
 		if err != nil {
 			return fmt.Errorf("cannot connect to SSH server %s: %v", addr, err)
 		}
 		defer func() {
 			if err := client.Close(); err != nil {
-				log.Warningf("Failed to close SSH connection to %s: %v", addr, err)
+				ctx.Warnf("Failed to close SSH connection to %s: %v", addr, err)
 			}
 		}()
 		session, err := client.NewSession()
@@ -172,48 +205,73 @@ func (ts *SSHCmd) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, p
 		}
 		defer func() {
 			if err := session.Close(); err != nil && err != io.EOF {
-				log.Warningf("Failed to close SSH session to %s: %v", addr, err)
+				ctx.Warnf("Failed to close SSH session to %s: %v", addr, err)
 			}
 		}()
 		// run the remote command and catch stdout/stderr
 		var stdout, stderr bytes.Buffer
 		session.Stdout, session.Stderr = &stdout, &stderr
 		cmd := shellquote.Join(append([]string{executable}, args...)...)
-		log.Printf("Running remote SSH command on %s: '%v'", addr, cmd)
-		errCh := make(chan error)
+		log.Debugf("Running remote SSH command on %s: '%v'", addr, cmd)
+		errCh := make(chan error, 1)
 		go func() {
 			innerErr := session.Run(cmd)
 			errCh <- innerErr
 		}()
 
-		select {
-		case err := <-errCh:
-			log.Infof("Stdout of command '%s' is '%s'", cmd, stdout.Bytes())
-			if err == nil {
-				// Execute expectations
-				expect := ts.Expect.String()
-				if expect == "" {
-					log.Warningf("no expectations specified")
+		expect := ts.Expect.String()
+		re, err := regexp.Compile(expect)
+		keepAliveCnt := 0
+
+		if err != nil {
+			return fmt.Errorf("malformed expect parameter: Can not compile %s with %v", expect, err)
+		}
+
+		for {
+			select {
+			case err := <-errCh:
+				log.Infof("Stdout of command '%s' is '%s'", cmd, stdout.Bytes())
+				if err == nil {
+					// Execute expectations
+					if expect == "" {
+						ctx.Warnf("no expectations specified")
+					} else {
+						matches := re.FindAll(stdout.Bytes(), -1)
+						if len(matches) > 0 {
+							log.Infof("match for regex '%s' found", expect)
+						} else {
+							return fmt.Errorf("match for %s not found for target %v", expect, target)
+						}
+					}
 				} else {
-					re := regexp.MustCompile(expect)
+					ctx.Warnf("Stderr of command '%s' is '%s'", cmd, stderr.Bytes())
+				}
+				return err
+			case <-ctx.Done():
+				return session.Signal(ssh.SIGKILL)
+			case <-time.After(250 * time.Millisecond):
+				keepAliveCnt++
+				if expect != "" {
 					matches := re.FindAll(stdout.Bytes(), -1)
 					if len(matches) > 0 {
-						log.Infof("match for regex \"%s\" found", expect)
-					} else {
-						return fmt.Errorf("match for %s not found for target %v", expect, target)
+						log.Infof("match for regex '%s' found", expect)
+						return nil
 					}
 				}
-			} else {
-				log.Warningf("Stderr of command '%s' is '%s'", cmd, stderr.Bytes())
+				if time.Now().After(timeTimeout) {
+					return fmt.Errorf("timed out after %s", timeout)
+				}
+				// This is needed to keep the connection to the server alive
+				if keepAliveCnt%20 == 0 {
+					err = session.Signal(ssh.Signal("CONT"))
+					if err != nil {
+						log.Warnf("Unable to send CONT to ssh server: %v", err)
+					}
+				}
 			}
-			return err
-		case <-cancel:
-			return session.Signal(ssh.SIGKILL)
-		case <-pause:
-			return session.Signal(ssh.SIGKILL)
 		}
 	}
-	return teststeps.ForEachTarget(Name, cancel, pause, ch, f)
+	return teststeps.ForEachTarget(Name, ctx, ch, f)
 }
 
 func (ts *SSHCmd) validateAndPopulate(params test.TestStepParameters) error {
@@ -253,24 +311,21 @@ func (ts *SSHCmd) validateAndPopulate(params test.TestStepParameters) error {
 	}
 	ts.Args = params.Get("args")
 	ts.Expect = params.GetOne("expect")
+
+	if params.GetOne("timeout").IsEmpty() {
+		ts.Timeout = test.NewParam(defaultTimeoutParameter)
+	} else {
+		ts.Timeout = params.GetOne("timeout")
+	}
+
+	ts.SkipIfEmptyHost = params.GetOne("skip_if_empty_host")
 	return nil
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *SSHCmd) ValidateParameters(params test.TestStepParameters) error {
-	log.Printf("Params %+v", params)
+func (ts *SSHCmd) ValidateParameters(ctx xcontext.Context, params test.TestStepParameters) error {
+	ctx.Debugf("Params %+v", params)
 	return ts.validateAndPopulate(params)
-}
-
-// Resume tries to resume a previously interrupted test step. SSHCmd cannot
-// resume.
-func (ts *SSHCmd) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
-	return &cerrors.ErrResumeNotSupported{StepName: Name}
-}
-
-// CanResume tells whether this step is able to resume.
-func (ts *SSHCmd) CanResume() bool {
-	return false
 }
 
 // New initializes and returns a new SSHCmd test step.

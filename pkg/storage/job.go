@@ -6,50 +6,64 @@
 package storage
 
 import (
-	"fmt"
-
 	"github.com/facebookincubator/contest/pkg/job"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
+
+// JobStorage defines the interface that implements persistence for job
+// related information
+type JobStorage interface {
+	// Job request interface
+	StoreJobRequest(ctx xcontext.Context, request *job.Request) (types.JobID, error)
+	GetJobRequest(ctx xcontext.Context, jobID types.JobID) (*job.Request, error)
+
+	// Job report interface
+	StoreReport(ctx xcontext.Context, report *job.Report) error
+	GetJobReport(ctx xcontext.Context, jobID types.JobID) (*job.JobReport, error)
+
+	// Job enumeration interface
+	ListJobs(ctx xcontext.Context, query *JobQuery) ([]types.JobID, error)
+}
 
 // JobStorageManager implements JobStorage interface
 type JobStorageManager struct {
 }
 
 // StoreJobRequest submits a job request to the storage layer
-func (jsm JobStorageManager) StoreJobRequest(request *job.Request) (types.JobID, error) {
-	var jobID types.JobID
-	jobID, err := storage.StoreJobRequest(request)
-	if err != nil {
-		return jobID, fmt.Errorf("could not store job request: %v", err)
-	}
-	return jobID, nil
+func (jsm JobStorageManager) StoreJobRequest(ctx xcontext.Context, request *job.Request) (types.JobID, error) {
+	return storage.StoreJobRequest(ctx, request)
 }
 
 // GetJobRequest fetches a job request from the storage layer
-func (jsm JobStorageManager) GetJobRequest(jobID types.JobID) (*job.Request, error) {
-	request, err := storage.GetJobRequest(jobID)
-	if err != nil {
-		return nil, fmt.Errorf("could not fetch job request: %v", err)
+func (jsm JobStorageManager) GetJobRequest(ctx xcontext.Context, jobID types.JobID) (*job.Request, error) {
+	if isStronglyConsistent(ctx) {
+		return storage.GetJobRequest(ctx, jobID)
 	}
-	return request, nil
+	return storageAsync.GetJobRequest(ctx, jobID)
 }
 
-// StoreJobReport submits a job report to the storage layer
-func (jsm JobStorageManager) StoreJobReport(report *job.JobReport) error {
-	if err := storage.StoreJobReport(report); err != nil {
-		return fmt.Errorf("could not persist job report: %v", err)
-	}
-	return nil
+// StoreReport submits a job run or final report to the storage layer
+func (jsm JobStorageManager) StoreReport(ctx xcontext.Context, report *job.Report) error {
+	return storage.StoreReport(ctx, report)
 }
 
-// GetJobReport fetches a job report to the storage layer
-func (jsm JobStorageManager) GetJobReport(jobID types.JobID) (*job.JobReport, error) {
-	report, err := storage.GetJobReport(jobID)
-	if err != nil {
-		return nil, err
+// GetJobReport fetches a job report from the storage layer
+func (jsm JobStorageManager) GetJobReport(ctx xcontext.Context, jobID types.JobID) (*job.JobReport, error) {
+	if isStronglyConsistent(ctx) {
+		return storage.GetJobReport(ctx, jobID)
 	}
-	return report, nil
+
+	return storageAsync.GetJobReport(ctx, jobID)
+}
+
+// ListJobs returns list of job IDs matching the query
+func (jsm JobStorageManager) ListJobs(ctx xcontext.Context, query *JobQuery) ([]types.JobID, error) {
+	if isStronglyConsistent(ctx) {
+		return storage.ListJobs(ctx, query)
+	}
+
+	return storageAsync.ListJobs(ctx, query)
 }
 
 // NewJobStorageManager creates a new JobStorageManager object

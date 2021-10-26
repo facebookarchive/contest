@@ -6,864 +6,875 @@
 package runner
 
 import (
-	"container/list"
 	"encoding/json"
 	"fmt"
 	"runtime/debug"
 	"sync"
 	"time"
 
+	"github.com/insomniacslk/xjson"
+
 	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/config"
+	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/storage"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
-var log = logging.GetLogger("pkg/test")
-
-// TestRunnerTimeouts collects all the timeouts values that the test runner uses
-type TestRunnerTimeouts struct {
-	StepInjectTimeout   time.Duration
-	MessageTimeout      time.Duration
-	ShutdownTimeout     time.Duration
-	StepShutdownTimeout time.Duration
-}
-
-// routingCh represents a set of unidirectional channels used by the routing subsystem.
-// There is a routing block for each TestStep of the pipeline, which is responsible for
-// the following actions:
-// * Targets in egress from the previous routing block are injected into the
-// current TestStep
-// * Targets in egress from the current TestStep are injected into the next
-// routing block
-type routingCh struct {
-	// routeIn and routeOut connect the routing block to other routing blocks
-	routeIn  <-chan *target.Target
-	routeOut chan<- *target.Target
-	// Channels that connect the routing block to the TestStep
-	stepIn  chan<- *target.Target
-	stepOut <-chan *target.Target
-	stepErr <-chan cerrors.TargetError
-	// targetErr connects the routing block directly to the TestRunner. Failing
-	// targets are acquired by the TestRunner via this channel
-	targetErr chan<- cerrors.TargetError
-}
-
-// stepCh represents a set of bidirectional channels that a TestStep and its associated
-// routing block use to communicate. The TestRunner forces the direction of each
-// channel when connecting the TestStep to the routing block.
-type stepCh struct {
-	stepIn  chan *target.Target
-	stepOut chan *target.Target
-	stepErr chan cerrors.TargetError
-}
-
-type injectionCh struct {
-	stepIn   chan<- *target.Target
-	resultCh chan<- injectionResult
-}
-
-// injectionResult represents the result of an injection goroutine
-type injectionResult struct {
-	target *target.Target
-	err    error
-}
-
-// routeResult represents the result of routing block, possibly carrying error information
-type routeResult struct {
-	bundle test.TestStepBundle
-	err    error
-}
-
-// stepResult represents the result of a TestStep, possibly carrying error information
-type stepResult struct {
-	jobID  types.JobID
-	runID  types.RunID
-	bundle test.TestStepBundle
-	err    error
-}
-
-// completionCh represents multiple result channels that the TestRunner consumes to
-// collect results from routing blocks, TestSteps and Targets completing the test
-type completionCh struct {
-	routingResultCh <-chan routeResult
-	stepResultCh    <-chan stepResult
-	targetOut       <-chan *target.Target
-	targetErr       <-chan cerrors.TargetError
-}
-
-// TestRunner is the main runner of TestSteps in ConTest. `results` collects
-// the results of the run. It is not safe to access `results` concurrently.
+// TestRunner is the state associated with a test run.
+// Here's how a test run works:
+//  * Each target gets a targetState and a "target handler" - a goroutine that takes that particular
+//    target through each step of the pipeline in sequence. It injects the target, waits for the result,
+//    then moves on to the next step.
+//  * Each step of the pipeline gets a stepState and:
+//    - A "step runner" - a goroutine that is responsible for running the step's Run() method
+//    - A "step reader" - a goroutine that processes results and sends them on to target handlers that await them.
+//  * After starting all of the above, the main goroutine goes into "monitor" mode
+//    that checks on the pipeline's progress and is responsible for closing step input channels
+//    when all the targets have been injected.
+//  * Monitor loop finishes when all the targets have been injected into the last step
+//    or if a step has encountered an error.
+//  * We then wait for all the step runners and readers to shut down.
+//  * Once all the activity has died down, resulting state is examined and an error is returned, if any.
 type TestRunner struct {
-	state    *State
-	timeouts TestRunnerTimeouts
+	shutdownTimeout time.Duration // Time to wait for steps runners to finish a the end of the run
+
+	steps     []*stepState            // The pipeline, in order of execution
+	targets   map[string]*targetState // Target state lookup map
+	targetsWg sync.WaitGroup          // Tracks all the target handlers
+
+	// One mutex to rule them all, used to serialize access to all the state above.
+	// Could probably be split into several if necessary.
+	mu   sync.Mutex
+	cond *sync.Cond // Used to notify the monitor about changes
 }
 
-// WriteTargetErrorTimeout writes a TargetError object to a TargetError channel with timeout
-func (tr *TestRunner) WriteTargetErrorTimeout(terminate <-chan struct{}, ch chan<- cerrors.TargetError, targetError cerrors.TargetError, timeout time.Duration) error {
-	select {
-	case <-terminate:
-	case ch <- targetError:
-	case <-time.After(timeout):
-		return fmt.Errorf("timeout while writing targetError %+v", targetError)
+// stepState contains state associated with one state of the pipeline:
+type stepState struct {
+	ctx    xcontext.Context
+	cancel xcontext.CancelFunc
+
+	stepIndex int                 // Index of this step in the pipeline.
+	sb        test.TestStepBundle // The test bundle.
+
+	// Channels used to communicate with the plugin.
+	inCh  chan *target.Target
+	outCh chan test.TestStepResult
+	ev    testevent.Emitter
+
+	tgtDone map[*target.Target]bool // Targets for which results have been received.
+
+	resumeState   json.RawMessage // Resume state passed to and returned by the Run method.
+	stepStarted   bool            // testStep.Run() has been invoked
+	stepRunning   bool            // testStep.Run() is currently running.
+	readerRunning bool            // Result reader is running.
+	runErr        error           // Runner error, returned from Run() or an error condition detected by the reader.
+}
+
+// targetStepPhase denotes progression of a target through a step
+type targetStepPhase int
+
+const (
+	targetStepPhaseInvalid       targetStepPhase = iota
+	targetStepPhaseInit                          // (1) Created
+	targetStepPhaseBegin                         // (2) Picked up for execution.
+	targetStepPhaseRun                           // (3) Injected into step.
+	targetStepPhaseResultPending                 // (4) Result posted to the handler.
+	targetStepPhaseEnd                           // (5) Finished running a step.
+)
+
+// targetState contains state associated with one target progressing through the pipeline.
+type targetState struct {
+	tgt *target.Target
+
+	// This part of state gets serialized into JSON for resumption.
+	CurStep  int             `json:"S,omitempty"` // Current step number.
+	CurPhase targetStepPhase `json:"P,omitempty"` // Current phase of step execution.
+	Res      *xjson.Error    `json:"R,omitempty"` // Final result, if reached the end state.
+
+	handlerRunning bool
+	resCh          chan error // Channel used to communicate result by the step runner.
+}
+
+// resumeStateStruct is used to serialize runner state to be resumed in the future.
+type resumeStateStruct struct {
+	Version         int                     `json:"V"`
+	JobID           types.JobID             `json:"J"`
+	RunID           types.RunID             `json:"R"`
+	Targets         map[string]*targetState `json:"T"`
+	StepResumeState []json.RawMessage       `json:"SRS,omitempty"`
+}
+
+// Resume state version we are compatible with.
+// When imcompatible changes are made to the state format, bump this.
+// Restoring incompatible state will abort the job.
+const resumeStateStructVersion = 2
+
+// Run is the main enty point of the runner.
+func (tr *TestRunner) Run(
+	ctx xcontext.Context,
+	t *test.Test, targets []*target.Target,
+	jobID types.JobID, runID types.RunID,
+	resumeState json.RawMessage,
+) (json.RawMessage, error) {
+
+	ctx = ctx.WithFields(xcontext.Fields{
+		"job_id": jobID,
+		"run_id": runID,
+	})
+	ctx = xcontext.WithValue(ctx, types.KeyJobID, jobID)
+	ctx = xcontext.WithValue(ctx, types.KeyRunID, runID)
+
+	ctx.Debugf("== test runner starting job %d, run %d", jobID, runID)
+	resumeState, err := tr.run(ctx.WithTag("phase", "run"), t, targets, jobID, runID, resumeState)
+	ctx.Debugf("== test runner finished job %d, run %d, err: %v", jobID, runID, err)
+	return resumeState, err
+}
+
+func (tr *TestRunner) run(
+	ctx xcontext.Context,
+	t *test.Test, targets []*target.Target,
+	jobID types.JobID, runID types.RunID,
+	resumeState json.RawMessage,
+) (json.RawMessage, error) {
+
+	// Peel off contexts used for steps and target handlers.
+	stepsCtx, stepsCancel := xcontext.WithCancel(ctx)
+	defer stepsCancel()
+	targetsCtx, targetsCancel := xcontext.WithCancel(ctx)
+	defer targetsCancel()
+
+	// If we have state to resume, parse it.
+	var rs resumeStateStruct
+	if len(resumeState) > 0 {
+		ctx.Debugf("Attempting to resume from state: %s", string(resumeState))
+		if err := json.Unmarshal(resumeState, &rs); err != nil {
+			return nil, fmt.Errorf("invalid resume state: %w", err)
+		}
+		if rs.Version != resumeStateStructVersion {
+			return nil, fmt.Errorf("incompatible resume state version %d (want %d)",
+				rs.Version, resumeStateStructVersion)
+		}
+		if rs.JobID != jobID {
+			return nil, fmt.Errorf("wrong resume state, job id %d (want %d)", rs.JobID, jobID)
+		}
+		tr.targets = rs.Targets
 	}
-	return nil
-}
 
-// WriteTargetTimeout writes a Target object to a Target channel with timeout
-func (tr *TestRunner) WriteTargetTimeout(terminate <-chan struct{}, ch chan<- *target.Target, target *target.Target, timeout time.Duration) error {
-	select {
-	case <-terminate:
-	case ch <- target:
-	case <-time.After(timeout):
-		return fmt.Errorf("timeout while writing target %+v", target)
+	// Set up the pipeline
+	for i, sb := range t.TestStepsBundles {
+		stepCtx, stepCancel := xcontext.WithCancel(stepsCtx)
+		var srs json.RawMessage
+		if i < len(rs.StepResumeState) && string(rs.StepResumeState[i]) != "null" {
+			srs = rs.StepResumeState[i]
+		}
+		tr.steps = append(tr.steps, &stepState{
+			ctx:       stepCtx,
+			cancel:    stepCancel,
+			stepIndex: i,
+			sb:        sb,
+			inCh:      make(chan *target.Target),
+			outCh:     make(chan test.TestStepResult),
+			ev: storage.NewTestEventEmitter(testevent.Header{
+				JobID:         jobID,
+				RunID:         runID,
+				TestName:      t.Name,
+				TestStepLabel: sb.TestStepLabel,
+			}),
+			tgtDone:     make(map[*target.Target]bool),
+			resumeState: srs,
+		})
+		// Step handlers will be started from target handlers as targets reach them.
 	}
-	return nil
-}
 
-// InjectTarget attempts to deliver a Target on the input channel of a TestStep,
-// returning the result of the operation on the result channel wrapped in the
-// injectionCh argument
-func (tr *TestRunner) InjectTarget(terminate <-chan struct{}, target *target.Target, ch injectionCh, wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	err := tr.WriteTargetTimeout(terminate, ch.stepIn, target, tr.timeouts.StepInjectTimeout)
-
-	select {
-	case <-terminate:
-	case ch.resultCh <- injectionResult{target: target, err: err}:
-	case <-time.After(tr.timeouts.MessageTimeout):
-		log.Panic("could not communicate back with ConTest")
+	// Set up the targets
+	if tr.targets == nil {
+		tr.targets = make(map[string]*targetState)
 	}
-}
-
-// Route implements the routing block associated with a TestStep that routes Targets
-// into and out of a TestStep. It performs the following actions:
-// * Consumes targets in input from the previous routing block
-// * Asynchronously injects targets into the associated TestStep
-// * Consumes targets in output from the associated TestStep
-// * Asynchronously forwards targets to the following routing block
-func (tr *TestRunner) Route(terminateRoute <-chan struct{}, bundle test.TestStepBundle, routingCh routingCh, resultCh chan<- routeResult, ev testevent.EmitterFetcher) {
-
-	terminateInjection := make(chan struct{})
-
-	tRouteIn := routingCh.routeIn
-	tStepOut := routingCh.stepOut
-	tStepErr := routingCh.stepErr
-
-	// Channel that the injection goroutine uses to communicate back with the
-	// main routing logic
-	injectResultCh := make(chan injectionResult)
-	injectionChannels := injectionCh{stepIn: routingCh.stepIn, resultCh: injectResultCh}
-
-	// `targets` is used to buffer targets coming from the previous routing blocks,
-	// queueing them for injection into the TestStep. The list is accessed
-	// synchronously by a single goroutine.
-	targets := list.New()
-
-	// `ingressTarget` and `egressTarget` are used to keep track of ingress and
-	// egress times and perform sanity checks on the input/output of the TestStep
-	ingressTarget := make(map[*target.Target]time.Time)
-	egressTarget := make(map[*target.Target]time.Time)
-
-	var (
-		err           error
-		stepInClosed  bool
-		pendingTarget *target.Target
-		injectionWg   sync.WaitGroup
-	)
-
-	for {
-		select {
-		case <-terminateRoute:
-			err = fmt.Errorf("termination requested")
-			break
-		case injectionResult := <-injectResultCh:
-			ingressTarget[pendingTarget] = time.Now()
-			pendingTarget = nil
-			if injectionResult.err != nil {
-				err = fmt.Errorf("routing failed while injecting a target: %v", injectionResult.err)
-				targetInErrEv := testevent.Data{EventName: target.EventTargetInErr, Target: injectionResult.target}
-				if err := ev.Emit(targetInErrEv); err != nil {
-					log.Warningf("Could not emit %v event for Target: %v", targetInErrEv, *injectionResult.target)
-				}
-				break
+	// Initialize remaining fields of the target structures,
+	// build the map and kick off target processing.
+	for _, tgt := range targets {
+		tr.mu.Lock()
+		tgs := tr.targets[tgt.ID]
+		if tgs == nil {
+			tgs = &targetState{
+				CurPhase: targetStepPhaseInit,
 			}
-			targetInEv := testevent.Data{EventName: target.EventTargetIn, Target: injectionResult.target}
-			if err := ev.Emit(targetInEv); err != nil {
-				log.Warningf("Could not emit %v event for Target: %v", targetInEv, *injectionResult.target)
-			}
-			if targets.Len() > 0 {
-				pendingTarget = targets.Back().Value.(*target.Target)
-				targets.Remove(targets.Back())
-				injectionWg.Add(1)
-				go tr.InjectTarget(terminateInjection, pendingTarget, injectionChannels, &injectionWg)
-			}
-		case t, chanIsOpen := <-tRouteIn:
-			if !chanIsOpen {
-				// The previous routing block has closed our input channel, signaling that
-				// no more Targets will come through. Block reading from this channel
-				tRouteIn = nil
-			} else {
-				// Buffer the target and check if there is already an injection in progress.
-				// If so, pending targets will be dequeued only at the next result available
-				// on `injectResultCh`.
-				targets.PushFront(t)
-				if pendingTarget == nil {
-					pendingTarget = targets.Back().Value.(*target.Target)
-					targets.Remove(targets.Back())
-					injectionWg.Add(1)
-					go tr.InjectTarget(terminateInjection, pendingTarget, injectionChannels, &injectionWg)
-				}
-			}
-		case t, chanIsOpen := <-tStepOut:
-			if !chanIsOpen {
-				tStepOut = nil
-			} else {
-				if _, targetPresent := egressTarget[t]; targetPresent {
-					err = fmt.Errorf("step %s returned target %+v multiple times", bundle.TestStepLabel, t)
-					break
-				}
-				// Emit an event signaling that the target has lef the TestStep
-				targetOutEv := testevent.Data{EventName: target.EventTargetOut, Target: t}
-				if err := ev.Emit(targetOutEv); err != nil {
-					log.Warningf("Could not emit %v event for Target: %v", targetOutEv, *t)
-				}
-				// Register egress time and forward target to the next routing block
-				egressTarget[t] = time.Now()
-				if err := tr.WriteTargetTimeout(terminateRoute, routingCh.routeOut, t, tr.timeouts.MessageTimeout); err != nil {
-					log.Panicf("step %s: could not forward target to the TestRunner: %+v", bundle.TestStepLabel, err)
-				}
-			}
-		case targetError, chanIsOpen := <-tStepErr:
-			if !chanIsOpen {
-				tStepErr = nil
-			} else {
-				if _, targetPresent := egressTarget[targetError.Target]; targetPresent {
-					err = fmt.Errorf("step %s returned target %+v multiple times", bundle.TestStepLabel, targetError.Target)
-					break
-				}
-				// Emit an event signaling that the target has lef the TestStep with an error
-				targetErrPayload := target.ErrPayload{Error: targetError.Err.Error()}
-				payloadEncoded, err := json.Marshal(targetErrPayload)
-				if err != nil {
-					log.Warningf("could not encode target error ('%s'): %v", targetErrPayload, err)
-				}
+		}
+		tgs.tgt = tgt
+		// Buffer of 1 is needed so that the step reader does not block when submitting result back
+		// to the target handler. Target handler may not yet be ready to receive the result,
+		// i.e. reporting TargetIn event which may involve network I/O.
+		tgs.resCh = make(chan error, 1)
+		tgs.handlerRunning = true
+		tr.targets[tgt.ID] = tgs
+		tr.mu.Unlock()
+		tr.targetsWg.Add(1)
+		go func() {
+			tr.targetHandler(targetsCtx, tgs)
+			tr.targetsWg.Done()
+		}()
+	}
 
-				rawPayload := json.RawMessage(payloadEncoded)
+	// Run until no more progress can be made.
+	runErr := tr.runMonitor(ctx)
+	if runErr != nil {
+		ctx.Errorf("monitor returned error: %q, canceling", runErr)
+		stepsCancel()
+	}
 
-				targetErrEv := testevent.Data{EventName: target.EventTargetErr, Target: targetError.Target, Payload: &rawPayload}
-				if err := ev.Emit(targetErrEv); err != nil {
-					log.Warningf("Could not emit %v event for Target: %v", targetErrEv, *targetError.Target)
-				}
-				// Register egress time and forward the failing target to the TestRunner
-				egressTarget[targetError.Target] = time.Now()
-				if err := tr.WriteTargetErrorTimeout(terminateRoute, routingCh.targetErr, targetError, tr.timeouts.MessageTimeout); err != nil {
-					log.Panicf("step %s: could not forward target to the TestRunner: %+v", bundle.TestStepLabel, err)
-				}
+	// Wait for step runners and readers to exit.
+	if err := tr.waitStepRunners(ctx); err != nil {
+		if runErr == nil {
+			runErr = err
+		}
+	}
+
+	// There will be no more results, reel in all the target handlers (if any).
+	ctx.Debugf("waiting for target handlers to finish")
+	targetsCancel()
+	tr.targetsWg.Wait()
+
+	// Has the run been canceled? If so, ignore whatever happened, it doesn't matter.
+	select {
+	case <-ctx.Done():
+		runErr = xcontext.ErrCanceled
+	default:
+	}
+
+	// Examine the resulting state.
+	ctx.Debugf("leaving, err %v, target states:", runErr)
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	resumeOk := (runErr == nil)
+	numInFlightTargets := 0
+	for i, tgt := range targets {
+		tgs := tr.targets[tgt.ID]
+		stepErr := tr.steps[tgs.CurStep].runErr
+		if tgs.CurPhase == targetStepPhaseRun {
+			numInFlightTargets++
+			if stepErr != xcontext.ErrPaused {
+				resumeOk = false
 			}
-		} // end of select statement
+		}
+		if stepErr != nil && stepErr != xcontext.ErrPaused {
+			resumeOk = false
+		}
+		ctx.Debugf("  %d %s %v %t", i, tgs, stepErr, resumeOk)
+	}
+	ctx.Debugf("- %d in flight, ok to resume? %t", numInFlightTargets, resumeOk)
+	ctx.Debugf("step states:")
+	for i, ss := range tr.steps {
+		ctx.Debugf("  %d %s %t %t %v %s", i, ss, ss.stepRunning, ss.readerRunning, ss.runErr, ss.resumeState)
+	}
 
-		if err != nil {
+	// Is there a useful error to report?
+	if runErr != nil {
+		return nil, runErr
+	}
+
+	// Have we been asked to pause? If yes, is it safe to do so?
+	select {
+	case <-ctx.Until(xcontext.ErrPaused):
+		if !resumeOk {
+			ctx.Warnf("paused but not ok to resume")
 			break
 		}
-		if tStepErr == nil && tStepOut == nil {
-			// If the TestStep has closed its out and err channels in compliance with
-			// ConTest API, it means that target injection has completed and we have already
-			// closed the TestStep input channel. routingCh.routeOut is closed when `Route`
-			// terminates.
-			break
+		rs := &resumeStateStruct{
+			Version: resumeStateStructVersion,
+			JobID:   jobID, RunID: runID,
+			Targets: tr.targets,
 		}
-		if targets.Len() == 0 && tRouteIn == nil && pendingTarget == nil && !stepInClosed {
-			// If we have already acquired and injected all targets, signal to the TestStep
-			// that no more targets will come through by closing the input channel.
-			// Note that the input channel is not closed if routing is cancelled.
-			// A TestStep is expected to always be reactive to cancellation even when
-			// acquiring targets from the input channel.
-			stepInClosed = true
-			close(routingCh.stepIn)
+		for _, ss := range tr.steps {
+			rs.StepResumeState = append(rs.StepResumeState, ss.resumeState)
 		}
-	}
-
-	// If we are not handling an error condition, check if all the targets that we
-	// have injected have been returned by the TestStep.
-	if err == nil {
-		if len(ingressTarget) != len(egressTarget) {
-			err = fmt.Errorf("step %s completed but did not return all injected Targets", bundle.TestStepLabel)
+		resumeState, runErr = json.Marshal(rs)
+		if runErr != nil {
+			ctx.Errorf("unable to serialize the state: %s", runErr)
 		} else {
-			// Routing terminated without error. We might have been asked to terminate
-			// from outside, or we might have terminated successfully. Close routing
-			// output channel to signal to the next routing block that no more targets
-			// will come through only in the latter case.
-			select {
-			case <-terminateRoute:
-			default:
-				close(routingCh.routeOut)
-			}
-		}
-	}
-
-	// Signal termination to the injection routines regardless of the result of the
-	// routing. If the routing completed successfully, this is a no-op
-	close(terminateInjection)
-
-	// If there is an injection goroutine running, wait for it to terminate, as we
-	// might have gotten here after a cancellation signal.
-	injectionWg.Wait()
-
-	// Send the result to the TestRunner, which is guaranteed to be listening. If
-	// the TestRunner is not responsive before `MessageTimeout`, we are either running
-	// on a system under heavy load which makes the runtime unable to properly schedule
-	// goroutines, or we are hitting a bug.
-	select {
-	case resultCh <- routeResult{bundle: bundle, err: err}:
-	case <-time.After(tr.timeouts.MessageTimeout):
-		log.Panicf("could not send routing block result for step %s", bundle.TestStepLabel)
-	}
-}
-
-// RunTestStep runs synchronously a TestStep and peforms sanity checks on the status
-// of the input/output channels on the defer control path. When the TestStep returns,
-// the associated output channels are closed. This signals to the routing subsytem
-// that this step of the pipeline will not be producing any more targets. The API
-// dictates that the TestStep can only return if its input channel has been closed,
-// which indicates that no more targets will be submitted to that step. If the
-// TestStep does not comply with this rule, an error is sent downstream to the pipeline
-// runner, which will in turn shutdown the whole pipeline and flag the TestStep
-// as misbehaving. All attempts to send downstream a result after a TestStep complete
-// are protected by a timeout and fail open. This because it's not guaranteed that
-// the TestRunner will still be listening on the result channels. If the TestStep hangs
-// indefinitely and does not respond to cancellation signals, the TestRunner will
-// flag it as misbehaving and return. If the TestStep returns once the TestRunner
-// has completed, it will timeout trying to write on the result channel.
-func (tr *TestRunner) RunTestStep(cancel, pause <-chan struct{}, jobID types.JobID, runID types.RunID, bundle test.TestStepBundle, stepCh stepCh, resultCh chan<- stepResult, ev testevent.EmitterFetcher) {
-
-	defer func() {
-		if r := recover(); r != nil {
-			err := fmt.Errorf("step %s paniced (%v): %s", bundle.TestStepLabel, r, debug.Stack())
-			select {
-			case resultCh <- stepResult{jobID: jobID, runID: runID, bundle: bundle, err: err}:
-			case <-time.After(tr.timeouts.MessageTimeout):
-				log.Warningf("sending error back from TestStep runner timed out after %v. Error was: %v", tr.timeouts.MessageTimeout, err)
-				return
-			}
-			return
-		}
-	}()
-
-	// We should not run a test step if there're no targets in stepCh.stepIn
-	// First we check if there's at least one incoming target, and only
-	// then we call `bundle.TestStep.Run()`.
-	//
-	// ITS: https://github.com/facebookincubator/contest/issues/101
-	stepIn, onFirstTargetChan, onNoTargetsChan := waitForFirstTarget(stepCh.stepIn, cancel, pause)
-
-	haveTargets := false
-	select {
-	case <-onFirstTargetChan:
-		log.Debugf("first target")
-		haveTargets = true
-	case <-cancel:
-		log.Debugf("cancel")
-	case <-pause:
-		log.Debugf("pause")
-	case <-onNoTargetsChan:
-		log.Debugf("no targets")
-	}
-
-	var err error
-	if haveTargets {
-		// Run the TestStep and defer to the return path the handling of panic
-		// conditions. If multiple error conditions occur, send downstream only
-		// the first error encountered.
-		channels := test.TestStepChannels{
-			In:  stepIn,
-			Out: stepCh.stepOut,
-			Err: stepCh.stepErr,
-		}
-		err = bundle.TestStep.Run(cancel, pause, channels, bundle.Parameters, ev)
-	}
-
-	var (
-		cancellationAsserted bool
-		pauseAsserted        bool
-	)
-	// Check if we are shutting down. If so, do not perform sanity checks on the
-	// channels but return immediately as the TestStep itself probably returned
-	// because it honored the termination signal.
-	select {
-
-	case <-cancel:
-		cancellationAsserted = true
-		if err == nil {
-			err = fmt.Errorf("test step cancelled")
-		}
-	case <-pause:
-		pauseAsserted = true
-	default:
-	}
-
-	if cancellationAsserted || pauseAsserted {
-		select {
-		case resultCh <- stepResult{jobID: jobID, runID: runID, bundle: bundle, err: err}:
-		case <-time.After(tr.timeouts.MessageTimeout):
-			log.Warningf("sending error back from TestStep runner timed out after %v. Error was: %v", tr.timeouts.MessageTimeout, err)
-		}
-		return
-	}
-
-	// If the TestStep has crashed with an error, return immediately the result to the TestRunner
-	// which in turn will issue a cancellation signal to the pipeline
-	if err != nil {
-		select {
-		case resultCh <- stepResult{jobID: jobID, runID: runID, bundle: bundle, err: err}:
-		case <-time.After(tr.timeouts.MessageTimeout):
-			log.Warningf("sending error back from TestStep runner timed out after %v. Error was: %v", tr.timeouts.MessageTimeout, err)
-		}
-		return
-	}
-
-	// Perform sanity checks on the status of the channels. The TestStep API
-	// mandates that output and error channels shall not be closed by the
-	// TestStep itself. If the TestStep does not comply with the API, it is
-	// flagged as misbehaving.
-	select {
-	case _, ok := <-stepCh.stepIn:
-		if !ok {
-			break
-		}
-		// stepCh.stepIn is not closed, but the TestStep returned, which is a violation
-		// of the API. Record the error if no other error condition has been seen.
-		if err == nil {
-			err = fmt.Errorf("step returned, but input channel is not closed (api violation; case 0)")
+			runErr = xcontext.ErrPaused
 		}
 	default:
-		// stepCh.stepIn is not closed, and a read operation would block. The TestStep
-		// does not comply with the API (see above).
-		if err == nil {
-			err = fmt.Errorf("step returned, but input channel is not closed (api violation; case 1)")
-		}
 	}
 
-	select {
-	case _, ok := <-stepCh.stepOut:
-		if !ok {
-			// stepOutCh has been closed. This is a violation of the API. Record the error
-			// if no other error condition has been seen.
-			if err == nil {
-				err = &cerrors.ErrTestStepClosedChannels{StepName: bundle.TestStep.Name()}
-			}
-		}
-	default:
-		// stepCh.stepOut is open. Flag it for closure to signal to the routing subsystem that
-		// no more Targets will go through from this channel.
-		close(stepCh.stepOut)
-	}
-
-	select {
-	case _, ok := <-stepCh.stepErr:
-		if !ok {
-			// stepErrCh has been closed. This is a violation of the API. Record the error
-			// if no other error condition has been seen.
-			if err == nil {
-				err = &cerrors.ErrTestStepClosedChannels{StepName: bundle.TestStep.Name()}
-			}
-		}
-	default:
-		// stepCh.stepErr is open. Flag it for closure to signal to the routing subsystem that
-		// no more Targets will go through from this channel.
-		close(stepCh.stepErr)
-	}
-
-	select {
-	case resultCh <- stepResult{jobID: jobID, runID: runID, bundle: bundle, err: err}:
-	case <-time.After(tr.timeouts.MessageTimeout):
-		log.Warningf("sending error back from TestStep runner timed out after %v. Error was: %v", tr.timeouts.MessageTimeout, err)
-		return
-	}
+	return resumeState, runErr
 }
 
-// WaitTestStep reads results coming from result channels until `StepShutdownTimeout`
-// occurs or an error is encountered. It then checks whether TestSteps and routing
-// blocks have all returned correctly. If not, it returns an error.
-func (tr *TestRunner) WaitTestStep(ch completionCh, bundles []test.TestStepBundle) error {
-	var err error
-
-wait_test_step:
-	for {
-		select {
-		case <-time.After(tr.timeouts.StepShutdownTimeout):
-			break wait_test_step
-		case res := <-ch.routingResultCh:
-			err = res.err
-			tr.state.SetRouting(res.bundle.TestStepLabel, res.err)
-		case res := <-ch.stepResultCh:
-			err = res.err
-			tr.state.SetStep(res.bundle.TestStepLabel, res.err)
-		}
-
-		if err != nil {
-			return err
-		}
-		stepsCompleted := len(tr.state.CompletedSteps()) == len(bundles)
-		routingCompleted := len(tr.state.CompletedRouting()) == len(bundles)
-		if stepsCompleted && routingCompleted {
-			break wait_test_step
-		}
-	}
-
-	incompleteSteps := tr.state.IncompleteSteps(bundles)
-	if len(incompleteSteps) > 0 {
-		err = &cerrors.ErrTestStepsNeverReturned{StepNames: incompleteSteps}
-	} else if len(tr.state.CompletedRouting()) != len(bundles) {
-		err = fmt.Errorf("not all routing completed")
-	}
-	return err
-}
-
-// WaitPipelineTermination reads results coming from result channels waiting
-// for the pipeline to completely shutdown before `ShutdownTimeout` occurs. A
-// "complete shutdown" means that all TestSteps and routing blocks have sent
-// downstream their results.
-func (tr *TestRunner) WaitPipelineTermination(ch completionCh, bundles []test.TestStepBundle) error {
-	log.Printf("Waiting for pipeline to terminate")
-	for {
-		select {
-		case <-time.After(tr.timeouts.ShutdownTimeout):
-			incompleteSteps := tr.state.IncompleteSteps(bundles)
-			if len(incompleteSteps) > 0 {
-				return &cerrors.ErrTestStepsNeverReturned{StepNames: tr.state.IncompleteSteps(bundles)}
-			}
-			return fmt.Errorf("pipeline did not return but all test steps completed")
-		case res := <-ch.routingResultCh:
-			tr.state.SetRouting(res.bundle.TestStepLabel, res.err)
-		case res := <-ch.stepResultCh:
-			tr.state.SetStep(res.bundle.TestStepLabel, res.err)
-		}
-
-		stepsCompleted := len(tr.state.CompletedSteps()) == len(bundles)
-		routingCompleted := len(tr.state.CompletedRouting()) == len(bundles)
-		if stepsCompleted && routingCompleted {
-			return nil
-		}
-	}
-}
-
-// WaitPipelineCompletion reads results coming from results channels until all Targets
-// have completed or an error occurs. If all Targets complete successfully, it checks
-// whether TestSteps and routing blocks have completed as well. If not, returns an
-// error. Termination is signalled via terminate channel.
-func (tr *TestRunner) WaitPipelineCompletion(terminate <-chan struct{}, ch completionCh, t *test.Test, bundles []test.TestStepBundle, targets []*target.Target) error {
-	var err error
-	for {
-		if len(tr.state.CompletedTargets()) == len(targets) {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		select {
-		case <-terminate:
-			// When termination is signaled just stop WaitPipelineCompletion. It is up
-			// to the caller to decide how to further handle pipeline termination.
-			return nil
-		case res := <-ch.routingResultCh:
-			err = res.err
-			tr.state.SetRouting(res.bundle.TestStepLabel, res.err)
-		case res := <-ch.stepResultCh:
-			err = res.err
-			if err != nil {
-				payload, jmErr := json.Marshal(err.Error())
-				if jmErr != nil {
-					log.Warningf("Failed to marshal error string to JSON: %v", jmErr)
-					continue
-				}
-				rm := json.RawMessage(payload)
-				ev := storage.NewTestEventEmitterFetcher(testevent.Header{
-					JobID:         res.jobID,
-					RunID:         res.runID,
-					TestName:      t.Name,
-					TestStepLabel: res.bundle.TestStepLabel,
-				})
-				errEv := testevent.Data{
-					EventName: EventTestError,
-					// this event is not associated to any target, e.g. a plugin has
-					// returned an error.
-					Target:  nil,
-					Payload: &rm,
-				}
-				// emit test event containing the completion error
-				if err := ev.Emit(errEv); err != nil {
-					log.Warningf("Could not emit completion error event %v", errEv)
-				}
-			}
-			tr.state.SetStep(res.bundle.TestStepLabel, res.err)
-		case targetErr := <-ch.targetErr:
-			tr.state.SetTarget(targetErr.Target, targetErr.Err)
-		case target, chanIsOpen := <-ch.targetOut:
-			if !chanIsOpen {
-				if len(tr.state.CompletedTargets()) != len(targets) {
-					err = fmt.Errorf("not all targets completed, but output channel is closed")
-				}
-			} else {
-				tr.state.SetTarget(target, nil)
-			}
-		}
-	}
-
-	// The test run completed, we have collected all Targets. TestSteps might have already
-	// closed `ch.out`, in which case the pipeline terminated correctly (channels are closed
-	// in a "domino" sequence, so seeing the last channel closed indicates that the
-	// sequence of close operations has completed). If `ch.out` is still open,
-	// there are still TestSteps that might have not returned. Wait for all
-	// TestSteps to complete or `StepShutdownTimeout` to occur.
-	log.Printf("Waiting for all TestSteps to complete")
-	err = tr.WaitTestStep(ch, bundles)
-	return err
-}
-
-// Run implements the main logic of the TestRunner, i.e. the instantiation and
-// connection of the TestSteps, routing blocks and pipeline runner.
-func (tr *TestRunner) Run(cancel, pause <-chan struct{}, t *test.Test, targets []*target.Target, jobID types.JobID, runID types.RunID) error {
-	testStepBundles := t.TestStepsBundles
-	if len(testStepBundles) == 0 {
-		return fmt.Errorf("no steps to run for test")
-	}
-
-	var (
-		cancellationAsserted bool
-		pauseAsserted        bool
-	)
-
-	pauseTestStep := make(chan struct{})
-	cancelTestStep := make(chan struct{})
-	// termination channels are used to signal termination to injection and routing
-	terminateWaitCompletion := make(chan struct{})
-	terminateInjection := make(chan struct{})
-	terminateRouting := make(chan struct{})
-
-	// result channels used to communicate result information from the routing blocks
-	// and step executors
-	routingResultCh := make(chan routeResult)
-	stepResultCh := make(chan stepResult)
-	targetErrCh := make(chan cerrors.TargetError)
-
-	var (
-		routeIn  chan *target.Target
-		routeOut chan *target.Target
-	)
-
-	for r, testStepBundle := range testStepBundles {
-		// Input and output channels for the TestStep
-		stepInCh := make(chan *target.Target)
-		stepOutCh := make(chan *target.Target)
-		stepErrCh := make(chan cerrors.TargetError)
-
-		// Output of the current routing block
-		routeOut = make(chan *target.Target)
-
-		// First step of the pipeline
-		if r == 0 {
-			routeIn = make(chan *target.Target)
-			// Spawn a goroutine which injects Targets into the first routing block
-			go func(terminate <-chan struct{}, inputChannel chan<- *target.Target) {
-				defer close(inputChannel)
-				for _, target := range targets {
-					if err := tr.WriteTargetTimeout(terminate, inputChannel, target, tr.timeouts.MessageTimeout); err != nil {
-						log.Panic(fmt.Sprintf("could not inject target %+v into first routing block: %+v", target, err))
+func (tr *TestRunner) waitStepRunners(ctx xcontext.Context) error {
+	ctx.Debugf("waiting for step runners to finish")
+	swch := make(chan struct{})
+	go func() {
+		tr.mu.Lock()
+		defer tr.mu.Unlock()
+		for {
+			ok := true
+			for _, ss := range tr.steps {
+				// numRunning == 1 is also acceptable: we allow the Run() goroutine
+				// to continue in case of error, if the result processor decided
+				// to abandon its runner, there's nothing we can do.
+				switch {
+				case !ss.stepRunning && !ss.readerRunning:
+				// Done
+				case ss.stepRunning && ss.readerRunning:
+					// Still active
+					ok = false
+				case !ss.stepRunning && ss.readerRunning:
+					// Transient state, let it finish
+					ok = false
+				case ss.stepRunning && !ss.readerRunning:
+					// This is possible if plugin got stuck and result processor gave up on it.
+					// If so, it should have left an error.
+					if ss.runErr == nil {
+						ctx.Errorf("%s: result processor left runner with no error", ss)
+						// There's nothing we can do at this point, fall through.
 					}
 				}
-			}(terminateInjection, routeIn)
+			}
+			if ok {
+				close(swch)
+				return
+			}
+			tr.cond.Wait()
 		}
-
-		stepChannels := stepCh{stepIn: stepInCh, stepErr: stepErrCh, stepOut: stepOutCh}
-		routingChannels := routingCh{
-			routeIn:   routeIn,
-			routeOut:  routeOut,
-			stepIn:    stepInCh,
-			stepErr:   stepErrCh,
-			stepOut:   stepOutCh,
-			targetErr: targetErrCh,
-		}
-
-		// Build the Header that the the TestStep will be using for emitting events
-		Header := testevent.Header{
-			JobID:         jobID,
-			RunID:         runID,
-			TestName:      t.Name,
-			TestStepLabel: testStepBundle.TestStepLabel,
-		}
-		ev := storage.NewTestEventEmitterFetcher(Header)
-		go tr.Route(terminateRouting, testStepBundle, routingChannels, routingResultCh, ev)
-		go tr.RunTestStep(cancelTestStep, pauseTestStep, jobID, runID, testStepBundle, stepChannels, stepResultCh, ev)
-		// The input of the next routing block is the output of the current routing block
-		routeIn = routeOut
-	}
-
-	var (
-		completionError  error
-		terminationError error
-	)
-
-	completionChannels := completionCh{
-		routingResultCh: routingResultCh,
-		stepResultCh:    stepResultCh,
-		targetErr:       targetErrCh,
-		targetOut:       routeOut,
-	}
-
-	// errCh collects errors coming from the routines which wait for the Test to complete
-	errCh := make(chan error)
-
-	// Wait for the pipeline to complete. If an error occurrs, cancel all TestSteps
-	// and routing blocks and wait again for completion until shutdown timeout occurrs.
-	log.Printf("TestRunner: waiting for test to complete")
-
-	go func() {
-		errCh <- tr.WaitPipelineCompletion(terminateWaitCompletion, completionChannels, t, testStepBundles, targets)
 	}()
-
+	var err error
 	select {
-	case completionError = <-errCh:
-	case <-cancel:
-		close(terminateWaitCompletion)
-		cancellationAsserted = true
-		completionError = <-errCh
-	case <-pause:
-		close(terminateWaitCompletion)
-		pauseAsserted = true
-		completionError = <-errCh
+	case <-swch:
+		ctx.Debugf("step runners finished")
+		tr.mu.Lock()
+		defer tr.mu.Unlock()
+		err = tr.checkStepRunnersLocked()
+	case <-time.After(tr.shutdownTimeout):
+		ctx.Errorf("step runners failed to shut down correctly")
+		tr.mu.Lock()
+		defer tr.mu.Unlock()
+		// If there is a step with an error set, use that.
+		err = tr.checkStepRunnersLocked()
+		// If there isn't, enumerate ones that were still running at the time.
+		nrerr := &cerrors.ErrTestStepsNeverReturned{}
+		if err == nil {
+			err = nrerr
+		}
+		for _, ss := range tr.steps {
+			if ss.stepRunning {
+				ss.setErrLocked(&cerrors.ErrTestStepsNeverReturned{StepNames: []string{ss.sb.TestStepLabel}})
+				nrerr.StepNames = append(nrerr.StepNames, ss.sb.TestStepLabel)
+				// Cancel this step's context, this will help release the reader.
+				ss.cancel()
+			}
+		}
+	}
+	// Emit step error events.
+	for _, ss := range tr.steps {
+		if ss.runErr != nil && ss.runErr != xcontext.ErrPaused && ss.runErr != xcontext.ErrCanceled {
+			if err := ss.emitEvent(ctx, EventTestError, nil, ss.runErr.Error()); err != nil {
+				ctx.Errorf("failed to emit event: %s", err)
+			}
+		}
+	}
+	return err
+}
+
+func (tr *TestRunner) injectTarget(ctx xcontext.Context, tgs *targetState, ss *stepState) error {
+	var err error
+	ctx.Debugf("%s: injecting into %s", tgs, ss)
+	select {
+	case ss.inCh <- tgs.tgt:
+		// Injected successfully.
+		err = ss.ev.Emit(ctx, testevent.Data{EventName: target.EventTargetIn, Target: tgs.tgt})
+		tr.mu.Lock()
+		defer tr.mu.Unlock()
+		// By the time we get here the target could have been processed and result posted already, hence the check.
+		if tgs.CurPhase == targetStepPhaseBegin {
+			tgs.CurPhase = targetStepPhaseRun
+		}
+		if err != nil {
+			err = fmt.Errorf("failed to report target injection: %w", err)
+		}
+	case <-ctx.Until(xcontext.ErrPaused):
+		err = xcontext.ErrPaused
+	case <-ctx.Done():
+		err = xcontext.ErrCanceled
+	}
+	tr.cond.Signal()
+	return err
+}
+
+func (tr *TestRunner) awaitTargetResult(ctx xcontext.Context, tgs *targetState, ss *stepState) error {
+	select {
+	case res, ok := <-tgs.resCh:
+		if !ok {
+			// Channel is closed when job is paused to make sure all results are processed.
+			ctx.Debugf("%s: result channel closed", tgs)
+			return xcontext.ErrPaused
+		}
+		ctx.Debugf("%s: result recd for %s", tgs, ss)
+		var err error
+		if res == nil {
+			err = ss.emitEvent(ctx, target.EventTargetOut, tgs.tgt, nil)
+		} else {
+			err = ss.emitEvent(ctx, target.EventTargetErr, tgs.tgt, target.ErrPayload{Error: res.Error()})
+		}
+		if err != nil {
+			ctx.Errorf("failed to emit event: %s", err)
+		}
+		tr.mu.Lock()
+		if res != nil {
+			tgs.Res = xjson.NewError(res)
+		}
+		tgs.CurPhase = targetStepPhaseEnd
+		tr.mu.Unlock()
+		tr.cond.Signal()
+		return err
+		// Check for cancellation.
+		// Notably we are not checking for the pause condition here:
+		// when paused, we want to let all the injected targets to finish
+		// and collect all the results they produce. If that doesn't happen,
+		// step runner will close resCh on its way out and unblock us.
+	case <-ctx.Done():
+		tr.mu.Lock()
+		ctx.Debugf("%s: canceled 2", tgs)
+		tr.mu.Unlock()
+		return xcontext.ErrCanceled
+	}
+}
+
+// targetHandler takes a single target through each step of the pipeline in sequence.
+// It injects the target, waits for the result, then moves on to the next step.
+func (tr *TestRunner) targetHandler(ctx xcontext.Context, tgs *targetState) {
+	ctx = ctx.WithField("target", tgs.tgt.ID)
+	ctx.Debugf("%s: target handler active", tgs)
+	// NB: CurStep may be non-zero on entry if resumed
+loop:
+	for i := tgs.CurStep; i < len(tr.steps); {
+		// Early check for pause or cancelation.
+		select {
+		case <-ctx.Until(xcontext.ErrPaused):
+			ctx.Debugf("%s: paused 0", tgs)
+			break loop
+		case <-ctx.Done():
+			ctx.Debugf("%s: canceled 0", tgs)
+			break loop
+		default:
+		}
+		tr.mu.Lock()
+		ss := tr.steps[i]
+		var inject bool
+		switch tgs.CurPhase {
+		case targetStepPhaseInit:
+			// Normal case, inject and wait for result.
+			inject = true
+			tgs.CurPhase = targetStepPhaseBegin
+		case targetStepPhaseBegin:
+			// Paused before injection.
+			inject = true
+		case targetStepPhaseRun:
+			// Resumed in running state, skip injection.
+			inject = false
+		case targetStepPhaseEnd:
+			// Resumed in terminal state, we are done.
+			tr.mu.Unlock()
+			break loop
+		default:
+			ctx.Errorf("%s: invalid phase %s", tgs, tgs.CurPhase)
+			break loop
+		}
+		tr.mu.Unlock()
+		// Make sure we have a step runner active. If not, start one.
+		tr.runStepIfNeeded(ss)
+		// Inject the target.
+		var err error
+		if inject {
+			err = tr.injectTarget(ctx, tgs, ss)
+		}
+		// Await result. It will be communicated to us by the step runner
+		// and returned in tgs.res.
+		if err == nil {
+			err = tr.awaitTargetResult(ctx, tgs, ss)
+		}
+		tr.mu.Lock()
+		if err != nil {
+			ss.ctx.Errorf("%s", err)
+			switch err {
+			case xcontext.ErrPaused:
+				ss.ctx.Debugf("%s: paused 1", tgs)
+			case xcontext.ErrCanceled:
+				ss.ctx.Debugf("%s: canceled 1", tgs)
+			default:
+				ss.setErrLocked(err)
+			}
+			tr.mu.Unlock()
+			break
+		}
+		if tgs.Res != nil {
+			tr.mu.Unlock()
+			break
+		}
+		i++
+		if i < len(tr.steps) {
+			tgs.CurStep = i
+			tgs.CurPhase = targetStepPhaseInit
+		}
+		tr.mu.Unlock()
+	}
+	tr.mu.Lock()
+	ctx.Debugf("%s: target handler finished", tgs)
+	tgs.handlerRunning = false
+	tr.cond.Signal()
+	tr.mu.Unlock()
+}
+
+// runStepIfNeeded starts the step runner goroutine if not already running.
+func (tr *TestRunner) runStepIfNeeded(ss *stepState) {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	if ss.stepStarted {
+		return
+	}
+	ss.stepStarted = true
+	ss.stepRunning = true
+	ss.readerRunning = true
+	go tr.stepRunner(ss)
+	go tr.stepReader(ss)
+}
+
+func (ss *stepState) setErr(mu sync.Locker, err error) {
+	mu.Lock()
+	defer mu.Unlock()
+	ss.setErrLocked(err)
+}
+
+// setErrLocked sets step runner error unless already set.
+func (ss *stepState) setErrLocked(err error) {
+	if err == nil || ss.runErr != nil {
+		return
+	}
+	ss.ctx.Errorf("err: %v", err)
+	ss.runErr = err
+}
+
+// emitEvent emits the specified event with the specified JSON payload (if any).
+func (ss *stepState) emitEvent(ctx xcontext.Context, name event.Name, tgt *target.Target, payload interface{}) error {
+	var payloadJSON *json.RawMessage
+	if payload != nil {
+		payloadBytes, jmErr := json.Marshal(payload)
+		if jmErr != nil {
+			return fmt.Errorf("failed to marshal event: %w", jmErr)
+		}
+		pj := json.RawMessage(payloadBytes)
+		payloadJSON = &pj
+	}
+	errEv := testevent.Data{
+		EventName: name,
+		Target:    tgt,
+		Payload:   payloadJSON,
+	}
+	return ss.ev.Emit(ctx, errEv)
+}
+
+// stepRunner runs a test pipeline's step (the Run() method).
+func (tr *TestRunner) stepRunner(ss *stepState) {
+	ss.ctx.Debugf("%s: step runner active", ss)
+	defer func() {
+		if r := recover(); r != nil {
+			tr.mu.Lock()
+			ss.stepRunning = false
+			ss.setErrLocked(&cerrors.ErrTestStepPaniced{
+				StepName:   ss.sb.TestStepLabel,
+				StackTrace: fmt.Sprintf("%s / %s", r, debug.Stack()),
+			})
+			tr.mu.Unlock()
+			tr.safeCloseOutCh(ss)
+		}
+	}()
+	tr.mu.Lock()
+	var runErr error
+	resumeState := ss.resumeState
+	ss.resumeState = nil
+	tr.mu.Unlock()
+	chans := test.TestStepChannels{In: ss.inCh, Out: ss.outCh}
+	resumeState, runErr = ss.sb.TestStep.Run(ss.ctx, chans, ss.sb.Parameters, ss.ev, resumeState)
+	ss.ctx.Debugf("%s: step runner finished %v, rs %s", ss, runErr, string(resumeState))
+	tr.mu.Lock()
+	ss.stepRunning = false
+	ss.setErrLocked(runErr)
+	if runErr == xcontext.ErrPaused {
+		ss.resumeState = resumeState
+	}
+	tr.mu.Unlock()
+	// Signal to the result processor that no more will be coming.
+	tr.safeCloseOutCh(ss)
+}
+
+// reportTargetResult reports result of executing a step to the appropriate target handler.
+func (tr *TestRunner) reportTargetResult(ss *stepState, tgt *target.Target, res error) error {
+	resCh, err := func() (chan error, error) {
+		tr.mu.Lock()
+		defer tr.mu.Unlock()
+		tgs := tr.targets[tgt.ID]
+		if tgs == nil {
+			return nil, &cerrors.ErrTestStepReturnedUnexpectedResult{
+				StepName: ss.sb.TestStepLabel,
+				Target:   tgt.ID,
+			}
+		}
+		if ss.tgtDone[tgt] {
+			return nil, &cerrors.ErrTestStepReturnedDuplicateResult{
+				StepName: ss.sb.TestStepLabel,
+				Target:   tgt.ID,
+			}
+		}
+		ss.tgtDone[tgt] = true
+		// Begin is also allowed here because it may happen that we get a result before target handler updates phase.
+		if tgs.CurStep != ss.stepIndex ||
+			(tgs.CurPhase != targetStepPhaseBegin && tgs.CurPhase != targetStepPhaseRun) {
+			return nil, &cerrors.ErrTestStepReturnedUnexpectedResult{
+				StepName: ss.sb.TestStepLabel,
+				Target:   tgt.ID,
+			}
+		}
+		if tgs.resCh == nil {
+			// If canceled or paused, target handler may have left early. We don't care though.
+			select {
+			case <-ss.ctx.Done():
+				return nil, xcontext.ErrCanceled
+			default:
+				// This should not happen, must be an internal error.
+				return nil, fmt.Errorf("%s: target handler %s is not there, dropping result on the floor", ss, tgs)
+			}
+		}
+		tgs.CurPhase = targetStepPhaseResultPending
+		ss.ctx.Debugf("%s: result for %s: %v", ss, tgs, res)
+		return tgs.resCh, nil
+	}()
+	if err != nil {
+		return err
+	}
+	select {
+	case resCh <- res:
+		break
+	case <-ss.ctx.Done():
+		break
+	}
+	return nil
+}
+
+func (tr *TestRunner) safeCloseOutCh(ss *stepState) {
+	defer func() {
+		if r := recover(); r != nil {
+			ss.setErr(&tr.mu, &cerrors.ErrTestStepClosedChannels{StepName: ss.sb.TestStepLabel})
+		}
+	}()
+	close(ss.outCh)
+}
+
+// stepReader receives results from the step's output channel and forwards them to the appropriate target handlers.
+func (tr *TestRunner) stepReader(ss *stepState) {
+	ss.ctx.Debugf("%s: step reader active", ss)
+	var err error
+	cancelCh := ss.ctx.Done()
+	var shutdownTimeoutCh <-chan time.Time
+loop:
+	for {
+		select {
+		case res, ok := <-ss.outCh:
+			if !ok {
+				ss.ctx.Debugf("%s: out chan closed", ss)
+				tr.mu.Lock()
+				if ss.stepRunning {
+					// This means that plugin closed its channels before leaving.
+					err = &cerrors.ErrTestStepClosedChannels{StepName: ss.sb.TestStepLabel}
+				}
+				tr.mu.Unlock()
+				break loop
+			}
+			if err = tr.reportTargetResult(ss, res.Target, res.Err); err != nil {
+				break loop
+			}
+		case <-cancelCh:
+			ss.ctx.Debugf("%s: canceled 3, draining", ss)
+			// Allow some time to drain
+			cancelCh = nil
+			shutdownTimeoutCh = time.After(tr.shutdownTimeout)
+		case <-shutdownTimeoutCh:
+			err = &cerrors.ErrTestStepsNeverReturned{StepNames: []string{ss.sb.TestStepLabel}}
+			break loop
+		}
+	}
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	ss.setErrLocked(err)
+	ss.readerRunning = false
+	ss.ctx.Debugf("%s: step reader finished, %t %t %v", ss, ss.stepRunning, ss.readerRunning, ss.runErr)
+	tr.cond.Signal()
+}
+
+// checkStepRunnersLocked checks if any step runner has encountered an error.
+func (tr *TestRunner) checkStepRunnersLocked() error {
+	for i, ss := range tr.steps {
+		switch ss.runErr {
+		case nil:
+			// Nothing
+		case xcontext.ErrPaused:
+			// This is fine, just need to unblock target handlers waiting on result from this step.
+			for _, tgs := range tr.targets {
+				if tgs.resCh != nil && tgs.CurStep == i {
+					close(tgs.resCh)
+					tgs.resCh = nil
+				}
+			}
+		default:
+			return ss.runErr
+		}
+	}
+	return nil
+}
+
+// runMonitor monitors progress of targets through the pipeline
+// and closes input channels of the steps to indicate that no more are expected.
+// It also monitors steps for critical errors and cancels the whole run.
+// Note: input channels remain open when cancellation is requested,
+// plugins are expected to handle it explicitly.
+func (tr *TestRunner) runMonitor(ctx xcontext.Context) error {
+	ctx.Debugf("monitor: active")
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	// First, compute the starting step of the pipeline (it may be non-zero
+	// if the pipeline was resumed).
+	minStep := len(tr.steps)
+	for _, tgs := range tr.targets {
+		if tgs.CurStep < minStep {
+			minStep = tgs.CurStep
+		}
+	}
+	if minStep < len(tr.steps) {
+		ctx.Debugf("monitor: starting at step %s", tr.steps[minStep])
 	}
 
-	if completionError != nil || cancellationAsserted {
-		// If the Test has encountered an error or cancellation has been asserted,
-		// terminate routing and injection and propagate the cancel signal to the
-		// TestStep(s)
-		cancellationAsserted = true
-		if completionError != nil {
-			log.Printf("TestRunner: test failed to complete: %+v. Forcing cancellation.", completionError)
-		} else {
-			log.Printf("TestRunner: cancellation was asserted")
+	// Run the main loop.
+	pass := 1
+	var runErr error
+stepLoop:
+	for step := minStep; step < len(tr.steps); pass++ {
+		ss := tr.steps[step]
+		ctx.Debugf("monitor pass %d: current step %s", pass, ss)
+		// Check if all the targets have either made it past the injection phase or terminated.
+		ok := true
+		for _, tgs := range tr.targets {
+			ctx.Debugf("monitor pass %d: %s: %s", pass, ss, tgs)
+			if !tgs.handlerRunning { // Not running anymore
+				continue
+			}
+			if tgs.CurStep < step || tgs.CurPhase < targetStepPhaseRun {
+				ctx.Debugf("monitor pass %d: %s: not all targets injected yet (%s)", pass, ss, tgs)
+				ok = false
+				break
+			}
 		}
-		close(cancelTestStep)
-		close(terminateInjection)
-		close(terminateRouting)
+		if runErr = tr.checkStepRunnersLocked(); runErr != nil {
+			break stepLoop
+		}
+		if !ok {
+			// Wait for notification: as progress is being made, we get notified.
+			tr.cond.Wait()
+			continue
+		}
+		// All targets ok, close the step's input channel.
+		ctx.Debugf("monitor pass %d: %s: no more targets, closing input channel", pass, ss)
+		close(ss.inCh)
+		step++
 	}
-	if pauseAsserted {
-		// If pause signal has been asserted, terminate routing and injection and
-		// propagate the pause signal to the TestStep(s).
-		log.Printf("TestRunner has received pause request")
-		close(pauseTestStep)
-		close(terminateInjection)
-		close(terminateRouting)
+	// Wait for all the targets to finish.
+	ctx.Debugf("monitor: waiting for targets to finish")
+tgtLoop:
+	for ; runErr == nil; pass++ {
+		if runErr = tr.checkStepRunnersLocked(); runErr != nil {
+			break tgtLoop
+		}
+		done := true
+		for _, tgs := range tr.targets {
+			ctx.Debugf("monitor pass %d: %s", pass, tgs)
+			if tgs.handlerRunning && (tgs.CurStep < len(tr.steps) || tgs.CurPhase != targetStepPhaseEnd) {
+				if tgs.CurPhase == targetStepPhaseRun {
+					// We have a target inside a step.
+					ss := tr.steps[tgs.CurStep]
+					if ss.runErr == xcontext.ErrPaused {
+						// It's been paused, this is fine.
+						continue
+					}
+					if ss.stepStarted && !ss.readerRunning {
+						// Target has been injected but step runner has exited without a valid reason, this target has been lost.
+						runErr = &cerrors.ErrTestStepLostTargets{
+							StepName: ss.sb.TestStepLabel,
+							Targets:  []string{tgs.tgt.ID},
+						}
+						break tgtLoop
+					}
+				}
+				done = false
+				break
+			}
+		}
+		if done {
+			break
+		}
+		// Wait for notification: as progress is being made, we get notified.
+		tr.cond.Wait()
 	}
+	ctx.Debugf("monitor: finished, %v", runErr)
+	return runErr
+}
 
-	// If either cancellation or pause have been asserted, we need to wait for the
-	// pipeline to terminate
-	if cancellationAsserted || pauseAsserted {
-		go func() {
-			errCh <- tr.WaitPipelineTermination(completionChannels, testStepBundles)
-		}()
-		signal := "cancellation"
-		if pauseAsserted {
-			signal = "pause"
+func NewTestRunnerWithTimeouts(shutdownTimeout time.Duration) *TestRunner {
+	tr := &TestRunner{
+		shutdownTimeout: shutdownTimeout,
+	}
+	tr.cond = sync.NewCond(&tr.mu)
+	return tr
+}
+
+func NewTestRunner() *TestRunner {
+	return NewTestRunnerWithTimeouts(config.TestRunnerShutdownTimeout)
+}
+
+func (tph targetStepPhase) String() string {
+	switch tph {
+	case targetStepPhaseInvalid:
+		return "INVALID"
+	case targetStepPhaseInit:
+		return "init"
+	case targetStepPhaseBegin:
+		return "begin"
+	case targetStepPhaseRun:
+		return "run"
+	case targetStepPhaseResultPending:
+		return "result_pending"
+	case targetStepPhaseEnd:
+		return "end"
+	}
+	return fmt.Sprintf("???(%d)", tph)
+}
+
+func (ss *stepState) String() string {
+	return fmt.Sprintf("[#%d %s]", ss.stepIndex, ss.sb.TestStepLabel)
+}
+
+func (tgs *targetState) String() string {
+	var resText string
+	if tgs.Res != nil {
+		resStr := fmt.Sprintf("%v", tgs.Res)
+		if len(resStr) > 20 {
+			resStr = resStr[:20] + "..."
 		}
-		terminationError = <-errCh
-		if terminationError != nil {
-			log.Printf("TestRunner: test did not terminate correctly after %s signal: %+v", signal, terminationError)
-		} else {
-			log.Printf("TestRunner: test terminated correctly after %s signal", signal)
-		}
+		resText = fmt.Sprintf("%q", resStr)
 	} else {
-		log.Printf("TestRunner completed")
+		resText = "<nil>"
 	}
-
-	if completionError != nil {
-		return completionError
-	}
-	return terminationError
-}
-
-// NewTestRunner initializes and returns a new TestRunner object. This test
-// runner will use default timeout values
-func NewTestRunner() TestRunner {
-	return TestRunner{
-		timeouts: TestRunnerTimeouts{
-			StepInjectTimeout:   config.StepInjectTimeout,
-			MessageTimeout:      config.TestRunnerMsgTimeout,
-			ShutdownTimeout:     config.TestRunnerShutdownTimeout,
-			StepShutdownTimeout: config.TestRunnerStepShutdownTimeout,
-		},
-		state: NewState(),
-	}
-}
-
-// NewTestRunnerWithTimeouts initializes and returns a new TestRunner object with
-// custom timeouts
-func NewTestRunnerWithTimeouts(timeouts TestRunnerTimeouts) TestRunner {
-	return TestRunner{timeouts: timeouts, state: NewState()}
-}
-
-// State is a structure that models the current state of the test runner
-type State struct {
-	completedSteps   map[string]error
-	completedRouting map[string]error
-	completedTargets map[*target.Target]error
-}
-
-// NewState initializes a State object.
-func NewState() *State {
-	r := State{}
-	r.completedSteps = make(map[string]error)
-	r.completedRouting = make(map[string]error)
-	r.completedTargets = make(map[*target.Target]error)
-	return &r
-}
-
-// CompletedTargets returns a map that associates each target with its returning error.
-// If the target succeeded, the error will be nil
-func (r *State) CompletedTargets() map[*target.Target]error {
-	return r.completedTargets
-}
-
-// CompletedRouting returns a map that associates each routing block with its returning error.
-// If the routing block succeeded, the error will be nil
-func (r *State) CompletedRouting() map[string]error {
-	return r.completedRouting
-}
-
-// CompletedSteps returns a map that associates each step with its returning error.
-// If the step succeeded, the error will be nil
-func (r *State) CompletedSteps() map[string]error {
-	return r.completedSteps
-}
-
-// SetRouting sets the error associated with a routing block
-func (r *State) SetRouting(testStepLabel string, err error) {
-	r.completedRouting[testStepLabel] = err
-}
-
-// SetTarget sets the error associated with a target
-func (r *State) SetTarget(target *target.Target, err error) {
-	r.completedTargets[target] = err
-}
-
-// SetStep sets the error associated with a step
-func (r *State) SetStep(testStepLabel string, err error) {
-	r.completedSteps[testStepLabel] = err
-}
-
-// IncompleteSteps returns a slice of step names for which the result hasn't been set yet
-func (r *State) IncompleteSteps(bundles []test.TestStepBundle) []string {
-	var incompleteSteps []string
-	for _, bundle := range bundles {
-		if _, ok := r.completedSteps[bundle.TestStepLabel]; !ok {
-			incompleteSteps = append(incompleteSteps, bundle.TestStepLabel)
-		}
-	}
-	return incompleteSteps
+	finished := !tgs.handlerRunning
+	return fmt.Sprintf("[%s %d %s %t %s]",
+		tgs.tgt, tgs.CurStep, tgs.CurPhase, finished, resText)
 }

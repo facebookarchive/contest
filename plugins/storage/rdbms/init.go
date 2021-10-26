@@ -13,14 +13,14 @@ import (
 
 	"github.com/facebookincubator/contest/pkg/event/frameworkevent"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/storage"
+	log "github.com/sirupsen/logrus"
+
+	"github.com/facebookincubator/contest/tools/migration/rdbms/migrationlib"
 
 	// this blank import registers the mysql driver
 	_ "github.com/go-sql-driver/mysql"
 )
-
-var log = logging.GetLogger("plugin/events/rdbms")
 
 // txbeginner defines an interface for a backend which supports beginning a transaction
 type txbeginner interface {
@@ -52,15 +52,18 @@ type RDBMS struct {
 	buffTestEvents      []testevent.Event
 	buffFrameworkEvents []frameworkevent.Event
 
-	testEventsLock      *sync.Mutex
-	frameworkEventsLock *sync.Mutex
+	testEventsLock      sync.Mutex
+	frameworkEventsLock sync.Mutex
+	closeCh             chan struct{}
+	closeWG             *sync.WaitGroup
 
 	// sql.Tx is not safe for concurrent use. This means that both Query, Exec operations
 	// and rows scanning should be serialized. txLock is acquired and released by all
 	// methods of the public interface exposed by RDBMS.
 	txLock sync.Mutex
 
-	db db
+	db    db
+	sqlDB *sql.DB
 
 	// Events are buffered internally before being flushed to the database.
 	// Buffer size and flush interval are defined per-buffer, as there is
@@ -97,8 +100,8 @@ func (r *RDBMS) BeginTx() (storage.TransactionalStorage, error) {
 	if err != nil {
 		return nil, err
 	}
-	txRDBMS := RDBMS{testEventsLock: &sync.Mutex{}, frameworkEventsLock: &sync.Mutex{}, txLock: sync.Mutex{}, db: tx}
-	return &txRDBMS, nil
+
+	return &RDBMS{db: tx, sqlDB: r.sqlDB, closeCh: r.closeCh, closeWG: r.closeWG}, nil
 }
 
 // Commit persists the current transaction, if there is one active
@@ -119,43 +122,89 @@ func (r *RDBMS) Rollback() error {
 	return tx.Rollback()
 }
 
+// Close flushes pending events and closes the database connection.
+func (r *RDBMS) Close() error {
+	close(r.closeCh)
+	r.closeWG.Wait()
+	r.sqlDB.Close()
+	r.sqlDB = nil
+	r.db = nil
+	return nil
+}
+
+// Version returns the current version of the RDBMS schema
+func (r *RDBMS) Version() (uint64, error) {
+	return migrationlib.DBVersion(r.db)
+}
+
+// Reset wipes entire database contents. Used in tests.
+func (r *RDBMS) Reset() error {
+	for _, t := range []string{"jobs", "job_tags", "run_reports", "final_reports", "test_events", "framework_events"} {
+		if _, err := r.db.Exec(fmt.Sprintf("TRUNCATE TABLE %s", t)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (r *RDBMS) init() error {
 
 	driverName := "mysql"
 	if r.driverName != "" {
 		driverName = r.driverName
 	}
-	sqlDb, err := sql.Open(driverName, r.dbURI)
+	sqlDB, err := sql.Open(driverName, r.dbURI)
 	if err != nil {
-		return fmt.Errorf("could not initialize database: %v", err)
+		return fmt.Errorf("could not initialize database: %w", err)
 	}
-	r.db = sqlDb
+	if err := sqlDB.Ping(); err != nil {
+		sqlDB.Close()
+		return fmt.Errorf("unable to contact database: %w", err)
+	}
+	r.db = sqlDB
+	r.sqlDB = sqlDB
 
 	if r.testEventsFlushInterval > 0 {
+		r.closeWG.Add(1)
 		go func() {
-			for {
-				time.Sleep(r.testEventsFlushInterval)
-
-				r.testEventsLock.Lock()
-				if err := r.flushTestEvents(); err != nil {
-					log.Warningf("Failed to flush test events: %v", err)
+			done := false
+			for !done {
+				select {
+				case <-time.After(r.testEventsFlushInterval):
+					if err := r.flushTestEvents(); err != nil {
+						log.Warningf("Failed to flush test events: %v", err)
+					}
+				case <-r.closeCh:
+					// Flush one last time
+					if err := r.flushTestEvents(); err != nil {
+						log.Warningf("Failed to flush test events: %v", err)
+					}
+					done = true
 				}
-				r.testEventsLock.Unlock()
 			}
+			r.closeWG.Done()
 		}()
 	}
 
 	if r.frameworkEventsFlushInterval > 0 {
+		r.closeWG.Add(1)
 		go func() {
-			for {
-				time.Sleep(r.frameworkEventsFlushInterval)
-
-				r.frameworkEventsLock.Lock()
-				if err := r.flushFrameworkEvents(); err != nil {
-					log.Warningf("Failed to flush test events: %v", err)
+			done := false
+			for !done {
+				select {
+				case <-time.After(r.frameworkEventsFlushInterval):
+					if err := r.flushFrameworkEvents(); err != nil {
+						log.Warningf("Failed to flush test events: %v", err)
+					}
+				case <-r.closeCh:
+					// Flush one last time
+					if err := r.flushFrameworkEvents(); err != nil {
+						log.Warningf("Failed to flush test events: %v", err)
+					}
+					done = true
 				}
-				r.frameworkEventsLock.Unlock()
 			}
+			r.closeWG.Done()
 		}()
 	}
 	return nil
@@ -208,7 +257,11 @@ func DriverName(name string) Opt {
 func New(dbURI string, opts ...Opt) (storage.Storage, error) {
 
 	// Default flushInterval and buffer sizes are zero (i.e., by default the backend is not buffered)
-	rdbms := RDBMS{testEventsLock: &sync.Mutex{}, frameworkEventsLock: &sync.Mutex{}, dbURI: dbURI}
+	rdbms := RDBMS{
+		dbURI:   dbURI,
+		closeCh: make(chan struct{}),
+		closeWG: &sync.WaitGroup{},
+	}
 	for _, Opt := range opts {
 		Opt(&rdbms)
 	}

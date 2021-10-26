@@ -6,10 +6,14 @@
 package noop
 
 import (
-	"github.com/facebookincubator/contest/pkg/cerrors"
+	"encoding/json"
+
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
+	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
+	"github.com/facebookincubator/contest/plugins/teststeps"
 )
 
 // Name is the name used to look this plugin up.
@@ -26,37 +30,16 @@ func (ts *noop) Name() string {
 	return Name
 }
 
-// Run executes a step which does never return.
-func (ts *noop) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
-	for {
-		select {
-		case target := <-ch.In:
-			if target == nil {
-				return nil
-			}
-			ch.Out <- target
-		case <-cancel:
-			return nil
-		case <-pause:
-			return nil
-		}
-	}
+// Run executes a step that does nothing and returns targets with success.
+func (ts *noop) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
+	return teststeps.ForEachTarget(Name, ctx, ch, func(ctx xcontext.Context, t *target.Target) error {
+		return nil
+	})
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *noop) ValidateParameters(params test.TestStepParameters) error {
+func (ts *noop) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	return nil
-}
-
-// Resume tries to resume a previously interrupted test step. ExampleTestStep
-// cannot resume.
-func (ts *noop) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.EmitterFetcher) error {
-	return &cerrors.ErrResumeNotSupported{StepName: Name}
-}
-
-// CanResume tells whether this step is able to resume.
-func (ts *noop) CanResume() bool {
-	return false
 }
 
 // New creates a new noop step

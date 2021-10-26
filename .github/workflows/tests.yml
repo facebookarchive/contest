@@ -1,0 +1,47 @@
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+          stable: "false"
+          go-version: "1.16.2"
+      - name: Run Linters
+        run: ./run_lint.sh
+      - name: Run Tests
+        run: CI=true ./run_tests.sh
+  contest-generator:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          # clone in the gopath
+          path: src/github.com/${{ github.repository }}
+      - uses: actions/setup-go@v2
+        with:
+          stable: "false"
+          go-version: "1.16.2"
+      - name: set up environment variables
+        run: |
+          # must do this here because `env` doesn't allow variable expansion
+          echo "GOPATH=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+          echo "GOBIN=$GITHUB_WORKSPACE/bin" >> $GITHUB_ENV
+      - name: Validate contest-generator
+        run: |
+          set -exu
+          cd "${GITHUB_WORKSPACE}"/src/github.com/${{ github.repository }}/cmds/contest-generator
+          go build
+          builddir=$(./contest-generator --from core-plugins.yml) # generate the code and get the output directory
+          cd "${builddir}"
+          ls -l
+          go mod init contest
+          go mod edit -replace "github.com/${{ github.repository}}=${GITHUB_WORKSPACE}/src/github.com/${{ github.repository}}" # ensure we are building against the code from this commit
+          go mod tidy
+          go build # build the generated main.go
+          gofmt -w "${builddir}/contest.go" # ensure that the code respects Go's format guidelines
+          diff -Naur "${builddir}/contest.go" "${GITHUB_WORKSPACE}"/src/github.com/${{ github.repository }}/cmds/contest/main.go # show the differences between the newly generated code and the existing one

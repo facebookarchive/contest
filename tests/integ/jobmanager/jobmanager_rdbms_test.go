@@ -13,11 +13,10 @@ import (
 	"time"
 
 	"github.com/facebookincubator/contest/pkg/storage"
-	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/plugins/storage/rdbms"
-	"github.com/facebookincubator/contest/plugins/targetlocker/inmemory"
 	"github.com/facebookincubator/contest/tests/integ/common"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -32,11 +31,9 @@ func TestJobManagerSuiteRdbmsStorage(t *testing.T) {
 	if err != nil {
 		panic(fmt.Sprintf("could not initialize rdbms storage layer: %v", err))
 	}
-	storage.SetStorage(storageLayer)
+	err = storage.SetStorage(storageLayer)
+	require.NoError(t, err)
 	testSuite.storage = storageLayer
-
-	targetLocker := inmemory.New(10 * time.Second)
-	target.SetLocker(targetLocker)
 
 	suite.Run(t, &testSuite)
 }

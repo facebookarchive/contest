@@ -5,7 +5,12 @@
 
 package target
 
-import "github.com/facebookincubator/contest/pkg/types"
+import (
+	"time"
+
+	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
+)
 
 // TargetManagerFactory is a type representing a function which builds
 // a TargetManager.
@@ -20,8 +25,8 @@ type TargetManagerLoader func() (string, TargetManagerFactory)
 type TargetManager interface {
 	ValidateAcquireParameters([]byte) (interface{}, error)
 	ValidateReleaseParameters([]byte) (interface{}, error)
-	Acquire(jobID types.JobID, cancel <-chan struct{}, parameters interface{}, tl Locker) ([]*Target, error)
-	Release(jobID types.JobID, cancel <-chan struct{}, parameters interface{}) error
+	Acquire(ctx xcontext.Context, jobID types.JobID, jobTargetManagerAcquireTimeout time.Duration, parameters interface{}, tl Locker) ([]*Target, error)
+	Release(ctx xcontext.Context, jobID types.JobID, targets []*Target, parameters interface{}) error
 }
 
 // TargetManagerBundle bundles the selected TargetManager together with its

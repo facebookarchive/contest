@@ -7,6 +7,7 @@ package test
 
 import (
 	"encoding/json"
+	"errors"
 
 	"github.com/facebookincubator/contest/pkg/target"
 )
@@ -31,4 +32,15 @@ type TestDescriptor struct {
 	// TestFetcher-related parameters
 	TestFetcherName            string
 	TestFetcherFetchParameters json.RawMessage
+}
+
+// Validate performs sanity checks on the Descriptor
+func (d *TestDescriptor) Validate() error {
+	if d.TargetManagerName == "" {
+		return errors.New("target manager name cannot be empty")
+	}
+	if d.TestFetcherName == "" {
+		return errors.New("test fetcher name cannot be empty")
+	}
+	return nil
 }

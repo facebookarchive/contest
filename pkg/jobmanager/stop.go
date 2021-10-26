@@ -14,26 +14,27 @@ import (
 )
 
 func (jm *JobManager) stop(ev *api.Event) *api.EventResponse {
+	ctx := ev.Context
 	msg := ev.Msg.(api.EventStopMsg)
 	jobID := msg.JobID
 	// CancelJob is asynchronous, it closes the Job's cancellation signal which
 	// is propagated all the way down to the TestRunner. TestRunner  will wait
 	// TestRunnerShutdownTimeout before flagging the test as timed out. JobRunner
 	// will attempt to call Release on TargetManager and will wait up to
-	// TargetManagerTimeout for Release to return.
+	// TargetManagerReleaseTimeout for Release to return.
 	err := jm.CancelJob(jobID)
 	if err != nil {
-		log.Errorf("Cannot stop job: %v", err)
+		ctx.Errorf("Cannot stop job: %v", err)
 		return &api.EventResponse{Err: fmt.Errorf("could not stop job: %v", err)}
 	}
-	_ = jm.emitEvent(jobID, EventJobCancelling)
+	_ = jm.emitEvent(ctx, jobID, job.EventJobCancelling)
 	return &api.EventResponse{
 		JobID:     jobID,
 		Requestor: ev.Msg.Requestor(),
 		Err:       nil,
 		Status: &job.Status{
 			Name:      "UnknownJobName",
-			State:     string(EventJobCancelling),
+			State:     string(job.EventJobCancelling),
 			StartTime: time.Now(),
 		},
 	}

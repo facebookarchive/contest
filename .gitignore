@@ -1,4 +1,6 @@
 cmds/contest/contest
-cmds/clients/contestcli-http/contestcli-http
+cmds/clients/contestcli/contestcli
+cmds/contest-generator/contest-generator
 .*.swp
 profile.out
+.DS_Store

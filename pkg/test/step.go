@@ -6,14 +6,15 @@
 package test
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 
-	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
 	"github.com/facebookincubator/contest/pkg/target"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // TestStepParameters represents the parameters that a TestStep should consume
@@ -67,6 +68,13 @@ type TestStepFactory func() TestStep
 // needed things to be able to load a TestStep.
 type TestStepLoader func() (string, TestStepFactory, []event.Name)
 
+// TestStepsDescriptors bundles together description of the test step
+// which constitute each test
+type TestStepsDescriptors struct {
+	TestName  string
+	TestSteps []*TestStepDescriptor
+}
+
 // TestStepDescriptor is the definition of a test step matching a test step
 // configuration.
 type TestStepDescriptor struct {
@@ -84,12 +92,19 @@ type TestStepBundle struct {
 	AllowedEvents map[event.Name]bool
 }
 
+// TestStepResult is used by TestSteps to report result for a particular target.
+// Empty Err means success, non-empty indicates failure.
+// Failed targets do not proceed to further steps in this run.
+type TestStepResult struct {
+	Target *target.Target
+	Err    error
+}
+
 // TestStepChannels represents the input and output  channels used by a TestStep
 // to communicate with the TestRunner
 type TestStepChannels struct {
 	In  <-chan *target.Target
-	Out chan<- *target.Target
-	Err chan<- cerrors.TargetError
+	Out chan<- TestStepResult
 }
 
 // TestStep is the interface that all steps need to implement to be executed
@@ -98,14 +113,9 @@ type TestStep interface {
 	// Name returns the name of the step
 	Name() string
 	// Run runs the test step. The test step is expected to be synchronous.
-	Run(cancel, pause <-chan struct{}, ch TestStepChannels, params TestStepParameters, ev testevent.Emitter) error
-	// CanResume signals whether a test step can be resumed.
-	CanResume() bool
-	// Resume is called if a test step resume is requested, and CanResume
-	// returns true. If resume is not supported, this method should return
-	// ErrResumeNotSupported.
-	Resume(cancel, pause <-chan struct{}, ch TestStepChannels, params TestStepParameters, ev testevent.EmitterFetcher) error
+	Run(ctx xcontext.Context, ch TestStepChannels, params TestStepParameters, ev testevent.Emitter,
+		resumeState json.RawMessage) (json.RawMessage, error)
 	// ValidateParameters checks that the parameters are correct before passing
 	// them to Run.
-	ValidateParameters(params TestStepParameters) error
+	ValidateParameters(ctx xcontext.Context, params TestStepParameters) error
 }

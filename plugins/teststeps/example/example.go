@@ -6,21 +6,26 @@
 package example
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
-	"strings"
 
-	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/logging"
+	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/xcontext"
+	"github.com/facebookincubator/contest/plugins/teststeps"
 )
 
 // Name is the name used to look this plugin up.
 var Name = "Example"
 
-var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
+// Params this step accepts.
+const (
+	// Fail this percentage of targets at random.
+	FailPctParam = "FailPct"
+)
 
 // events that we may emit during the plugin's lifecycle. This is used in Events below.
 // Note that you don't normally need to emit start/finish/cancellation events as
@@ -36,10 +41,10 @@ const (
 var Events = []event.Name{StartedEvent, FinishedEvent, FailedEvent}
 
 // Step is an example implementation of a TestStep which simply
-// consumes Targets in input and pipes them to the output channel with intermediate
-// buffering. It randomly decides if a Target has failed and forwards it on
-// the err channel.
+// consumes Targets in input and pipes them to the output or error channel
+// with intermediate buffering.
 type Step struct {
+	failPct int64
 }
 
 // Name returns the name of the Step
@@ -47,66 +52,49 @@ func (ts Step) Name() string {
 	return Name
 }
 
-// Run executes the example step.
-func (ts *Step) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.Emitter) error {
-	for {
-
-		r := rand.Intn(3)
-		select {
-		case target := <-ch.In:
-			if target == nil {
-				return nil
-			}
-			log.Infof("Executing on target %s", target)
-			// NOTE: you may want more robust error handling here, possibly just
-			//       logging the error, or a retry mechanism. Returning an error
-			//       here means failing the entire job.
-			if err := ev.Emit(testevent.Data{EventName: StartedEvent, Target: target, Payload: nil}); err != nil {
-				return fmt.Errorf("failed to emit start event: %v", err)
-			}
-			if r == 1 {
-				select {
-				case <-cancel:
-				case <-pause:
-					return nil
-				case ch.Err <- cerrors.TargetError{Target: target, Err: fmt.Errorf("target failed")}:
-					if err := ev.Emit(testevent.Data{EventName: FinishedEvent, Target: target, Payload: nil}); err != nil {
-						return fmt.Errorf("failed to emit finished event: %v", err)
-					}
-				}
-			} else {
-				select {
-				case <-cancel:
-				case <-pause:
-					return nil
-				case ch.Out <- target:
-					if err := ev.Emit(testevent.Data{EventName: FailedEvent, Target: target, Payload: nil}); err != nil {
-						return fmt.Errorf("failed to emit failed event: %v", err)
-					}
-				}
-			}
-		case <-cancel:
-			return nil
-		case <-pause:
-			return nil
-		}
+func (ts *Step) shouldFail(t *target.Target) bool {
+	if ts.failPct > 0 {
+		roll := rand.Int63n(101)
+		return (roll <= ts.failPct)
 	}
+	return false
+}
+
+// Run executes the example step.
+func (ts *Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
+	f := func(ctx xcontext.Context, target *target.Target) error {
+		ctx.Infof("Executing on target %s", target)
+		// NOTE: you may want more robust error handling here, possibly just
+		//       logging the error, or a retry mechanism. Returning an error
+		//       here means failing the entire job.
+		if err := ev.Emit(ctx, testevent.Data{EventName: StartedEvent, Target: target, Payload: nil}); err != nil {
+			return fmt.Errorf("failed to emit start event: %v", err)
+		}
+		if ts.shouldFail(target) {
+			if err := ev.Emit(ctx, testevent.Data{EventName: FailedEvent, Target: target, Payload: nil}); err != nil {
+				return fmt.Errorf("failed to emit finished event: %v", err)
+			}
+			return fmt.Errorf("target failed")
+		} else {
+			if err := ev.Emit(ctx, testevent.Data{EventName: FinishedEvent, Target: target, Payload: nil}); err != nil {
+				return fmt.Errorf("failed to emit failed event: %v", err)
+			}
+		}
+		return nil
+	}
+	return teststeps.ForEachTarget(Name, ctx, ch, f)
 }
 
 // ValidateParameters validates the parameters associated to the TestStep
-func (ts *Step) ValidateParameters(_ test.TestStepParameters) error {
+func (ts *Step) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
+	if params.GetOne(FailPctParam).String() != "" {
+		if pct, err := params.GetInt(FailPctParam); err == nil {
+			ts.failPct = pct
+		} else {
+			return fmt.Errorf("invalid FailPct: %w", err)
+		}
+	}
 	return nil
-}
-
-// Resume tries to resume a previously interrupted test step. ExampleTestStep
-// cannot resume.
-func (ts *Step) Resume(cancel, pause <-chan struct{}, ch test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
-	return &cerrors.ErrResumeNotSupported{StepName: Name}
-}
-
-// CanResume tells whether this step is able to resume.
-func (ts *Step) CanResume() bool {
-	return false
 }
 
 // New initializes and returns a new ExampleTestStep.

@@ -1,0 +1,73 @@
+JobName: A job to test resumption
+Runs: 2
+RunInterval: 3s
+TestDescriptors:
+    - TargetManagerName: TargetListWithState
+      TargetManagerAcquireParameters:
+        Targets:
+          - ID: T1
+      TargetManagerReleaseParameters:
+      TestFetcherName: literal
+      TestFetcherFetchParameters:
+          TestName: Test 1
+          Steps:
+              - name: cmd
+                label: Test 1 Step 1
+                parameters:
+                    executable: [echo]
+                    args: ["Test 1, Step 1, target {{ .ID }}"]
+                    emit_stdout: [true]
+                    emit_stderr: [true]
+              - name: sleep  # Supports pause / resume.
+                label: Test 1 Step 2
+                parameters:
+                    duration: [2s]
+              - name: sleep  # Supports pause / resume.
+                label: Test 1 Step 3
+                parameters:
+                    duration: [2s]
+              - name: cmd
+                label: Test 1 Step 4
+                parameters:
+                    executable: [echo]
+                    args: ["Test 1, Step 3, target {{ .ID }}"]
+                    emit_stdout: [true]
+                    emit_stderr: [true]
+    - TargetManagerName: TargetListWithState
+      TargetManagerAcquireParameters:
+        Targets:
+          - ID: T2
+      TargetManagerReleaseParameters:
+      TestFetcherName: literal
+      TestFetcherFetchParameters:
+          TestName: Test 2
+          Steps:
+              - name: cmd
+                label: Test 2 Step 1
+                parameters:
+                    executable: [echo]
+                    args: ["Test 2, Step 1, target {{ .ID }}"]
+                    emit_stdout: [true]
+                    emit_stderr: [true]
+              - name: cmd  # Does not support pause, will have to wait.
+                label: Test 2 Step 2
+                parameters:
+                    executable: [sleep]
+                    args: [2]
+                    emit_stdout: [true]
+                    emit_stderr: [true]
+              - name: cmd
+                label: Test 2 Step 3
+                parameters:
+                    executable: [echo]
+                    args: ["Test 2, Step 3, target {{ .ID }}"]
+                    emit_stdout: [true]
+                    emit_stderr: [true]
+Reporting:
+    RunReporters:
+        - name: TargetSuccess
+          parameters:
+              SuccessExpression: "=100%"
+        - name: noop
+    FinalReporters:
+        - name: noop

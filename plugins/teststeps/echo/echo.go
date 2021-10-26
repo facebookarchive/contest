@@ -6,20 +6,18 @@
 package echo
 
 import (
+	"encoding/json"
 	"errors"
-	"strings"
 
-	"github.com/facebookincubator/contest/pkg/cerrors"
 	"github.com/facebookincubator/contest/pkg/event"
 	"github.com/facebookincubator/contest/pkg/event/testevent"
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/test"
+	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Name is the name used to look this plugin up.
 var Name = "Echo"
-
-var log = logging.GetLogger("teststeps/" + strings.ToLower(Name))
 
 // Events defines the events that a TestStep is allow to emit
 var Events = []event.Name{}
@@ -40,7 +38,7 @@ func Load() (string, test.TestStepFactory, []event.Name) {
 
 // ValidateParameters validates the parameters that will be passed to the Run
 // and Resume methods of the test step.
-func (e Step) ValidateParameters(params test.TestStepParameters) error {
+func (e Step) ValidateParameters(_ xcontext.Context, params test.TestStepParameters) error {
 	if t := params.GetOne("text"); t.IsEmpty() {
 		return errors.New("Missing 'text' field in echo parameters")
 	}
@@ -53,31 +51,20 @@ func (e Step) Name() string {
 }
 
 // Run executes the step
-func (e Step) Run(cancel, pause <-chan struct{}, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter) error {
+func (e Step) Run(ctx xcontext.Context, ch test.TestStepChannels, params test.TestStepParameters, ev testevent.Emitter, resumeState json.RawMessage) (json.RawMessage, error) {
 	for {
 		select {
-		case target := <-ch.In:
-			if target == nil {
-				// no more targets incoming
-				return nil
+		case target, ok := <-ch.In:
+			if !ok {
+				return nil, nil
 			}
-			log.Infof("Running on target %s with text '%s'", target, params.GetOne("text"))
-			ch.Out <- target
-		case <-cancel:
-			return nil
-		case <-pause:
-			return nil
+			// guaranteed to work here
+			jobID, _ := types.JobIDFromContext(ctx)
+			runID, _ := types.RunIDFromContext(ctx)
+			ctx.Infof("This is job %d, run %d on target %s with text '%s'", jobID, runID, params.GetOne("text"))
+			ch.Out <- test.TestStepResult{Target: target}
+		case <-ctx.Done():
+			return nil, nil
 		}
 	}
-}
-
-// CanResume tells whether this step is able to resume.
-func (e Step) CanResume() bool {
-	return false
-}
-
-// Resume tries to resume a previously interrupted test step. EchoStep cannot
-// resume.
-func (e Step) Resume(cancel, pause <-chan struct{}, _ test.TestStepChannels, _ test.TestStepParameters, ev testevent.EmitterFetcher) error {
-	return &cerrors.ErrResumeNotSupported{StepName: Name}
 }

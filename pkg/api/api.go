@@ -11,7 +11,10 @@ import (
 	"os"
 	"time"
 
+	"github.com/facebookincubator/contest/pkg/storage"
+	"github.com/facebookincubator/contest/pkg/storage/limits"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // CurrentAPIVersion is the current version of the API that the clients must be
@@ -30,35 +33,51 @@ type ServerIDFunc func() string
 // JobManager. It enables several operations like starting, stopping,
 // retrying a job, and getting a job status.
 type API struct {
-	// The events channel is used to route API events between clients and the
+	// Config is a set of knobs to change the behavior of API processing.
+	Config Config
+	// Events channel is used to route API events between clients and the
 	// JobManager. It is not necessary to close it explicitly as it will be
 	// garbage-collected when the API structure in the client goes out of scope.
 	Events chan *Event
-	// serverIDFunc is used by ServerID() to return a custom server ID in API
+	// serverID is used by ServerID() to return a custom server ID in API
 	// responses.
-	serverIDFunc ServerIDFunc
+	serverID string
 }
 
 // New returns an initialized instance of an API struct with the specified
 // server ID generation function.
-func New(serverIDFunc func() string) *API {
-	return &API{
-		Events:       make(chan *Event),
-		serverIDFunc: serverIDFunc,
+func New(opts ...Option) (*API, error) {
+	cfg := getConfig(opts...)
+	serverID, err := obtainServerID(cfg.ServerIDFunc)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot create API instance: %w", err)
 	}
+	return &API{
+		Config:   cfg,
+		Events:   make(chan *Event),
+		serverID: serverID,
+	}, nil
+}
+
+func obtainServerID(serverIDFunc func() string) (string, error) {
+	serverID := "<unknown>"
+	if serverIDFunc != nil {
+		serverID = serverIDFunc()
+	} else {
+		if hn, err := os.Hostname(); err == nil {
+			serverID = hn
+		}
+	}
+	if err := limits.NewValidator().ValidateServerID(serverID); err != nil {
+		return "", err
+	}
+	return serverID, nil
 }
 
 // ServerID returns the Server ID to be used in responses. A custom server ID
 // generation function can be passed to New().
 func (a API) ServerID() string {
-	if a.serverIDFunc != nil {
-		return a.serverIDFunc()
-	}
-	hn, err := os.Hostname()
-	if err != nil {
-		return "<unknown>"
-	}
-	return hn
+	return a.serverID
 }
 
 // newResponse returns a new Response object with type and server ID set. The
@@ -92,7 +111,10 @@ func (a *API) SendEvent(ev *Event, timeout *time.Duration) error {
 	if ev.Msg.Requestor() == "" {
 		return errors.New("requestor cannot be empty")
 	}
-	to := DefaultEventTimeout
+	if err := limits.NewValidator().ValidateRequestorName(string(ev.Msg.Requestor())); err != nil {
+		return err
+	}
+	to := a.Config.EventTimeout
 	if timeout != nil {
 		to = *timeout
 	}
@@ -100,7 +122,7 @@ func (a *API) SendEvent(ev *Event, timeout *time.Duration) error {
 	case a.Events <- ev:
 		return nil
 	case <-time.After(to):
-		return fmt.Errorf("sending event timed out after %v", timeout)
+		return fmt.Errorf("sending event timed out after %v", to)
 	}
 }
 
@@ -108,7 +130,7 @@ func (a *API) SendEvent(ev *Event, timeout *time.Duration) error {
 // from the consumer. The timeout is used once for the send, and once for the
 // receive, it's not a cumulative timeout.
 func (a *API) SendReceiveEvent(ev *Event, timeout *time.Duration) (*EventResponse, error) {
-	to := DefaultEventTimeout
+	to := a.Config.EventTimeout
 	if timeout != nil {
 		to = *timeout
 	}
@@ -122,7 +144,7 @@ func (a *API) SendReceiveEvent(ev *Event, timeout *time.Duration) (*EventRespons
 	case resp = <-ev.RespCh:
 		return resp, nil
 	case <-time.After(to):
-		return nil, fmt.Errorf("time out waiting for response after %v", timeout)
+		return nil, fmt.Errorf("time out waiting for response after %v", to)
 	}
 }
 
@@ -140,9 +162,12 @@ func (a *API) SendReceiveEvent(ev *Event, timeout *time.Duration) (*EventRespons
 // operations via the API, e.g. getting the job status or stopping it.
 // This method should return an error if the job description is malformed or
 // invalid, and if the API version is incompatible.
-func (a *API) Start(requestor EventRequestor, jobDescriptor string) (Response, error) {
+func (a *API) Start(ctx xcontext.Context, requestor EventRequestor, jobDescriptor string) (Response, error) {
 	resp := a.newResponse(ResponseTypeStart)
 	ev := &Event{
+		// To allow jobs to finish we do not allow passing cancel and pause
+		// signals to the job's context (therefore: xcontext.WithResetSignalers).
+		Context:  xcontext.WithResetSignalers(ctx).WithTag("api_method", "start"),
 		Type:     EventTypeStart,
 		ServerID: resp.ServerID,
 		Msg: EventStartMsg{
@@ -163,9 +188,10 @@ func (a *API) Start(requestor EventRequestor, jobDescriptor string) (Response, e
 }
 
 // Stop requests a job cancellation by the given job ID.
-func (a *API) Stop(requestor EventRequestor, jobID types.JobID) (Response, error) {
+func (a *API) Stop(ctx xcontext.Context, requestor EventRequestor, jobID types.JobID) (Response, error) {
 	resp := a.newResponse(ResponseTypeStop)
 	ev := &Event{
+		Context:  ctx.WithTag("api_method", "stop"),
 		Type:     EventTypeStop,
 		ServerID: resp.ServerID,
 		Msg: EventStopMsg{
@@ -185,9 +211,10 @@ func (a *API) Stop(requestor EventRequestor, jobID types.JobID) (Response, error
 
 // Status polls the status of a job by its ID, and returns a contest.Status
 //object
-func (a *API) Status(requestor EventRequestor, jobID types.JobID) (Response, error) {
+func (a *API) Status(ctx xcontext.Context, requestor EventRequestor, jobID types.JobID) (Response, error) {
 	resp := a.newResponse(ResponseTypeStatus)
 	ev := &Event{
+		Context:  ctx.WithTag("api_method", "status"),
 		Type:     EventTypeStatus,
 		ServerID: resp.ServerID,
 		Msg: EventStatusMsg{
@@ -209,9 +236,10 @@ func (a *API) Status(requestor EventRequestor, jobID types.JobID) (Response, err
 
 // Retry will retry a job identified by its ID, using the same job
 // description. If the job is still running, an error is returned.
-func (a *API) Retry(requestor EventRequestor, jobID types.JobID) (Response, error) {
+func (a *API) Retry(ctx xcontext.Context, requestor EventRequestor, jobID types.JobID) (Response, error) {
 	resp := a.newResponse(ResponseTypeRetry)
 	ev := &Event{
+		Context:  ctx.WithTag("api_method", "retry"),
 		Type:     EventTypeRetry,
 		ServerID: resp.ServerID,
 		Msg: EventRetryMsg{
@@ -229,6 +257,30 @@ func (a *API) Retry(requestor EventRequestor, jobID types.JobID) (Response, erro
 		JobID: jobID,
 		// TODO this should set the new Job ID
 		// NewJobID: ...
+	}
+	resp.Err = respEv.Err
+	return resp, nil
+}
+
+// List will list jobs matching the specified criteria.
+func (a *API) List(ctx xcontext.Context, requestor EventRequestor, query *storage.JobQuery) (Response, error) {
+	resp := a.newResponse(ResponseTypeList)
+	ev := &Event{
+		Context:  ctx.WithTag("api_method", "list"),
+		Type:     EventTypeList,
+		ServerID: resp.ServerID,
+		Msg: EventListMsg{
+			requestor: requestor,
+			Query:     query,
+		},
+		RespCh: make(chan *EventResponse, 1),
+	}
+	respEv, err := a.SendReceiveEvent(ev, nil)
+	if err != nil {
+		return resp, err
+	}
+	resp.Data = ResponseDataList{
+		JobIDs: respEv.JobIDs,
 	}
 	resp.Err = respEv.Err
 	return resp, nil

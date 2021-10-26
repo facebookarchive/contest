@@ -32,18 +32,17 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
-	"github.com/facebookincubator/contest/pkg/logging"
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
 )
 
 // Name defined the name of the plugin
 var (
 	Name = "TargetList"
 )
-
-var log = logging.GetLogger("targetmanagers/" + strings.ToLower(Name))
 
 // AcquireParameters contains the parameters necessary to acquire targets.
 type AcquireParameters struct {
@@ -56,26 +55,23 @@ type ReleaseParameters struct {
 
 // TargetList implements the contest.TargetManager interface.
 type TargetList struct {
-	targets []*target.Target
 }
 
-// ValidateAcquireParameters performs sanity checks on the fields of the
-// parameters that will be passed to Acquire.
+// ValidateAcquireParameters valides parameters that will be passed to Acquire.
 func (t TargetList) ValidateAcquireParameters(params []byte) (interface{}, error) {
 	var ap AcquireParameters
 	if err := json.Unmarshal(params, &ap); err != nil {
 		return nil, err
 	}
 	for _, target := range ap.Targets {
-		if strings.TrimSpace(target.Name) == "" {
-			return nil, errors.New("invalid target with empty name")
+		if strings.TrimSpace(target.ID) == "" {
+			return nil, errors.New("invalid target with empty ID")
 		}
 	}
 	return ap, nil
 }
 
-// ValidateReleaseParameters performs sanity checks on the fields of the
-// parameters that will be passed to Release.
+// ValidateReleaseParameters valides parameters that will be passed to Release.
 func (t TargetList) ValidateReleaseParameters(params []byte) (interface{}, error) {
 	var rp ReleaseParameters
 	if err := json.Unmarshal(params, &rp); err != nil {
@@ -84,26 +80,25 @@ func (t TargetList) ValidateReleaseParameters(params []byte) (interface{}, error
 	return rp, nil
 }
 
-// Acquire implements contest.TargetManager.Acquire, reading one entry per line
-// from a text file. Each input record has a hostname, a space, and a host ID.
-func (t *TargetList) Acquire(jobID types.JobID, cancel <-chan struct{}, parameters interface{}, tl target.Locker) ([]*target.Target, error) {
+// Acquire implements contest.TargetManager.Acquire
+func (t *TargetList) Acquire(ctx xcontext.Context, jobID types.JobID, jobTargetManagerAcquireTimeout time.Duration, parameters interface{}, tl target.Locker) ([]*target.Target, error) {
 	acquireParameters, ok := parameters.(AcquireParameters)
 	if !ok {
 		return nil, fmt.Errorf("Acquire expects %T object, got %T", acquireParameters, parameters)
 	}
 
-	if err := tl.Lock(jobID, acquireParameters.Targets); err != nil {
-		log.Warningf("Failed to lock %d targets: %v", len(acquireParameters.Targets), err)
+	if err := tl.Lock(ctx, jobID, jobTargetManagerAcquireTimeout, acquireParameters.Targets); err != nil {
+		ctx.Warnf("Failed to lock %d targets: %v", len(acquireParameters.Targets), err)
 		return nil, err
 	}
-	t.targets = acquireParameters.Targets
-	log.Infof("Acquired %d targets", len(t.targets))
+
+	ctx.Infof("Acquired %d targets", len(acquireParameters.Targets))
 	return acquireParameters.Targets, nil
 }
 
 // Release releases the acquired resources.
-func (t *TargetList) Release(jobID types.JobID, cancel <-chan struct{}, params interface{}) error {
-	log.Infof("Released %d targets", len(t.targets))
+func (t *TargetList) Release(ctx xcontext.Context, jobID types.JobID, targets []*target.Target, params interface{}) error {
+	ctx.Infof("Released %d targets", len(targets))
 	return nil
 }
 

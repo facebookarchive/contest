@@ -6,12 +6,14 @@
 // Package csvtargetmanager implements a simple target manager that parses a CSV
 // file. The format of the CSV file is the following:
 //
-// hostname1.example.com,1.2.3.4
-// hostname2,2001:db8::1
+// 123,hostname1.example.com,1.2.3.4,
+// 456,hostname2,,2001:db8::1
 //
-// In other words, two fields: the first containing a host name (fully qualified
-// or not), and the second containin the IP address of the target (this field is
-// optional).
+// In other words, four fields: the first containing a unique ID for the device
+// (might be identical to the IP or FQDN), next one is FQDN,
+// and then IPv4 and IPv6.
+// All fields except ID are optional, but many plugins require FQDN or IP fields to
+// reach the targets over the network.
 package csvtargetmanager
 
 import (
@@ -20,11 +22,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
+	"net"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/facebookincubator/contest/pkg/target"
 	"github.com/facebookincubator/contest/pkg/types"
+	"github.com/facebookincubator/contest/pkg/xcontext"
+
 	"github.com/insomniacslk/xjson"
 )
 
@@ -39,6 +46,7 @@ type AcquireParameters struct {
 	MinNumberDevices uint32
 	MaxNumberDevices uint32
 	HostPrefixes     []string
+	Shuffle          bool
 }
 
 // ReleaseParameters contains the parameters necessary to release targets.
@@ -89,8 +97,8 @@ func (tf CSVFileTargetManager) ValidateReleaseParameters(params []byte) (interfa
 }
 
 // Acquire implements contest.TargetManager.Acquire, reading one entry per line
-// from a text file. Each input record has a hostname, a space, and a host ID.
-func (tf *CSVFileTargetManager) Acquire(jobID types.JobID, cancel <-chan struct{}, parameters interface{}, tl target.Locker) ([]*target.Target, error) {
+// from a text file. Each input record looks like this: ID,FQDN,IPv4,IPv6. Only ID is required
+func (tf *CSVFileTargetManager) Acquire(ctx xcontext.Context, jobID types.JobID, jobTargetManagerAcquireTimeout time.Duration, parameters interface{}, tl target.Locker) ([]*target.Target, error) {
 	acquireParameters, ok := parameters.(AcquireParameters)
 	if !ok {
 		return nil, fmt.Errorf("Acquire expects %T object, got %T", acquireParameters, parameters)
@@ -115,27 +123,45 @@ func (tf *CSVFileTargetManager) Acquire(jobID types.JobID, cancel <-chan struct{
 			// skip blank lines
 			continue
 		}
-		if len(record) != 2 {
-			return nil, errors.New("malformed input file, need exactly two fields per record")
+		if len(record) != 4 {
+			return nil, errors.New("malformed input file, need 4 entries per record (ID, FQDN, IPv4, IPv6)")
 		}
-		name, id := strings.TrimSpace(record[0]), strings.TrimSpace(record[1])
-		if name == "" || id == "" {
-			return nil, errors.New("invalid empty string for host name or host ID")
+		t := &target.Target{ID: strings.TrimSpace(record[0])}
+		if t.ID == "" {
+			return nil, errors.New("invalid empty string for host ID")
 		}
-		// no need to check if there is at least one item, the non-empty string
-		// has been checked already and this will always return at least one
-		// item.
-		firstComponent := strings.Split(name, ".")[0]
+		fqdn := strings.TrimSpace(record[1])
+		if fqdn != "" {
+			// no validation on fqdns
+			t.FQDN = fqdn
+		}
+		if ipv4 := strings.TrimSpace(record[2]); ipv4 != "" {
+			t.PrimaryIPv4 = net.ParseIP(ipv4)
+			if t.PrimaryIPv4 == nil || t.PrimaryIPv4.To4() == nil {
+				// didn't parse
+				return nil, fmt.Errorf("invalid non-empty IPv4 address \"%s\"", ipv4)
+			}
+		}
+		if ipv6 := strings.TrimSpace(record[3]); ipv6 != "" {
+			t.PrimaryIPv6 = net.ParseIP(ipv6)
+			if t.PrimaryIPv6 == nil || t.PrimaryIPv6.To16() == nil {
+				// didn't parse
+				return nil, fmt.Errorf("invalid non-empty IPv6 address \"%s\"", ipv6)
+			}
+		}
 		if len(acquireParameters.HostPrefixes) == 0 {
-			hosts = append(hosts, &target.Target{Name: name, ID: id})
-		} else {
+			hosts = append(hosts, t)
+		} else if t.FQDN != "" {
+			// host prefix filtering only works on devices with a FQDN
+			firstComponent := strings.Split(t.FQDN, ".")[0]
 			for _, hp := range acquireParameters.HostPrefixes {
 				if strings.HasPrefix(firstComponent, hp) {
-					hosts = append(hosts, &target.Target{Name: name, ID: id})
+					hosts = append(hosts, t)
 				}
 			}
 		}
 	}
+
 	if uint32(len(hosts)) < acquireParameters.MinNumberDevices {
 		return nil, fmt.Errorf("not enough hosts found in CSV file '%s', want %d, got %d",
 			acquireParameters.FileURI.Path,
@@ -143,19 +169,44 @@ func (tf *CSVFileTargetManager) Acquire(jobID types.JobID, cancel <-chan struct{
 			len(hosts),
 		)
 	}
-	if uint32(len(hosts)) > acquireParameters.MaxNumberDevices {
-		hosts = hosts[:acquireParameters.MaxNumberDevices]
+	ctx.Debugf("Found %d targets in %s", len(hosts), acquireParameters.FileURI.Path)
+	if acquireParameters.Shuffle {
+		ctx.Infof("Shuffling targets")
+		rand.Shuffle(len(hosts), func(i, j int) {
+			hosts[i], hosts[j] = hosts[j], hosts[i]
+		})
 	}
 
-	if err := tl.Lock(jobID, hosts); err != nil {
-		return nil, fmt.Errorf("failed to lock %d targets: %v", len(hosts), err)
+	// feed all devices into new API call `TryLock`, with desired limit
+	lockedString, err := tl.TryLock(ctx, jobID, jobTargetManagerAcquireTimeout, hosts, uint(acquireParameters.MaxNumberDevices))
+	if err != nil {
+		return nil, fmt.Errorf("failed to lock targets: %w", err)
 	}
-	tf.hosts = hosts
-	return hosts, nil
+	locked, err := target.FilterTargets(lockedString, hosts)
+	if err != nil {
+		return nil, fmt.Errorf("can not find locked targets in hosts")
+	}
+
+	// check if we got enough
+	if len(locked) >= int(acquireParameters.MinNumberDevices) {
+		// done, we got enough and they are locked
+	} else {
+		// not enough, unlock what we got and fail
+		if len(locked) > 0 {
+			err = tl.Unlock(ctx, jobID, locked)
+			if err != nil {
+				return nil, fmt.Errorf("can't unlock targets")
+			}
+		}
+		return nil, fmt.Errorf("can't lock enough targets")
+	}
+
+	tf.hosts = locked
+	return locked, nil
 }
 
 // Release releases the acquired resources.
-func (tf *CSVFileTargetManager) Release(jobID types.JobID, cancel <-chan struct{}, params interface{}) error {
+func (tf *CSVFileTargetManager) Release(ctx xcontext.Context, jobID types.JobID, targets []*target.Target, params interface{}) error {
 	return nil
 }
 
