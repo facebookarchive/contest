@@ -21,3 +21,11 @@ The [add_jobs_state_column](https://github.com/facebookincubator/contest/blob/ma
 # 0004_add_job_tags_table.sql
 
 The [add_job_tags_table](https://github.com/facebookincubator/contest/blob/master/db/rdbms/migration/0004_add_job_tags_table.sql) migration creates the `job_tags` table that maintains the relationship between job id and job tags to facilitate efficient lookups of jobs by tag(s). Migration script backfills the column for existing jobs and server maintains the column going forward.
+
+# 0005_event_payload_mediumtext.sql
+
+`TBD`
+
+# 0006_add_indices.sql
+
+The [add_indices](0006_add_indices.sql) migration creates the indices required to cover SELECT requests issued by `JobRunner`.
