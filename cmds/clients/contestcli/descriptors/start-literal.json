@@ -2,7 +2,10 @@
     "JobName": "test job",
     "Runs": 3,
     "RunInterval": "3s",
-    "Tags": ["test", "csv"],
+    "Tags": [
+        "test",
+        "csv"
+    ],
     "TestDescriptors": [
         {
             "TargetManagerName": "TargetList",
@@ -14,8 +17,7 @@
                     }
                 ]
             },
-            "TargetManagerReleaseParameters": {
-            },
+            "TargetManagerReleaseParameters": {},
             "TestFetcherName": "literal",
             "TestFetcherFetchParameters": {
                 "TestName": "Literal test",
@@ -24,8 +26,12 @@
                         "name": "cmd",
                         "label": "some label",
                         "parameters": {
-                            "executable": ["echo"],
-                            "args": ["Title={{ Title .FQDN }}, ToUpper={{ ToUpper .FQDN }}"]
+                            "executable": [
+                                "echo"
+                            ],
+                            "args": [
+                                "Title={{ Title .FQDN }}, ToUpper={{ ToUpper .FQDN }}"
+                            ]
                         }
                     }
                 ]

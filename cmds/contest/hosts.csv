@@ -1,4 +1,6 @@
 1234,compute1234,172.16.5.6,
 2345,storage2345,10.10.10.123,
-1234,machinelearning1234,192.168.123.231,
+3456,machinelearning3456,192.168.123.231,
 10,uselesshost10,10.0.0.10,
+20,uselesshost20,10.0.0.20,
+30,uselesshost30,10.0.0.30,

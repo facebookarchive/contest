@@ -12,6 +12,9 @@ teststeps:
   - path: github.com/facebookincubator/contest/plugins/teststeps/sshcmd
   - path: github.com/facebookincubator/contest/plugins/teststeps/sleep
   - path: github.com/facebookincubator/contest/plugins/teststeps/exec
+  - path: github.com/facebookincubator/contest/plugins/teststeps/echo
+  - path: github.com/facebookincubator/contest/plugins/teststeps/randecho
 
 reporters:
   - path: github.com/facebookincubator/contest/plugins/reporters/targetsuccess
+  - path: github.com/facebookincubator/contest/plugins/reporters/noop

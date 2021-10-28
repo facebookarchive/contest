@@ -2,7 +2,10 @@
     "JobName": "test job",
     "Runs": 1,
     "RunInterval": "5s",
-    "Tags": ["test", "csv"],
+    "Tags": [
+        "test",
+        "csv"
+    ],
     "TestDescriptors": [
         {
             "TargetManagerName": "CSVFileTargetManager",
@@ -10,11 +13,9 @@
                 "FileURI": "hosts.csv",
                 "MinNumberDevices": 2,
                 "MaxNumberDevices": 4,
-                "HostPrefixes": [
-                ]
+                "HostPrefixes": []
             },
-            "TargetManagerReleaseParameters": {
-            },
+            "TargetManagerReleaseParameters": {},
             "TestFetcherName": "URI",
             "TestFetcherFetchParameters": {
                 "TestName": "RackSwitchProvisioning",
@@ -27,11 +28,9 @@
                 "FileURI": "hosts.csv",
                 "MinNumberDevices": 2,
                 "MaxNumberDevices": 4,
-                "HostPrefixes": [
-                ]
+                "HostPrefixes": []
             },
-            "TargetManagerReleaseParameters": {
-            },
+            "TargetManagerReleaseParameters": {},
             "TestFetcherName": "URI",
             "TestFetcherFetchParameters": {
                 "TestName": "RackProvisioning",
@@ -51,5 +50,5 @@
                 "Name": "Noop"
             }
         ]
-   }
+    }
 }
