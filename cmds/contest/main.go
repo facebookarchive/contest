@@ -29,11 +29,14 @@ import (
 
 	// the teststep plugins
 	ts_cmd "github.com/facebookincubator/contest/plugins/teststeps/cmd"
+	echo "github.com/facebookincubator/contest/plugins/teststeps/echo"
 	exec "github.com/facebookincubator/contest/plugins/teststeps/exec"
+	randecho "github.com/facebookincubator/contest/plugins/teststeps/randecho"
 	sleep "github.com/facebookincubator/contest/plugins/teststeps/sleep"
 	sshcmd "github.com/facebookincubator/contest/plugins/teststeps/sshcmd"
 
 	// the reporter plugins
+	noop "github.com/facebookincubator/contest/plugins/reporters/noop"
 	targetsuccess "github.com/facebookincubator/contest/plugins/reporters/targetsuccess"
 )
 
@@ -44,9 +47,12 @@ func getPluginConfig() *server.PluginConfig {
 	pc.TestFetcherLoaders = append(pc.TestFetcherLoaders, literal.Load)
 	pc.TestFetcherLoaders = append(pc.TestFetcherLoaders, uri.Load)
 	pc.TestStepLoaders = append(pc.TestStepLoaders, ts_cmd.Load)
+	pc.TestStepLoaders = append(pc.TestStepLoaders, echo.Load)
 	pc.TestStepLoaders = append(pc.TestStepLoaders, exec.Load)
+	pc.TestStepLoaders = append(pc.TestStepLoaders, randecho.Load)
 	pc.TestStepLoaders = append(pc.TestStepLoaders, sleep.Load)
 	pc.TestStepLoaders = append(pc.TestStepLoaders, sshcmd.Load)
+	pc.ReporterLoaders = append(pc.ReporterLoaders, noop.Load)
 	pc.ReporterLoaders = append(pc.ReporterLoaders, targetsuccess.Load)
 
 	return &pc
