@@ -32,6 +32,11 @@ if ! mysqladmin -h dbstorage -P 3306 -u contest --protocol tcp --password=contes
     exit 1
 fi
 
+if ! service ssh restart; then
+    echo "Cannot start sshd. Please check config"
+    exit 1
+fi
+
 # Run integration tests collecting coverage only for the business logic (pkg directory)
 i=1
 for tag in integration integration_storage; do
@@ -46,8 +51,8 @@ for tag in integration integration_storage; do
           # to have tests run serially.
           pflag="-p 1"
         fi
-        go test -tags=${tag} -race -count=4 -failfast ${pflag} "${d}"
-        go test -tags=${tag} -race \
+        go test -tags=${tag},unsafe -race -count=4 -failfast ${pflag} "${d}"
+        go test -tags=${tag},unsafe -race \
           -coverprofile="integ.$i.cov" ${pflag} \
           -covermode=atomic \
           -coverpkg=all \

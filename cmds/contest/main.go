@@ -29,6 +29,7 @@ import (
 
 	// the teststep plugins
 	ts_cmd "github.com/facebookincubator/contest/plugins/teststeps/cmd"
+	exec "github.com/facebookincubator/contest/plugins/teststeps/exec"
 	sleep "github.com/facebookincubator/contest/plugins/teststeps/sleep"
 	sshcmd "github.com/facebookincubator/contest/plugins/teststeps/sshcmd"
 
@@ -43,6 +44,7 @@ func getPluginConfig() *server.PluginConfig {
 	pc.TestFetcherLoaders = append(pc.TestFetcherLoaders, literal.Load)
 	pc.TestFetcherLoaders = append(pc.TestFetcherLoaders, uri.Load)
 	pc.TestStepLoaders = append(pc.TestStepLoaders, ts_cmd.Load)
+	pc.TestStepLoaders = append(pc.TestStepLoaders, exec.Load)
 	pc.TestStepLoaders = append(pc.TestStepLoaders, sleep.Load)
 	pc.TestStepLoaders = append(pc.TestStepLoaders, sshcmd.Load)
 	pc.ReporterLoaders = append(pc.ReporterLoaders, targetsuccess.Load)

@@ -11,6 +11,7 @@ teststeps:
     alias: ts_cmd
   - path: github.com/facebookincubator/contest/plugins/teststeps/sshcmd
   - path: github.com/facebookincubator/contest/plugins/teststeps/sleep
+  - path: github.com/facebookincubator/contest/plugins/teststeps/exec
 
 reporters:
   - path: github.com/facebookincubator/contest/plugins/reporters/targetsuccess
