@@ -1,3 +1,16 @@
+
+---
+---
+## DEPRECATION NOTICE
+
+### This git repo is now marked readonly. Please go to https://github.com/linuxboot/contest.
+
+---
+---
+<br/>
+<br/>
+<br/>
+
 # ConTest
 [![Tests](https://github.com/facebookincubator/contest/workflows/Tests/badge.svg?branch=master)](https://github.com/facebookincubator/contest/actions?query=workflow%3ATests+branch%3Amaster)
 [![codecov](https://codecov.io/gh/facebookincubator/contest/branch/master/graph/badge.svg)](https://codecov.io/gh/facebookincubator/contest)
